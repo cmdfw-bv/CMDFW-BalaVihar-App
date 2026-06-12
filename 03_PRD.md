@@ -413,7 +413,7 @@ Teachers take attendance for each Sunday session. Attendance is per-student, per
 | ID | Requirement |
 |---|---|
 | F04-01 | Teacher sees their class roster on the My Class tab, sorted by last name |
-| F04-02 | For each student, the teacher can tap to toggle status: Present / Absent / Excused |
+| F04-02 | For each student, the teacher can tap to toggle status: Present / Absent |
 | F04-03 | Default status on a new session date is none (not pre-filled) |
 | F04-04 | Teacher taps "Submit Attendance" to save all records for the session |
 | F04-05 | Submission is an upsert — if the teacher re-opens attendance for an already-submitted date, existing records are shown and can be corrected |
@@ -438,7 +438,7 @@ Teachers take attendance for each Sunday session. Attendance is per-student, per
 ### F-05 Class Updates
 
 **Phase:** 1  
-**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), Central Admin (read), Acharya (read, Phase 3)  
+**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), Central Admin (read), Acharya (read)  
 
 #### Description
 After each Sunday session, teachers post a class update describing what was covered and any homework assigned. One update per class per session date.
