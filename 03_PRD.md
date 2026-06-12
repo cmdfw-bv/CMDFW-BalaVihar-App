@@ -44,7 +44,7 @@
 
 The CMDFW Bala Vihar App is a mobile-first progressive web application (PWA) for managing religious education programs. It serves as a single platform for all participants in the program — organizers, teachers, families, and volunteers — replacing fragmented coordination through WhatsApp groups, spreadsheets, and phone calls.
 
-**Core insight:** The same person often wears multiple hats (a parent who also volunteers; a teacher who also substitutes). The app gives each hat a focused, purpose-built experience — the right information, the right actions, nothing extraneous.
+**Core insight:** The same person often wears multiple hats (a parent who also volunteers; a teacher who is also a parent and a coordinator). The app gives each hat a focused, purpose-built experience — the right information, the right actions, nothing extraneous.
 
 **Deployment:** Expo React Native, built as a PWA, hosted on Netlify. Installable on iOS, Android, and desktop via the browser. No app store required.
 
@@ -54,20 +54,20 @@ The CMDFW Bala Vihar App is a mobile-first progressive web application (PWA) for
 
 ## 2. Personas
 
-The app supports nine personas organized into four groups. The first seven are the core launch personas. Board Member and Acharya are defined here for completeness and will be built in Phase 3.
+The app supports nine personas organized into four groups.
 
 ### Group 1 — Organizers
 
 | Persona | Role Value | Scope | Phase |
 |---|---|---|---|
-| **Central Admin** | `central_admin` | Entire organization, all centers | Phase 1 |
-| **Coordinator** | `local_admin` | One assigned center | Phase 1 |
+| **Central Admin** | `central_admin` | Entire organization, all centers, all sessions | Phase 1 |
+| **Coordinator** | `local_admin` | One assigned session | Phase 1 |
 
 ### Group 2 — Core Curriculum
 
 | Persona | Role Value | Scope | Phase |
 |---|---|---|---|
-| **Teacher** | `teacher` | Their assigned class(es) | Phase 1 |
+| **Teacher** | `teacher` | Their assigned class | Phase 1 |
 | **Parent** | `parent` | Their own children's records | Phase 1 |
 | **Student** | `student` | Their own record | Phase 1 |
 
@@ -78,18 +78,18 @@ The app supports nine personas organized into four groups. The first seven are t
 | **Volunteer** | `volunteer` (in `user_roles`) | Org-wide events | Phase 1 |
 | **Substitute Teacher** | `teacher` + `is_substitute = true` | Open sub requests | Phase 1 |
 
-### Group 4 — Leadership & Curriculum (Phase 3)
+### Group 4 — Leadership & Curriculum
 
 | Persona | Role Value | Scope | Phase |
 |---|---|---|---|
-| **Board Member** | `board_member` | Read-only aggregate metrics, all centers | Phase 3 |
-| **Acharya** | `acharya` | Curriculum guidance, cross-class visibility, training resources | Phase 3 |
+| **Board Member** | `board_member` | Read-Only - Entire organization, all centers, all sessions | Phase 1 |
+| **Acharya** | `acharya` | Read-Only - Entire organization, all centers, all sessions, curriculum guidance, training resources | Phase 1 |
 
 ---
 
 ### 2.1 Persona Detail: Central Admin
 
-**Who they are:** Senior leader(s) of the organization with oversight across all centers. There are typically 1–5 central admins for the entire organization.
+**Who they are:** Senior leader(s) of the organization with oversight across all centers. There are typically 2 central admins for the entire organization.
 
 **Primary goals:**
 - Monitor overall program health (attendance rates, substitute coverage, compliance)
@@ -110,42 +110,42 @@ The app supports nine personas organized into four groups. The first seven are t
 
 ### 2.2 Persona Detail: Coordinator
 
-**Who they are:** Day-to-day operations manager for a single center. Typically 1–2 coordinators per center.
+**Who they are:** Day-to-day operations manager for a single session. Typically 1–3 coordinators per center.
 
 **Primary goals:**
-- Monitor their center's compliance (attendance submitted, class updates posted)
+- Monitor their session's compliance (attendance submitted, class updates posted)
 - Manage the substitute teacher workflow (post requests, assign subs, track confirmations)
 - Communicate with teachers, parents, students via targeted announcements
-- Manage volunteer events for their center
-- Approve new user registrations for their center
+- Manage volunteer events for their session
+- Approve new user registrations for their session
 
 **Tab navigation:** Feed, Dashboard, Events, Profile
 
 **Key permissions:**
-- Read all data for their center only
-- Write announcements scoped to their center (cannot post org-wide)
-- Create/manage events for their center
-- Create/update substitute assignments for their center's classes
-- Approve/reject pending user registrations for their center
+- Read all data for their session only
+- Write announcements scoped to their session (cannot post org-wide)
+- Create/manage events for their session
+- Create/update substitute assignments for their session's classes
+- Approve/reject pending user registrations for their session
 
 ---
 
 ### 2.3 Persona Detail: Teacher
 
-**Who they are:** Leads one or more classes each session. A class can have 2–3 co-teachers. Teachers may also be substitutes.
+**Who they are:** Leads one class for each session. A class can have 2–3 teachers.
 
 **Primary goals:**
-- Take attendance after each Sunday session
+- View their class roster
+- Take attendance during each Sunday session
 - Post class updates (what was covered, homework)
 - Report upcoming absences in advance
-- View their class roster
 
 **Tab navigation:** Feed, My Class, Profile
 
 **Key permissions:**
-- Read roster and enrollments for their assigned class(es)
-- Write attendance for their assigned class(es)
-- Write class updates for their assigned class(es)
+- Read roster and enrollments for their assigned class
+- Write attendance for their assigned class
+- Write class updates for their assigned class
 - Write their own absence records
 - Moderate comments on their own class updates (delete inappropriate comments)
 
@@ -153,13 +153,12 @@ The app supports nine personas organized into four groups. The first seven are t
 
 ### 2.4 Persona Detail: Parent
 
-**Who they are:** Guardian of one or more enrolled students. May also be a volunteer.
+**Who they are:** Guardian of one or more enrolled students. May also be a volunteer, a substitute, a teacher, a coordinator.
 
 **Primary goals:**
 - See what happened in their child's class (class updates, homework)
 - Track their child's attendance history
 - Receive announcements relevant to parents
-- Sign up to volunteer at events
 
 **Tab navigation:** Feed, My Children, Events, Profile
 
@@ -167,13 +166,12 @@ The app supports nine personas organized into four groups. The first seven are t
 - Read their own children's profiles, enrollment, attendance, class updates
 - Read announcements targeted to parents (and org-wide)
 - Comment on class updates for their children's classes
-- Sign up and cancel volunteer event slots
 
 ---
 
 ### 2.5 Persona Detail: Student
 
-**Who they are:** An enrolled student. May be any age; see `01_SECURITY_AND_COMPLIANCE.md` Section 3 for age policy.
+**Who they are:** An enrolled student in high-school (grades 9 - 12); see `01_SECURITY_AND_COMPLIANCE.md` Section 3 for age policy.
 
 **Primary goals:**
 - See what happened in their class (class updates, homework)
@@ -210,7 +208,7 @@ The app supports nine personas organized into four groups. The first seven are t
 
 ### 2.7 Persona Detail: Substitute Teacher
 
-**Who they are:** A teacher (or other qualified adult) who can cover classes when the assigned teacher is absent. Identified by `is_substitute = true` on their profile. Can also hold another primary role.
+**Who they are:** A parent (or other qualified adult) who can cover classes when the assigned teacher is absent. Identified by `is_substitute = true` on their profile. Can also hold another primary role.
 
 **Primary goals:**
 - Browse open substitute requests
@@ -227,36 +225,35 @@ The app supports nine personas organized into four groups. The first seven are t
 
 ---
 
-### 2.8 Persona Detail: Board Member *(Phase 3)*
+### 2.8 Persona Detail: Board Member
 
 **Who they are:** Governance-level stakeholder (board of directors member). Typically 5–15 people. They need organizational visibility without access to individual student or family records.
 
 **Primary goals:**
 - View high-level program health metrics
 - Track year-over-year trends in enrollment and attendance
-- Receive org-wide announcements
+- Receive all announcements and class updates
 
-**Tab navigation:** Dashboard (read-only metrics), Feed (announcements only), Profile
+**Tab navigation:** Dashboard (read-only metrics), Feed, Profile
 
 **Key permissions:**
 - Read aggregate metrics only — enrollment counts, attendance percentages, compliance rates by class/center
-- Read org-wide announcements targeted to `board_member` audience
-- **Cannot read:** individual student names, family records, teacher absence details, substitute assignment details, class updates, family member links
+- Read all org-wide announcements and class updates
 - No write permissions of any kind
 
 **Data access constraint:** Board member RLS policies must prevent access to `family_members`, `profiles` (other than own), and any table with individual student or family PII. All dashboard data must be aggregated at the class or center level.
 
 ---
 
-### 2.9 Persona Detail: Acharya *(Phase 3)*
+### 2.9 Persona Detail: Acharya
 
-**Who they are:** Senior spiritual teacher or curriculum director. An Acharya guides teachers across the program, provides lesson plans, and posts curriculum-level guidance. Not a class teacher; does not take attendance.
+**Who they are:** Spiritual teacher or curriculum director. An Acharya guides teachers across the program, provides lesson plans, and posts curriculum-level guidance. Not a class teacher; does not take attendance.
 
 **Primary goals:**
 - Upload lesson plans per class per week
 - Curate training resources and videos for teachers
 - Post announcements to teachers and coordinators
-- View class rosters across multiple classes (without student PII beyond names)
+- View class rosters across multiple classes
 - Observe program-level curriculum progress
 
 **Tab navigation:** Feed, Classes (read-only roster), Resources, Profile
@@ -275,14 +272,14 @@ The app supports nine personas organized into four groups. The first seven are t
 | Term | Definition |
 |---|---|
 | **Organization** | The top-level entity. CMDFW in this deployment. |
-| **Center** | A physical campus within the organization. e.g. Richardson, Plano, Frisco. |
-| **Session** | A recurring time slot at a center every Sunday. e.g. "Session A (9–11am)". A center can have multiple sessions. |
-| **Class** | One grade level within one session. e.g. "Grade 5 · Session A · Richardson". A class persists across academic years; teacher assignments are year-specific. |
+| **Center** | A physical campus within the organization. e.g. Chitrakoot, Saket, Frisco. |
+| **Session** | A recurring time slot at a center every Sunday. e.g. "Session F1 (9–1030am)". Each center will have multiple sessions. |
+| **Class** | One grade level within one session. e.g. "Grade 5 · Session F1 · Frisco". A class persists across academic years; teacher assignments are year-specific. |
 | **Academic Year** | A school year period, e.g. "2025-26" (August–May). Exactly one academic year is marked `is_current` at a time. All operational records are stamped with an academic year. |
 | **Enrollment** | A student's assignment to a specific class for a specific academic year. One enrollment per student per year. |
-| **Attendance** | A per-student, per-session-date record of present / absent / excused. Submitted by the teacher. |
+| **Attendance** | A per-student, per-session-date record of present / absent. Submitted by the teacher. |
 | **Class Update** | A teacher's post after a Sunday session describing what was covered and any homework assigned. One update per class per session date. |
-| **Announcement** | A broadcast message from a coordinator or admin. Scoped to a center or org-wide. Targeted by audience role. |
+| **Announcement** | A broadcast message from a coordinator or admin. Scoped to a session, center or org-wide. Targeted by audience role. |
 | **Substitute Request** | A substitute_assignment record created by a coordinator when a teacher reports an absence. Tracks the full lifecycle from open to confirmed. |
 | **Persona** | A role a user holds within the app. A single login can have multiple personas. The user selects an active persona at login; they can switch without logging out. |
 | **Multi-persona** | A single user account holding more than one persona. e.g. a parent who is also a volunteer; a coordinator who is also a parent. |
@@ -372,12 +369,12 @@ The home tab displays a reverse-chronological feed of content relevant to the ac
 | Teacher | Class updates (own classes), announcements (teacher audience), org/center announcements |
 | Parent | Class updates (children's classes), announcements (parent audience), org/center announcements |
 | Student | Class updates (enrolled class), announcements (student audience), org/center announcements |
-| Coordinator | Announcements (all), class updates (center), absence alerts |
+| Coordinator | Announcements (all), class updates (session), absence alerts |
 | Central Admin | Announcements (all), class updates (all centers) |
 | Volunteer | Events (upcoming), announcements (volunteer audience), org announcements |
 | Substitute | Open sub requests, announcements (substitute audience), org announcements |
-| Board Member | Announcements (board_member audience + org-wide) only |
-| Acharya | Class updates (center), announcements (teacher + coordinator audiences) |
+| Board Member | Announcements (all), class updates (all centers) |
+| Acharya | Announcements (all), class updates (all centers) |
 
 #### Requirements
 
