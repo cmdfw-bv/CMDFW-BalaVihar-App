@@ -150,22 +150,23 @@ These slices must be complete before any Phase 1 feature slice begins. They esta
 - `app/(app)/_layout.tsx` updated — full tab set, visibility gated by `activePersona.role`
 - Tab configuration table (role → visible tabs) implemented as a typed config object, not scattered conditionals
 
-**Tab visibility matrix:**
+**Tab visibility matrix (Phase 1 — 7 personas):**
 
-| Tab | central_admin | local_admin | teacher | parent | student | volunteer | substitute |
+| Tab | bv_coordinator | local_admin | teacher | parent | student | board_member | acharya |
 |---|---|---|---|---|---|---|---|
 | Feed | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | My Class | — | — | ✅ | — | ✅ | — | — |
 | My Children | — | — | — | ✅ | — | — | — |
-| Dashboard | ✅ | ✅ | — | — | — | — | — |
-| Events | ✅ | ✅ | — | ✅ | — | — | — |
-| Opportunities | — | — | — | — | — | ✅ | ✅ |
+| Dashboard | ✅ | ✅ | — | — | — | ✅ | ✅ |
+| Events | ✅ | ✅ | — | ✅ | — | ✅ | ✅ |
 | Notifications | — | — | — | — | ✅ | — | — |
 | Profile | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
+*Phase 2 additions: Volunteer and Substitute personas add an Opportunities tab.*
+
 **DoD categories:** A-01, A-02, A-03, B-01, B-03, B-04, C-01, C-02, D-01, D-02, D-05, D-06, H-01
 
-**Done when:** Each of the 7 test users logs in, sees the correct persona picker (or skips it if single persona), and sees the correct tabs. Persona switch from Profile tab works without re-login. CI passes.
+**Done when:** Each of the 7 Phase 1 test users logs in, sees the correct persona picker (or skips it if single persona), and sees the correct tabs. Persona switch from Profile tab works without re-login. CI passes.
 
 ---
 
@@ -311,7 +312,7 @@ Each slice below depends on Phase 0 being complete. Within Phase 1, slices are s
 **PRD reference:** F-09  
 **Dependencies:** 1-01 (feed exists)
 
-**Goal:** Coordinator and Central Admin post targeted announcements; all personas see correctly filtered announcements in their feed.
+**Goal:** Coordinator and BV Coordinator post targeted announcements; all personas see correctly filtered announcements in their feed.
 
 **What to build:**
 - `src/hooks/useAnnouncements.ts` — create announcement; edit; delete own
@@ -330,23 +331,22 @@ Each slice below depends on Phase 0 being complete. Within Phase 1, slices are s
 
 ---
 
-### Slice 1-08: Events & Volunteer Signups
+### Slice 1-08: Events (Create & View)
 
-**PRD reference:** F-10  
+**PRD reference:** F-10 (partial — Phase 1)  
 **Dependencies:** 0-04 (nav shell)
 
-**Goal:** Coordinators create events; volunteers and parents sign up and cancel.
+**Goal:** Coordinators, BV Coordinators, Board Members, and Acharyas can create events; all users can view them. Volunteer signup is Phase 2.
 
 **What to build:**
-- `src/hooks/useEvents.ts` — load upcoming and past events; create/edit/delete (coordinator); signup/cancel (volunteer/parent)
-- `src/components/events/EventCard.tsx` — title, date, time, location, signup count, signed-up badge
-- `src/components/events/EventForm.tsx` — create/edit form with center scope selector
-- `app/(app)/events/index.tsx` — upcoming list, past events section, create button (coordinator/admin only)
-- `app/(app)/opportunities/index.tsx` — same event list for volunteer/substitute persona; volunteer history section
+- `src/hooks/useEvents.ts` — load upcoming and past events; create/edit/delete (coordinator, bv_coordinator, board_member, acharya)
+- `src/components/events/EventCard.tsx` — title, date, time, location
+- `src/components/events/EventForm.tsx` — create/edit form with center scope selector (BV Coordinator/Board Member/Acharya: any center; Coordinator: own session only)
+- `app/(app)/events/index.tsx` — upcoming list, past events section, create button (authorized personas only)
 
-**DoD categories:** A-01, A-02, A-03, B-01, B-02, B-05, B-06, C-01 through C-06, D-01 through D-10, E-01, E-02, E-03, F-08, G-01, G-02, G-05, H-01, H-02
+**DoD categories:** A-01, A-02, A-03, B-01, B-02, B-05, B-06, C-01 through C-06, D-01 through D-10, E-01, E-02, E-03, G-01, G-02, H-01, H-02
 
-**Done when:** Coordinator creates event. Volunteer signs up and sees "Signed Up ✓". Cancelling sets status to `cancelled` (record preserved). Coordinator sees volunteer names. Coordinator cannot create event for another center.
+**Done when:** Coordinator creates event and it appears in all users' Events tab. Board Member and Acharya can create events. Coordinator cannot create event outside their session. Volunteer signup UI does not exist in this slice.
 
 ---
 
@@ -371,28 +371,27 @@ Each slice below depends on Phase 0 being complete. Within Phase 1, slices are s
 
 ---
 
-### Slice 1-10: Substitute Request Workflow
+### Slice 1-10: Board Member & Acharya Personas
 
-**PRD reference:** F-08  
-**Dependencies:** 1-09 (coordinator dashboard), 1-06 (absences exist)
+**PRD reference:** F-13, F-14  
+**Dependencies:** 1-09 (coordinator dashboard patterns), 1-07 (announcements), 1-08 (events)
 
-**Goal:** Full substitute lifecycle — from open to confirmed or declined and reassigned.
+**Goal:** Board Member and Acharya personas are fully functional — read-all visibility across all centers and sessions, plus the ability to post events and announcements.
 
 **What to build:**
-- `src/hooks/useSubstitute.ts` — load open requests; volunteer; withdraw volunteer; coordinator assign; substitute accept/decline; coordinator reassign
-- `src/components/substitute/SubRequestCard.tsx` — class, date, status badge, volunteer count, action buttons per status
-- `src/components/substitute/VolunteerList.tsx` — modal showing volunteer names with "Assign" button
-- Update `app/(app)/dashboard/index.tsx` — absence cards trigger sub request creation; sub status updates live
-- Update `app/(app)/opportunities/index.tsx` — open sub requests for substitutes with "I'm Available" and accept/decline
+- RLS policies for `board_member` and `acharya` roles: SELECT on all tables (all centers), INSERT on `announcements` and `events`
+- `board_member` and `acharya` audience values added to announcements composer audience picker
+- `app/(app)/dashboard/index.tsx` — role-switches between coordinator view, bv_coordinator view, and a read-only org-wide view for board_member/acharya
+- Board Member and Acharya can access the announcement composer and event form (same components as coordinator, with org-wide scope)
+- `src/hooks/useAdminDashboard.ts` updated — shared by bv_coordinator, board_member, and acharya (read-only for latter two)
 
-**DoD categories:** A-01, A-02, A-03, B-01, B-02, B-03, B-05, B-06, C-01 through C-06, D-01 through D-10, E-01, E-02, E-03, G-04, H-01, H-02  
-**Feature-specific DoD:** All items in `05_DEFINITION_OF_DONE.md` Section 4 — Substitute Request Workflow
+**DoD categories:** A-01, A-02, A-03, B-01, B-02, C-01 through C-06, D-01 through D-10, E-01, E-02, E-03, G-01, G-02, H-01, H-02
 
-**Done when:** Full lifecycle works end-to-end without page refresh. Decline + reassign path works. Coordinator cannot manage sub requests outside their center. Substitute cannot see confirmed assignments they are not assigned to.
+**Done when:** Board Member can view class updates, attendance, and absences across all centers. Board Member and Acharya can post announcements and events. Neither can submit attendance or post class updates (RLS + no UI). CI passes.
 
 ---
 
-### Slice 1-11: Central Admin Dashboard
+### Slice 1-11: BV Coordinator Dashboard
 
 **PRD reference:** F-12  
 **Dependencies:** 1-09 (coordinator dashboard patterns)
@@ -478,7 +477,43 @@ These slices are built after the first real users are onboarded. They should be 
 
 ---
 
-### Slice 2-01: Self-Registration with Coordinator Approval
+### Slice 2-01: Substitute Request Workflow
+
+**PRD reference:** F-08  
+**Dependencies:** 1-09 (coordinator dashboard), 1-06 (absences exist)
+
+**Goal:** Full substitute lifecycle — from open to confirmed or declined and reassigned.
+
+**What to build:**
+- Substitute and Volunteer personas provisioned (schema already exists; activate RLS policies for these roles)
+- `src/hooks/useSubstitute.ts` — load open requests; volunteer; withdraw volunteer; coordinator assign; substitute accept/decline; coordinator reassign
+- `src/components/substitute/SubRequestCard.tsx` — class, date, status badge, volunteer count, action buttons per status
+- `src/components/substitute/VolunteerList.tsx` — modal showing volunteer names with "Assign" button
+- Update `app/(app)/dashboard/index.tsx` — absence cards trigger sub request creation; sub status updates live
+- `app/(app)/opportunities/index.tsx` — open sub requests for substitute persona with "I'm Available" and accept/decline
+- Tab visibility matrix updated: Substitute + Volunteer personas get Opportunities tab
+
+**Done when:** Full lifecycle works end-to-end without page refresh. Decline + reassign path works. Coordinator cannot manage sub requests outside their session. Substitute cannot see confirmed assignments they are not assigned to.
+
+---
+
+### Slice 2-02: Volunteer Signups for Events
+
+**PRD reference:** F-10 (full)  
+**Dependencies:** 2-01 (volunteer persona active), 1-08 (events exist)
+
+**What to build:**
+- "Sign Up" button on event cards for volunteer and parent personas
+- `volunteer_signups` table RLS policies activated for volunteer/parent roles
+- Signed-up badge and cancel option on event cards
+- Coordinator view: expand event card to see signed-up names
+- Volunteer history: past signed-up events in "Past Contributions" section on Opportunities tab
+
+**Done when:** Volunteer signs up and sees "Signed Up ✓". Cancelling sets status to `cancelled` (record preserved). Coordinator sees volunteer names. Non-volunteers cannot sign up (RLS enforced).
+
+---
+
+### Slice 2-03: Self-Registration with Coordinator Approval
 
 **PRD reference:** F-15 (Phase 2 portion)  
 **Dependencies:** 1-13 (provisioning exists), 1-09 (coordinator dashboard)
@@ -494,10 +529,10 @@ These slices are built after the first real users are onboarded. They should be 
 
 ---
 
-### Slice 2-02: Push Notifications
+### Slice 2-04: Push Notifications
 
 **PRD reference:** F-18  
-**Dependencies:** 1-10 (substitute workflow), 1-07 (announcements), 1-04 (class updates)
+**Dependencies:** 2-01 (substitute workflow), 1-07 (announcements), 1-04 (class updates)
 
 **What to build:**
 - Schema: `push_tokens` table
@@ -510,7 +545,7 @@ These slices are built after the first real users are onboarded. They should be 
 
 ---
 
-### Slice 2-03: Wired Notifications Tab
+### Slice 2-05: Wired Notifications Tab
 
 **PRD reference:** F-19  
 **Dependencies:** 2-02 (push infrastructure), 1-01 (feed)
@@ -523,7 +558,7 @@ These slices are built after the first real users are onboarded. They should be 
 
 ---
 
-### Slice 2-04: Phone OTP Login (Optional)
+### Slice 2-06: Phone OTP Login (Optional)
 
 **PRD reference:** F-01 extension  
 **Dependencies:** 0-03 (auth shell)
@@ -535,7 +570,7 @@ These slices are built after the first real users are onboarded. They should be 
 
 ---
 
-### Slice 2-05: Playwright Baseline Test Suite
+### Slice 2-07: Playwright Baseline Test Suite
 
 **PRD reference:** NFR (quality)  
 **Dependencies:** All Phase 1 slices complete on staging
@@ -559,37 +594,10 @@ These slices are built 3+ months after launch, once the core system is stable an
 
 ---
 
-### Slice 3-01: Board Member Persona & Dashboard
-
-**PRD reference:** F-13  
-**Dependencies:** 1-11 (admin dashboard patterns), 1-12 (academic year)
-
-**What to build:**
-- `board_member` role added to schema
-- RLS policies: read-only access to aggregate views only; blocked from individual records
-- Board member dashboard: enrollment totals, weekly attendance rate chart, year-over-year comparison, compliance rate trend
-- `board_member` audience value added to announcements
-
----
-
-### Slice 3-02: Acharya Persona
-
-**PRD reference:** F-14  
-**Dependencies:** 1-02 (class roster), 1-07 (announcements)
-
-**What to build:**
-- `acharya` role added to schema with RLS policies
-- Classes tab (read-only roster)
-- Lesson plan upload (Supabase Storage `lesson-plans` bucket)
-- Teacher's My Class tab updated to show lesson plan link for current week
-- Announcements: Acharya can post to `teacher` and `local_admin` audiences only
-
----
-
-### Slice 3-03: Training Resources
+### Slice 3-01: Training Resources & Lesson Plans
 
 **PRD reference:** F-20  
-**Dependencies:** 3-02 (Acharya persona)
+**Dependencies:** 1-10 (Acharya persona active)
 
 **What to build:**
 - `training_resources` table and RLS
@@ -599,10 +607,10 @@ These slices are built 3+ months after launch, once the core system is stable an
 
 ---
 
-### Slice 3-04: Volunteer History
+### Slice 3-02: Volunteer History
 
 **PRD reference:** F-10 extension  
-**Dependencies:** 1-08 (events)
+**Dependencies:** 2-02 (volunteer signups)
 
 **What to build:**
 - "Past Contributions" section in Opportunities tab
@@ -610,12 +618,12 @@ These slices are built 3+ months after launch, once the core system is stable an
 
 ---
 
-### Slice 3-05: Expanded Playwright Coverage
+### Slice 3-03: Expanded Playwright Coverage
 
-**Dependencies:** 2-05 (baseline suite), all Phase 1 complete
+**Dependencies:** 2-07 (baseline suite), all Phase 1 complete
 
 **What to build:**
-- Tests for all 9 personas (adding Board Member and Acharya)
+- Tests for all 9 personas (all personas now active)
 - Comment thread tests (public, private, teacher deletion)
 - Multi-persona switch test
 - Year selector test (prior year data)
@@ -623,7 +631,7 @@ These slices are built 3+ months after launch, once the core system is stable an
 
 ---
 
-### Slice 3-06: Audit Logging
+### Slice 3-04: Audit Logging
 
 **PRD reference:** NFR  
 **Dependencies:** All Phase 1 complete

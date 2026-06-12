@@ -42,20 +42,27 @@ All manual testing is performed against the **staging** environment (`balvihar-s
 
 All test accounts use the magic link flow. The staging Supabase project must have these accounts provisioned before testing begins.
 
+**Phase 1 test accounts (7 personas):**
+
 | Email | Persona(s) | Center | Notes |
 |---|---|---|---|
-| `admin@test.com` | Central Admin | — | Org-wide access |
-| `coordinator.richardson@test.com` | Coordinator, Parent, Volunteer | Richardson | 3 personas — tests multi-persona picker |
-| `coordinator.plano@test.com` | Coordinator | Plano | Single persona |
-| `coordinator.frisco@test.com` | Coordinator | Frisco | Single persona |
-| `teacher.one@test.com` | Teacher, Substitute | Richardson | 2 personas; assigned to Grade 5 + Grade 6 |
-| `teacher.two@test.com` | Teacher | Richardson | Single persona; assigned to Grade 7 |
-| `parent.one@test.com` | Parent | Richardson | 2 children enrolled (Grade 5, Grade 6) |
-| `parent.two@test.com` | Parent, Volunteer | Plano | 2 personas; 1 child enrolled |
-| `student.one@test.com` | Student | Richardson | Child of parent.one; enrolled Grade 5 |
-| `sub@test.com` | Teacher, Substitute | Richardson | `is_substitute = true` |
-| `volunteer@test.com` | Volunteer | Frisco | Single persona |
+| `bvcoordinator@test.com` | BV Coordinator | — | Org-wide access; tests admin dashboard |
+| `coordinator.f1@test.com` | Coordinator, Parent | Frisco Session F1 | 2 personas — tests multi-persona picker |
+| `coordinator.f2@test.com` | Coordinator | Frisco Session F2 | Single persona |
+| `teacher.one@test.com` | Teacher | Frisco Session F1 | Single persona; assigned to Grade 9 |
+| `teacher.two@test.com` | Teacher, Parent | Frisco Session F1 | 2 personas; teacher for Grade 10, parent of Grade 9 student |
+| `parent.one@test.com` | Parent | Frisco Session F1 | 2 children enrolled (Grade 9, Grade 10) |
+| `student.one@test.com` | Student | Frisco Session F1 | Child of parent.one; enrolled Grade 9 (high school) |
+| `boardmember@test.com` | Board Member | — | Read-all + post events/announcements |
+| `acharya@test.com` | Acharya | — | Read-all + post events/announcements |
 | `unprovisioned@test.com` | — | — | This email must NOT have a profiles row |
+
+**Phase 2 test accounts (Substitute + Volunteer personas):**
+
+| Email | Persona(s) | Center | Notes |
+|---|---|---|---|
+| `sub@test.com` | Teacher, Substitute | Frisco Session F1 | `is_substitute = true`; assigned Grade 11 |
+| `volunteer@test.com` | Volunteer | Frisco | Single persona |
 
 ### Magic Link Testing Procedure
 
@@ -140,12 +147,14 @@ Example: `T-103-05` = Slice 1-03, test case 5.
 
 | ID | Precondition | Action | Expected Result |
 |---|---|---|---|
-| T-004-01 | `coordinator.richardson@test.com` has 3 personas | Log in | Persona picker shows 3 tiles: Coordinator, Parent, Volunteer |
-| T-004-02 | Persona picker visible | Select "Parent · Richardson" | App loads with: Feed, My Children, Events, Profile tabs visible; Dashboard tab absent |
+| T-004-01 | `coordinator.f1@test.com` has 2 personas | Log in | Persona picker shows 2 tiles: Coordinator, Parent |
+| T-004-02 | Persona picker visible | Select "Parent · Frisco F1" | App loads with: Feed, My Children, Events, Profile tabs visible; Dashboard tab absent |
 | T-004-03 | Active persona is Parent | Navigate to Profile; tap "Switch Persona" | Persona picker appears |
-| T-004-04 | On persona picker | Select "Coordinator · Richardson" | App reloads with coordinator tabs; no re-login required |
-| T-004-05 | `teacher.one@test.com` has 2 personas | Log in | Persona picker shows 2 tiles: Teacher, Substitute |
-| T-004-06 | `admin@test.com` has 1 persona | Log in | Persona picker is skipped; app loads directly with admin tabs |
+| T-004-04 | On persona picker | Select "Coordinator · Frisco F1" | App reloads with coordinator tabs; no re-login required |
+| T-004-05 | `teacher.two@test.com` has 2 personas | Log in | Persona picker shows 2 tiles: Teacher, Parent |
+| T-004-06 | `bvcoordinator@test.com` has 1 persona | Log in | Persona picker is skipped; app loads directly with BV Coordinator tabs |
+| T-004-07 | `boardmember@test.com` has 1 persona | Log in | Persona picker is skipped; app loads with: Feed, Dashboard, Events, Profile tabs |
+| T-004-08 | `acharya@test.com` has 1 persona | Log in | Persona picker is skipped; app loads with: Feed, Dashboard, Events, Profile tabs |
 
 #### Security Tests
 
@@ -358,7 +367,7 @@ Example: `T-103-05` = Slice 1-03, test case 5.
 
 ---
 
-### Slice 1-08: Events & Volunteer Signups
+### Slice 1-08: Events (Create & View)
 
 #### Happy Path
 
@@ -408,7 +417,7 @@ Example: `T-103-05` = Slice 1-03, test case 5.
 
 ---
 
-### Slice 1-10: Substitute Request Workflow
+### Slice 2-01: Substitute Request Workflow *(Phase 2)*
 
 #### Happy Path — Full Lifecycle
 
@@ -445,7 +454,7 @@ Example: `T-103-05` = Slice 1-03, test case 5.
 
 ---
 
-### Slice 1-11: Central Admin Dashboard
+### Slice 1-11: BV Coordinator Dashboard
 
 | ID | Precondition | Action | Expected Result |
 |---|---|---|---|

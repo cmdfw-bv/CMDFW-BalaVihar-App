@@ -48,15 +48,17 @@ This section catalogs every category of personal data collected by the applicati
 
 ### 2.1 User Categories
 
-| User Type | Age Range | Special Considerations |
-|-----------|-----------|------------------------|
-| Central Admin | Adult (18+) | None |
-| Coordinator | Adult (18+) | None |
-| Teacher | Adult (18+) | None |
-| Substitute Teacher | Adult (18+) | None |
-| Volunteer | Adult (18+) | None |
-| Parent / Guardian | Adult (18+) | Legal guardian of minors |
-| Student | **Any age, including under 13** | **COPPA applies if under 13** |
+| User Type | Age Range | Special Considerations | Phase |
+|-----------|-----------|------------------------|-------|
+| BV Coordinator | Adult (18+) | None | 1 |
+| Coordinator | Adult (18+) | None | 1 |
+| Teacher | Adult (18+) | None | 1 |
+| Parent / Guardian | Adult (18+) | Legal guardian of minors | 1 |
+| High School Student | 14–18 | Grades 9–12 only; no under-13 accounts | 1 |
+| Board Member | Adult (18+) | None | 1 |
+| Acharya | Adult (18+) | None | 1 |
+| Substitute Teacher | Adult (18+) | None | 2 |
+| Volunteer | Adult (18+) | None | 2 |
 
 ### 2.2 Data Elements by Sensitivity
 
@@ -231,15 +233,17 @@ The application uses a two-layer authorization model:
 
 ### 5.2 Role Definitions and Data Scope
 
-| Role | `profiles.role` value | Data Scope |
-|---|---|---|
-| **Central Admin** | `central_admin` | All data across all centers and the entire organization |
-| **Coordinator** | `local_admin` | All data within their assigned center only (`center_id`) |
-| **Teacher** | `teacher` | Their own profile; their assigned class(es); enrolled students in those classes |
-| **Parent** | `parent` | Their own profile; their children's profiles, enrollment, attendance, class updates |
-| **Student** | `student` | Their own profile, enrollment, and attendance only |
-| **Volunteer** | Stored as `user_roles` row with role `volunteer` | Events and volunteer signups; their own profile |
-| **Substitute** | `is_substitute = true` on `profiles` | Open substitute assignments; their own volunteer records and assignments |
+| Role | `profiles.role` value | Data Scope | Phase |
+|---|---|---|---|
+| **BV Coordinator** | `bv_coordinator` | All data across all centers and sessions; full write | 1 |
+| **Coordinator** | `local_admin` | All data within their assigned session only (`center_id`) | 1 |
+| **Teacher** | `teacher` | Their own profile; their assigned class; enrolled students in that class | 1 |
+| **Parent** | `parent` | Their own profile; their children's profiles, enrollment, attendance, class updates | 1 |
+| **High School Student** | `student` | Their own profile, enrollment, and attendance only (grades 9–12) | 1 |
+| **Board Member** | `board_member` | Read all data across all centers and sessions; write events and announcements | 1 |
+| **Acharya** | `acharya` | Read all data across all centers and sessions; write events and announcements | 1 |
+| **Volunteer** | Stored as `user_roles` row with role `volunteer` | Events and volunteer signups; their own profile | 2 |
+| **Substitute** | `is_substitute = true` on `profiles` | Open substitute assignments; their own volunteer records and assignments | 2 |
 
 ### 5.3 Multi-Persona Rules
 
@@ -257,8 +261,8 @@ A single user account can hold multiple personas via the `user_roles` table. Rul
 
 | Table | Rule | RLS Enforcement |
 |---|---|---|
-| `announcements` | Coordinators must set `center_id = my_center_id()`. Setting `center_id = NULL` (org-wide) is reserved for `central_admin` only. | `WITH CHECK (my_role() = 'local_admin' AND center_id = my_center_id() OR my_role() = 'central_admin')` |
-| `events` | Coordinators may only create events for their center. | `WITH CHECK (my_role() = 'local_admin' AND center_id = my_center_id() OR my_role() = 'central_admin')` |
+| `announcements` | Coordinators must set `center_id = my_center_id()`. Setting `center_id = NULL` (org-wide) is reserved for `bv_coordinator` only. | `WITH CHECK (my_role() = 'local_admin' AND center_id = my_center_id() OR my_role() = 'bv_coordinator')` |
+| `events` | Coordinators may only create events for their center. | `WITH CHECK (my_role() = 'local_admin' AND center_id = my_center_id() OR my_role() = 'bv_coordinator')` |
 | `substitute_assignments` | Coordinators may only manage assignments for classes within their center. | Enforce via center-scoped class lookup in WITH CHECK |
 
 ---
@@ -281,32 +285,32 @@ This section is the canonical specification for every RLS policy in the database
 | Policy | Operation | Rule |
 |---|---|---|
 | own profile | SELECT | `id = auth.uid()` |
-| central admin reads all | SELECT | `my_role() = 'central_admin'` |
+| central admin reads all | SELECT | `my_role() = 'bv_coordinator'` |
 | local admin reads center | SELECT | `my_role() = 'local_admin' AND center_id = my_center_id()` |
 | teacher reads own class members | SELECT | `my_role() = 'teacher' AND (id = auth.uid() OR id IN (SELECT student_id FROM enrollments e JOIN class_teachers ct ON ct.class_id = e.class_id WHERE ct.teacher_id = auth.uid()))` |
 | parent reads own children | SELECT | `my_role() = 'parent' AND (id = auth.uid() OR id IN (SELECT student_id FROM family_members WHERE parent_id = auth.uid()))` |
 | student reads own profile | SELECT | `my_role() = 'student' AND id = auth.uid()` |
-| admin updates profiles | UPDATE | `my_role() IN ('local_admin','central_admin')` |
+| admin updates profiles | UPDATE | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `user_roles`
 | Policy | Operation | Rule |
 |---|---|---|
 | own roles | SELECT | `user_id = auth.uid()` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
-| admin manages | ALL | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
+| admin manages | ALL | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `classes`, `sessions`, `centers`
 | Policy | Operation | Rule |
 |---|---|---|
 | org members read | SELECT | Via `my_org_id()` chain through center → session → class |
-| admin manages | ALL | `my_role() IN ('local_admin','central_admin')` |
+| admin manages | ALL | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `class_teachers`
 | Policy | Operation | Rule |
 |---|---|---|
 | teacher reads own | SELECT | `teacher_id = auth.uid()` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
-| admin manages | ALL | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
+| admin manages | ALL | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `enrollments`
 | Policy | Operation | Rule |
@@ -314,8 +318,8 @@ This section is the canonical specification for every RLS policy in the database
 | student reads own | SELECT | `student_id = auth.uid()` |
 | parent reads children | SELECT | `student_id IN (SELECT student_id FROM family_members WHERE parent_id = auth.uid())` |
 | teacher reads class | SELECT | `class_id IN (SELECT class_id FROM class_teachers WHERE teacher_id = auth.uid())` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
-| admin manages | ALL | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
+| admin manages | ALL | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `attendance`
 | Policy | Operation | Rule |
@@ -323,61 +327,61 @@ This section is the canonical specification for every RLS policy in the database
 | teacher reads+writes own class | ALL | USING and WITH CHECK: `class_id IN (SELECT class_id FROM class_teachers WHERE teacher_id = auth.uid())` |
 | student reads own | SELECT | `student_id = auth.uid()` |
 | parent reads children | SELECT | `student_id IN (SELECT student_id FROM family_members WHERE parent_id = auth.uid())` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `teacher_absences`
 | Policy | Operation | Rule |
 |---|---|---|
 | teacher manages own | ALL | USING and WITH CHECK: `teacher_id = auth.uid()` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `substitute_assignments`
 | Policy | Operation | Rule |
 |---|---|---|
 | substitute reads open/own | SELECT | `status = 'open' OR substitute_id = auth.uid()` |
 | coordinator reads center | SELECT | `my_role() = 'local_admin' AND class_id IN (SELECT c.id FROM classes c JOIN sessions s ON s.id = c.session_id JOIN centers ctr ON ctr.id = s.center_id WHERE ctr.id = my_center_id())` |
-| central admin reads all | SELECT | `my_role() = 'central_admin'` |
-| coordinator creates/updates | INSERT, UPDATE | WITH CHECK: `my_role() IN ('local_admin','central_admin')` AND class scoped to their center for `local_admin` |
+| central admin reads all | SELECT | `my_role() = 'bv_coordinator'` |
+| coordinator creates/updates | INSERT, UPDATE | WITH CHECK: `my_role() IN ('local_admin','bv_coordinator')` AND class scoped to their center for `local_admin` |
 
 #### `substitute_volunteers`
 | Policy | Operation | Rule |
 |---|---|---|
 | substitute manages own | ALL | USING and WITH CHECK: `substitute_id = auth.uid()` |
-| coordinator reads | SELECT | `my_role() IN ('local_admin','central_admin')` |
+| coordinator reads | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `class_updates`
 | Policy | Operation | Rule |
 |---|---|---|
 | teacher writes own class | ALL | USING and WITH CHECK: `teacher_id = auth.uid()` |
 | enrolled family reads | SELECT | `class_id IN (SELECT class_id FROM enrollments WHERE student_id = auth.uid() OR student_id IN (SELECT student_id FROM family_members WHERE parent_id = auth.uid()))` |
-| admin reads all | SELECT | `my_role() IN ('local_admin','central_admin')` |
+| admin reads all | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `announcements`
 | Policy | Operation | Rule |
 |---|---|---|
-| org members read | SELECT | `org_id = my_org_id() AND (center_id IS NULL OR center_id = my_center_id()) AND (my_role() IN ('local_admin','central_admin') OR audience @> ARRAY[my_role()])` |
-| central admin posts org-wide | INSERT | WITH CHECK: `my_role() = 'central_admin'` |
+| org members read | SELECT | `org_id = my_org_id() AND (center_id IS NULL OR center_id = my_center_id()) AND (my_role() IN ('local_admin','bv_coordinator') OR audience @> ARRAY[my_role()])` |
+| central admin posts org-wide | INSERT | WITH CHECK: `my_role() = 'bv_coordinator'` |
 | coordinator posts center-scoped | INSERT | WITH CHECK: `my_role() = 'local_admin' AND center_id = my_center_id()` |
-| admin updates own | UPDATE | `posted_by = auth.uid() AND my_role() IN ('local_admin','central_admin')` |
+| admin updates own | UPDATE | `posted_by = auth.uid() AND my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `events`
 | Policy | Operation | Rule |
 |---|---|---|
 | org members read | SELECT | `org_id = my_org_id() AND (center_id IS NULL OR center_id = my_center_id())` |
-| central admin manages | ALL | `my_role() = 'central_admin'` |
+| central admin manages | ALL | `my_role() = 'bv_coordinator'` |
 | coordinator manages center events | ALL | USING and WITH CHECK: `my_role() = 'local_admin' AND center_id = my_center_id()` |
 
 #### `volunteer_signups`
 | Policy | Operation | Rule |
 |---|---|---|
 | own signups | ALL | USING and WITH CHECK: `user_id = auth.uid()` |
-| coordinator reads | SELECT | `my_role() IN ('local_admin','central_admin')` |
+| coordinator reads | SELECT | `my_role() IN ('local_admin','bv_coordinator')` |
 
 #### `family_members`
 | Policy | Operation | Rule |
 |---|---|---|
 | parent reads own | SELECT | `parent_id = auth.uid() OR student_id = auth.uid()` |
-| admin manages | ALL | `my_role() IN ('local_admin','central_admin')` |
+| admin manages | ALL | `my_role() IN ('local_admin','bv_coordinator')` |
 
 ---
 
@@ -408,7 +412,7 @@ This section is the canonical specification for every RLS policy in the database
 4. **Full account deletion:** Removes all records associated with the user from all tables, then deletes `auth.users` entry. Supabase cascades to `profiles`.
 5. **Academic year purge:** Removes all records with `academic_year < [cutoff]` across `attendance`, `enrollments`, `class_teachers`, `class_updates`.
 
-**Implementation:** A set of database functions (not client-side code) must implement each deletion operation. They must be callable only by `central_admin` or `local_admin`.
+**Implementation:** A set of database functions (not client-side code) must implement each deletion operation. They must be callable only by `bv_coordinator` or `local_admin`.
 
 ### 7.3 Right to Deletion (COPPA)
 

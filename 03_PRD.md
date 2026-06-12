@@ -24,7 +24,7 @@
    - [F-09 Announcements](#f-09-announcements)
    - [F-10 Events & Volunteer Signups](#f-10-events--volunteer-signups)
    - [F-11 Coordinator Dashboard](#f-11-coordinator-dashboard)
-   - [F-12 Central Admin Dashboard](#f-12-central-admin-dashboard)
+   - [F-12 BV Coordinator Dashboard](#f-12-central-admin-dashboard)
    - [F-13 Board Member Dashboard](#f-13-board-member-dashboard)
    - [F-14 Acharya Experience](#f-14-acharya-experience)
    - [F-15 User Onboarding & Self-Registration](#f-15-user-onboarding--self-registration)
@@ -60,7 +60,7 @@ The app supports nine personas organized into four groups.
 
 | Persona | Role Value | Scope | Phase |
 |---|---|---|---|
-| **Central Admin** | `central_admin` | Entire organization, all centers, all sessions | Phase 1 |
+| **BV Coordinator** | `bv_coordinator` | Entire organization, all centers, all sessions | Phase 1 |
 | **Coordinator** | `local_admin` | One assigned session | Phase 1 |
 
 ### Group 2 — Core Curriculum
@@ -87,24 +87,25 @@ The app supports nine personas organized into four groups.
 
 ---
 
-### 2.1 Persona Detail: Central Admin
+### 2.1 Persona Detail: BV Coordinator
 
-**Who they are:** Senior leader(s) of the organization with oversight across all centers. There are typically 2 central admins for the entire organization.
+**Who they are:** Senior leader(s) of the organization with oversight across all centers and sessions. There are typically 2 BV Coordinators for the entire organization.
 
 **Primary goals:**
-- Monitor overall program health (attendance rates, substitute coverage, compliance)
-- Post announcements to the entire organization or any center
+- Monitor overall program health (attendance rates, compliance) across all centers and sessions
+- Post announcements to the entire organization or any center/session
 - Manage academic year lifecycle (open/close a year)
 - Oversee coordinator and teacher accounts
+- Provision and manage all user accounts
 
 **Tab navigation:** Feed, Dashboard, Events, Profile
 
 **Key permissions:**
-- Read all data across all centers
-- Write announcements org-wide or center-scoped
+- Read all data across all centers and sessions
+- Write announcements org-wide or scoped to any center/session
 - Create/manage events org-wide
 - Open and close academic years
-- Approve or reject user registrations (delegated to coordinators for their center)
+- Approve or reject user registrations
 
 ---
 
@@ -114,9 +115,8 @@ The app supports nine personas organized into four groups.
 
 **Primary goals:**
 - Monitor their session's compliance (attendance submitted, class updates posted)
-- Manage the substitute teacher workflow (post requests, assign subs, track confirmations)
 - Communicate with teachers, parents, students via targeted announcements
-- Manage volunteer events for their session
+- Manage events for their session
 - Approve new user registrations for their session
 
 **Tab navigation:** Feed, Dashboard, Events, Profile
@@ -125,7 +125,6 @@ The app supports nine personas organized into four groups.
 - Read all data for their session only
 - Write announcements scoped to their session (cannot post org-wide)
 - Create/manage events for their session
-- Create/update substitute assignments for their session's classes
 - Approve/reject pending user registrations for their session
 
 ---
@@ -370,11 +369,11 @@ The home tab displays a reverse-chronological feed of content relevant to the ac
 | Parent | Class updates (children's classes), announcements (parent audience), org/center announcements |
 | Student | Class updates (enrolled class), announcements (student audience), org/center announcements |
 | Coordinator | Announcements (all), class updates (session), absence alerts |
-| Central Admin | Announcements (all), class updates (all centers) |
+| BV Coordinator | Announcements (all), class updates (all centers) |
 | Volunteer | Events (upcoming), announcements (volunteer audience), org announcements |
 | Substitute | Open sub requests, announcements (substitute audience), org announcements |
-| Board Member | Announcements (all), class updates (all centers) |
-| Acharya | Announcements (all), class updates (all centers) |
+| Board Member | All announcements + class updates (all centers, all sessions) |
+| Acharya | All announcements + class updates (all centers, all sessions) |
 
 #### Requirements
 
@@ -403,7 +402,7 @@ The home tab displays a reverse-chronological feed of content relevant to the ac
 ### F-04 Attendance
 
 **Phase:** 1  
-**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), Central Admin (read)  
+**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), BV Coordinator (read)  
 
 #### Description
 Teachers take attendance for each Sunday session. Attendance is per-student, per-date. Parents and students can view attendance history. Coordinators and admins can view compliance rates.
@@ -438,7 +437,7 @@ Teachers take attendance for each Sunday session. Attendance is per-student, per
 ### F-05 Class Updates
 
 **Phase:** 1  
-**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), Central Admin (read), Acharya (read)  
+**Personas:** Teacher (write), Parent (read), Student (read), Coordinator (read), BV Coordinator (read), Acharya (read)  
 
 #### Description
 After each Sunday session, teachers post a class update describing what was covered and any homework assigned. One update per class per session date.
@@ -469,7 +468,7 @@ After each Sunday session, teachers post a class update describing what was cove
 ### F-06 Comments on Class Updates
 
 **Phase:** 1  
-**Personas:** Teacher (write + moderate), Parent (write), Student (write — public only), Coordinator (read), Central Admin (read)  
+**Personas:** Teacher (write + moderate), Parent (write), Student (write — public only), Coordinator (read), BV Coordinator (read)  
 
 #### Description
 Enrolled families and teachers can comment on class updates. Comments can be public (visible to all enrolled families) or private (visible only to the poster and the teacher). Teachers can delete any comment on their class updates.
@@ -502,7 +501,7 @@ Enrolled families and teachers can comment on class updates. Comments can be pub
 ### F-07 Teacher Absence Reporting
 
 **Phase:** 1  
-**Personas:** Teacher (write), Coordinator (read), Central Admin (read)  
+**Personas:** Teacher (write), Coordinator (read), BV Coordinator (read)  
 
 #### Description
 A teacher reports an upcoming absence in advance. The absence record triggers the coordinator's substitute request workflow.
@@ -531,8 +530,8 @@ A teacher reports an upcoming absence in advance. The absence record triggers th
 
 ### F-08 Substitute Request Workflow
 
-**Phase:** 1  
-**Personas:** Coordinator (create + manage), Substitute (volunteer + accept/decline), Teacher (view own), Central Admin (view all)  
+**Phase:** 2  
+**Personas:** Coordinator (create + manage), Substitute (volunteer + accept/decline), Teacher (view own), BV Coordinator (view all)  
 
 #### Description
 The full substitute coverage workflow: teacher reports absence → coordinator creates sub request → substitutes volunteer → coordinator assigns one → substitute accepts or declines → if declined, coordinator reassigns.
@@ -583,7 +582,7 @@ Coordinator assigns a sub → status: pending, substitute_id set
 ### F-09 Announcements
 
 **Phase:** 1  
-**Personas:** Central Admin (write — org-wide or center-scoped), Coordinator (write — center-scoped only), All personas (read — audience-filtered)  
+**Personas:** BV Coordinator, Board Member, Acharya (write — org-wide or any scope), Coordinator (write — session-scoped only), All personas (read — audience-filtered)  
 
 #### Description
 Admins and coordinators can post announcements to targeted audiences. Each announcement specifies which roles can see it. The feed filters announcements by the active persona's role.
@@ -592,13 +591,13 @@ Admins and coordinators can post announcements to targeted audiences. Each annou
 
 | ID | Requirement |
 |---|---|
-| F09-01 | Central Admin and Coordinator can access an announcement composer from their dashboard |
-| F09-02 | Composer fields: title (required), body (required, multi-line), audience (multi-select from valid roles), center scope (central admin only — can choose a specific center or "All Centers") |
-| F09-03 | Coordinator's center scope is locked to their own center — they cannot select "All Centers" or a different center |
-| F09-04 | Audience defaults to all roles. Coordinator can restrict to: parents, students, teachers, volunteers, substitutes |
+| F09-01 | BV Coordinator, Board Member, Acharya, and Coordinator can access an announcement composer from their dashboard or feed |
+| F09-02 | Composer fields: title (required), body (required, multi-line), audience (multi-select from valid roles), center scope (BV Coordinator/Board Member/Acharya: any center or "All Centers"; Coordinator: own session only) |
+| F09-03 | Coordinator's scope is locked to their own session — they cannot select "All Centers" or a different session |
+| F09-04 | Audience defaults to all roles. Coordinator can restrict to: parents, students, teachers |
 | F09-05 | Submitted announcement is stamped with `org_id`, `center_id`, `posted_by`, `academic_year`, and the audience array |
 | F09-06 | Announcement appears in the feed of all users whose active persona role is in the audience array and who belong to the matching center |
-| F09-07 | Coordinators and Central Admins see all announcements regardless of audience targeting |
+| F09-07 | Coordinators, BV Coordinators, Board Members, and Acharyas see all announcements regardless of audience targeting |
 | F09-08 | Announcement card is collapsible — body truncates at 3 lines with a "Read more" tap |
 | F09-09 | Announcement card shows: title, posted-by name, posted time, audience badges (e.g. "Parents · Teachers") |
 | F09-10 | Admins and coordinators can edit or delete their own announcements |
@@ -614,36 +613,35 @@ Admins and coordinators can post announcements to targeted audiences. Each annou
 
 ---
 
-### F-10 Events & Volunteer Signups
+### F-10 Events & Signups
 
-**Phase:** 1  
-**Personas:** Coordinator + Central Admin (write), Volunteer + Parent (read + signup), All personas (read)  
+**Phase:** 1 (event creation and viewing); Phase 2 (volunteer signups)  
+**Personas:** Coordinator, BV Coordinator, Board Member, Acharya (write — create events); All Phase 1 personas (read); Volunteer + Parent (signup — Phase 2)  
 
 #### Description
-Coordinators and admins create events. Volunteers and parents can browse upcoming events and sign up. Coordinators see who has signed up.
+Coordinators, BV Coordinators, Board Members, and Acharyas can create events. All users can browse events. Volunteer signup functionality is a Phase 2 addition.
 
 #### Requirements
 
 | ID | Requirement |
 |---|---|
-| F10-01 | Coordinator and Admin access an event creation form from the Events tab |
-| F10-02 | Event form fields: title (required), description (optional), date (required), start time, end time, location, center scope (admin: all centers or specific; coordinator: own center only) |
-| F10-03 | Events appear in the Events/Opportunities tab for all authenticated users |
-| F10-04 | Event card shows: title, date, time, location, number of volunteers signed up |
+| F10-01 | Coordinator, BV Coordinator, Board Member, and Acharya can access an event creation form from the Events tab |
+| F10-02 | Event form fields: title (required), description (optional), date (required), start time, end time, location, center scope (BV Coordinator/Board Member/Acharya: all centers or specific; Coordinator: own session only) |
+| F10-03 | Events appear in the Events tab for all authenticated users |
+| F10-04 | Event card shows: title, date, time, location |
 | F10-05 | Upcoming events are sorted by date ascending. Past events are shown in a "Past Events" section |
-| F10-06 | User taps "Sign Up" → creates a `volunteer_signups` row with `status = 'signed_up'` |
-| F10-07 | Signed-up user sees "Signed Up ✓" on the event card with a "Cancel" option |
-| F10-08 | Cancelling updates the row to `status = 'cancelled'` (not a delete — preserves history) |
-| F10-09 | Coordinator can expand an event card to see the names of signed-up volunteers |
-| F10-10 | Coordinator can edit or delete their own events. Deleting cascades and removes all signups. |
-| F10-11 | Volunteer view: Opportunities tab shows upcoming events with signup status |
-| F10-12 | Volunteer history: past events the user signed up for (where status = 'signed_up') are visible in a "Past Contributions" section on the Opportunities tab |
+| F10-06 | Coordinator can edit or delete their own events |
+| F10-07 | Coordinator cannot create an event scoped to a session outside their own |
+| F10-08 | **Phase 2:** User taps "Sign Up" → creates a `volunteer_signups` row with `status = 'signed_up'` |
+| F10-09 | **Phase 2:** Signed-up user sees "Signed Up ✓" with a "Cancel" option |
+| F10-10 | **Phase 2:** Cancelling updates the row to `status = 'cancelled'` (not a delete — preserves history) |
+| F10-11 | **Phase 2:** Coordinator can expand an event card to see the names of signed-up volunteers |
 
 #### Acceptance Criteria
-- Volunteer can sign up and see their signup reflected immediately
-- Coordinator sees the updated volunteer count and names without refreshing
-- Coordinator cannot create an event scoped to a center outside their own
-- Cancelled signup does not remove the record — shows as cancelled in history
+- Coordinator creates an event and it appears in all users' Events tab immediately
+- Coordinator cannot create an event scoped to a session outside their own
+- Board Member and Acharya can create org-wide events
+- (Phase 2) Volunteer signup and cancellation work without page refresh
 
 ---
 
@@ -679,10 +677,10 @@ The coordinator's primary operational view. Shows center health at a glance and 
 
 ---
 
-### F-12 Central Admin Dashboard
+### F-12 BV Coordinator Dashboard
 
 **Phase:** 1  
-**Personas:** Central Admin  
+**Personas:** BV Coordinator  
 
 #### Description
 Org-wide operational visibility across all centers. Aggregated metrics without individual student-level drill-down (that is the coordinator's domain).
@@ -707,13 +705,13 @@ Org-wide operational visibility across all centers. Aggregated metrics without i
 
 ---
 
-### F-13 Board Member Dashboard *(Phase 3)*
+### F-13 Board Member Dashboard
 
-**Phase:** 3  
+**Phase:** 1  
 **Personas:** Board Member  
 
 #### Description
-Read-only aggregate view of program health. No access to any individual student, family, or operational record.
+Board Members have read-only visibility across all app data — all centers, all sessions, all features. In addition to read access, they can post events and announcements. They cannot take attendance, post class updates, manage sub requests, or modify any operational record.
 
 #### Requirements
 
@@ -723,46 +721,43 @@ Read-only aggregate view of program health. No access to any individual student,
 | F13-02 | Attendance rate chart: weekly attendance rate for the current academic year (line chart or bar chart, by week) |
 | F13-03 | Year-over-year comparison: current year vs. prior year enrollment and attendance rate |
 | F13-04 | Compliance rate: % of classes that submitted attendance and class updates each week, trended over the academic year |
-| F13-05 | All data is aggregate — no student names, no family names, no teacher absence details |
-| F13-06 | Board member sees org-wide announcements tagged to the `board_member` audience in their Feed tab |
-| F13-07 | RLS prevents access to `family_members`, `profiles` (other than own), `teacher_absences`, `substitute_assignments`, `class_updates` at record level |
-| F13-08 | Board member has no write permissions of any kind |
+| F13-05 | Board member can read all data across all centers and sessions: class updates, attendance records, teacher absences, substitute assignments, family member records, announcements |
+| F13-06 | Board member sees all announcements in their Feed tab, regardless of audience targeting |
+| F13-07 | Board member can post announcements (org-wide or center-scoped) and create events |
+| F13-08 | Board member cannot take attendance, edit class updates, manage substitute requests, or provision user accounts |
 
 #### Acceptance Criteria
-- Board member cannot query individual student attendance records via any path (RLS verified)
-- Year-over-year chart renders correctly when prior year data exists
-- Board member sees no tab or button that implies write access
+- Board member can view class updates, attendance, and absence records across all centers
+- Board member can post an announcement and it appears in other personas' feeds correctly
+- Board member cannot submit attendance or post a class update (no such UI; RLS enforced)
+- Board member can create an event visible to all centers
 
 ---
 
-### F-14 Acharya Experience *(Phase 3)*
+### F-14 Acharya Experience
 
-**Phase:** 3  
+**Phase:** 1  
 **Personas:** Acharya  
 
 #### Description
-Curriculum directors who guide teachers. Can upload lesson plans, curate training resources, post curriculum-level announcements to teachers, and view class rosters.
+Acharyas have read-only visibility across all app data — all centers, all sessions, all features. In addition to read access, they can post events and announcements. They cannot take attendance, post class updates, manage sub requests, or modify any operational record.
 
 #### Requirements
 
 | ID | Requirement |
 |---|---|
-| F14-01 | Acharya has a Classes tab showing all classes in their assigned center with enrolled student count (not names) |
-| F14-02 | Tapping a class shows the class roster (student names only — no attendance, family, or contact data) |
-| F14-03 | Lesson plan upload: per class, per session date, upload a PDF or document file (stored in Supabase Storage, `lesson-plans` bucket) |
-| F14-04 | Teacher view: current week's lesson plan link appears on their My Class tab if one has been uploaded |
-| F14-05 | Training resources: Acharya can add a training resource (title, URL, description, audience: teacher / acharya / all) |
-| F14-06 | Resources tab visible to teachers and Acharyas: lists all training resources sorted by `created_at` descending |
-| F14-07 | Acharya can post announcements targeting `teacher` and `local_admin` audiences |
-| F14-08 | Acharya cannot post announcements to `parent`, `student`, or `board_member` audiences |
-| F14-09 | Acharya cannot take attendance, submit class updates, or manage sub requests |
-| F14-10 | Lesson plan uploads: file type limited to PDF, DOCX. Max 10MB per file. |
+| F14-01 | Acharya can read all data across all centers and sessions: class rosters, attendance records, class updates, teacher absences, announcements, events, family member records |
+| F14-02 | Acharya sees all announcements and class updates in their Feed tab across all centers |
+| F14-03 | Acharya can post announcements (org-wide or center-scoped, any audience) |
+| F14-04 | Acharya can create events (org-wide or center-scoped) |
+| F14-05 | Acharya cannot take attendance, edit class updates, manage substitute requests, or provision user accounts |
+| F14-06 | Acharya has a Dashboard tab showing the same org-wide view as BV Coordinator (read-only) |
 
 #### Acceptance Criteria
-- Acharya can upload a lesson plan and teacher sees it on their class tab the same session week
-- Teacher cannot see lesson plans for another class
-- Acharya cannot post an announcement targeting parents
-- Acharya cannot access family member or attendance records
+- Acharya can view class updates, attendance, and absence records across all centers
+- Acharya can post an announcement and it appears in other personas' feeds correctly
+- Acharya cannot submit attendance or post a class update (no such UI; RLS enforced)
+- Acharya can create an event visible to all centers
 
 ---
 
@@ -803,7 +798,7 @@ Curriculum directors who guide teachers. Can upload lesson plans, curate trainin
 ### F-16 Academic Year Management
 
 **Phase:** 1  
-**Personas:** Central Admin (write), All (read — current year context)  
+**Personas:** BV Coordinator (write), All (read — current year context)  
 
 #### Description
 Academic years are managed by the central admin. Exactly one year is active at a time. All operational records are stamped with the current year at insert time.
@@ -972,31 +967,32 @@ The following are explicitly not part of this product, to prevent scope creep:
 | Class updates (post, edit, view) | F-05 |
 | Comments on class updates | F-06 |
 | Teacher absence reporting | F-07 |
-| Substitute request workflow | F-08 |
 | Announcements (post + audience targeting) | F-09 |
-| Events & volunteer signups | F-10 |
+| Events (create + view; no volunteer signup) | F-10 (partial) |
 | Coordinator dashboard (with correct compliance date) | F-11 |
-| Central admin dashboard | F-12 |
+| BV Coordinator dashboard | F-12 |
+| Board Member dashboard + read-all + post events/announcements | F-13 |
+| Acharya experience — read-all + post events/announcements | F-14 |
 | User provisioning (admin-only) | F-15 (partial) |
 | Academic year management | F-16 |
 | Profile & settings | F-17 |
 | Notifications tab (empty state only) | F-19 (partial) |
 
-### Phase 2 — First Month of Real Usage
+### Phase 2 — Post-Launch
 
 | Feature | ID |
 |---|---|
+| Substitute request workflow | F-08 |
+| Volunteer signups for events | F-10 (full) |
 | Self-registration with coordinator approval | F-15 (full) |
 | Push notifications | F-18 |
 | Notifications tab (wired to real data) | F-19 (full) |
 | Phone OTP login | F-01 (extension) |
 
-### Phase 3 — Growth (Post-Pilot, First 3 Months)
+### Phase 3 — Growth (Post-Pilot)
 
 | Feature | ID |
 |---|---|
-| Board Member persona & dashboard | F-13 |
-| Acharya persona & experience | F-14 |
 | Lesson plans & training resources | F-20 |
 | Volunteer history | F-10 (extension) |
 

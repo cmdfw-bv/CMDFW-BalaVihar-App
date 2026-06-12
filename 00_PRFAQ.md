@@ -14,7 +14,7 @@
 
 ### Chinmaya Mission DFW Launches Bala Vihar App — A Single Platform for Families, Teachers, and Organizers of Its Religious Education Program
 
-*Dallas-Fort Worth, TX* — Chinmaya Mission DFW (CMDFW) today announced the launch of the Bala Vihar App, a mobile-first application that connects every participant in its Sunday religious education program — parents, students, teachers, volunteers, and organizers — on a single, purpose-built platform.
+*Dallas-Fort Worth, TX* — Chinmaya Mission DFW (CMDFW) today announced the launch of the Bala Vihar App, a mobile-first application that connects every participant in its Sunday religious education program — parents, high school students, teachers, coordinators, and leadership — on a single, purpose-built platform.
 
 Bala Vihar is CMDFW's weekly religious education program, serving families across multiple centers in the DFW area. Until now, program coordination depended on WhatsApp groups, Emails, and Google Sheets — tools that were not designed for the structured, recurring workflow of running a Sunday school. Parents could miss class updates as they got buried in group chats. Teachers tracked attendance in spreadsheets. Teachers, required to report absences through a spreadsheet tracker, only used them sporadically, relying instead on informal channels to communicate with Coordinators.
 
@@ -80,7 +80,7 @@ A: Success at 60 days post-launch is defined as:
 5. **Teacher absence reporting via app ≥ 90%** — teachers report absences through the app rather than informally
 6. **Customer Satisfaction ≥ 75%** - as measured by response to user surveys
 
-These metrics are measured by the Central Admin using the in-app dashboards and a brief survey at the 60-day mark.
+These metrics are measured by the BV Coordinator using the in-app dashboards and a brief survey at the 60-day mark.
 
 ---
 
@@ -88,14 +88,17 @@ These metrics are measured by the Central Admin using the in-app dashboards and 
 
 A: The following are explicitly deferred to Phase 2 or later:
 - Native iOS and Android app store distribution (Phase 1 is PWA only)
+- Substitute teacher workflow (Phase 2)
+- Volunteer signup and event management for volunteers (Phase 2)
 - Phone OTP as an alternative login method (Phase 2)
-- Lesson plan uploads and training resources (Phase 3)
+- Push notifications (Phase 2)
+- Self-registration for new users (Phase 2)
 - The CMDFW public website (descoped entirely from this project)
 
 ---
 
 ### External FAQs
-*Questions that participants — parents, teachers, and volunteers — will ask.*
+*Questions that participants — parents, teachers, coordinators, and students — will ask.*
 
 ---
 
@@ -111,9 +114,9 @@ A: There is no password. Enter your email address on the login screen and tap "S
 
 ---
 
-**Q: I am both a parent and a volunteer. Do I need two accounts?**
+**Q: I am both a parent and a teacher. Do I need two accounts?**
 
-A: No. You have one account with one email address. After logging in, the app will ask you which role you want to use — Parent or Volunteer. You can switch between them at any time from the profile menu.
+A: No. You have one account with one email address. After logging in, the app will ask you which role you want to use — Parent or Teacher. You can switch between them at any time from the profile menu.
 
 ---
 
@@ -143,7 +146,7 @@ A: The app works in any modern web browser on a computer. Open the link your coo
 
 **Q: Who do I contact if I have a problem with the app?**
 
-A: Contact your center coordinator. They have access to administrative tools that can resolve most account issues (resetting your session, updating your information, re-sending your invitation). For issues that require technical support, the coordinator will escalate to the Central Admin.
+A: Contact your session coordinator. They have access to administrative tools that can resolve most account issues (resetting your session, updating your information, re-sending your invitation). For issues that require technical support, the coordinator will escalate to the BV Coordinator.
 
 ---
 
@@ -152,7 +155,7 @@ A: Contact your center coordinator. They have access to administrative tools tha
 | Role | Name | Approval | Date |
 |---|---|---|---|
 | Program Director | | ☐ Approved | |
-| Central Admin | | ☐ Approved | |
+| BV Coordinator | | ☐ Approved | |
 | Lead Coordinator | | ☐ Approved | |
 | Technical Lead | | ☐ Approved | |
 

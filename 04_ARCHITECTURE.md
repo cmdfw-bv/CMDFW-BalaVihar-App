@@ -30,8 +30,8 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        USERS                                     │
-│  Central Admin · Coordinator · Teacher · Parent · Student        │
-│  Volunteer · Substitute · Board Member · Acharya                 │
+│  BV Coordinator · Coordinator · Teacher · Parent · Student        │
+│  Board Member · Acharya  [Volunteer · Substitute — Phase 2]      │
 └──────────────────────────┬──────────────────────────────────────┘
                            │  HTTPS
                            ▼

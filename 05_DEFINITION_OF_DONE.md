@@ -293,12 +293,12 @@ In addition to the standard checklist:
 - [ ] Already-used link tested: use the same link twice, verify second use is rejected
 - [ ] Redirect URL is environment-correct: staging magic links redirect to staging URL, not production
 
-### Substitute Request Workflow
+### Substitute Request Workflow *(Phase 2)*
 
 In addition to the standard checklist:
 - [ ] Full lifecycle tested end-to-end in a single session: absence → request → volunteer → assign → accept
 - [ ] Decline + reassign path tested: assign → decline → reassign to different volunteer
-- [ ] Coordinator cannot post a sub request for a class outside their center (RLS verified via API)
+- [ ] Coordinator cannot post a sub request for a class outside their session (RLS verified via API)
 - [ ] Substitute cannot volunteer for a request that is already `confirmed`
 
 ### Announcements
@@ -306,7 +306,7 @@ In addition to the standard checklist:
 In addition to the standard checklist:
 - [ ] Coordinator cannot post with `center_id = NULL` via direct API call (not just UI check)
 - [ ] Audience targeting verified for each role: post to "teachers only", verify parents and students cannot see it
-- [ ] Central admin can post org-wide (center_id = NULL) successfully
+- [ ] BV Coordinator can post org-wide (center_id = NULL) successfully
 
 ### Coordinator Compliance Dashboard
 
