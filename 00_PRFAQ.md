@@ -4,7 +4,7 @@
 **Document type:** Working Backwards / Project Charter  
 **Date:** 2026-06-10  
 **Status:** Inception — governs project scope and success criteria before Construction begins  
-**Author:** CMDFW Program Leadership  
+**Author:** CMDFW App Development Team (AS, MM, SS)
 
 ---
 
@@ -16,13 +16,11 @@
 
 *Dallas-Fort Worth, TX* — Chinmaya Mission DFW (CMDFW) today announced the launch of the Bala Vihar App, a mobile-first application that connects every participant in its Sunday religious education program — parents, students, teachers, volunteers, and organizers — on a single, purpose-built platform.
 
-Bala Vihar ("Children's Garden") is CMDFW's weekly religious education program, serving families across multiple centers in the DFW area. Until now, program coordination has depended on a patchwork of WhatsApp groups, email chains, and spreadsheets — tools that were never designed for the structured, recurring workflow of running a Sunday school. Parents missed class updates buried in group chats. Teachers tracked attendance in spreadsheets. Teachers reported absences through informal channels that didn't reliably reach the people who needed to act on them.
+Bala Vihar is CMDFW's weekly religious education program, serving families across multiple centers in the DFW area. Until now, program coordination depended on WhatsApp groups, Emails, and Google Sheets — tools that were not designed for the structured, recurring workflow of running a Sunday school. Parents could miss class updates as they got buried in group chats. Teachers tracked attendance in spreadsheets. Teachers, required to report absences through a spreadsheet tracker, only used them sporadically, relying instead on informal channels to communicate with Coordinators.
 
-The Bala Vihar App replaces this fragmentation with a single, role-aware platform. A parent opens the app to see their child's attendance record and the latest update from their teacher — not a wall of unrelated group messages. A teacher submits attendance and posts a class update from their phone during class, not hours later at a desktop. A coordinator sees a live compliance dashboard showing which teachers have and haven't submitted for the week — without making a single phone call.
+The Bala Vihar App replaces this fragmentation with a single, role-aware platform. A parent opens the app to see their child's attendance record and the latest update from their teacher. A teacher submits attendance and posts a class update from their phone right after class, not hours (or days) later at a desktop. A coordinator sees a live compliance dashboard showing which teachers have and haven't submitted attendance and updates for the week — without having to check spreadsheets or Whatsapp groups.
 
-"I used to spend my Sunday afternoons chasing down attendance and calling teachers who hadn't reported," said a Bala Vihar coordinator in the Dallas area. "Now I open the app and I can see exactly where things stand in real time. If something needs my attention, I know about it."
-
-The app is installable on any iOS, Android, or desktop device directly from a link — no app store visit required. Users receive a one-tap magic link by email to log in; no password to create or forget. For families with children in the program, the app supports multiple children and both parents under a single account.
+The app is installable on any iOS, Android, or desktop device directly from a link — no app store visit required. Users receive a one-tap magic link by email to log in; no password to create or forget. For families with children in the program, the app supports multiple children under a single account.
 
 The Bala Vihar App is available now to all registered CMDFW Bala Vihar participants. Access is by invitation from a center coordinator.
 
@@ -37,31 +35,31 @@ The Bala Vihar App is available now to all registered CMDFW Bala Vihar participa
 
 **Q: Why build a custom app? Why not use an existing school or church management platform?**
 
-A: Existing platforms (e.g. Remind, Brightwheel, ChurchTrac) are built for either K-12 schools or generic church administration. None of them model the specific structure of a multi-center religious education program with the persona complexity we have — a parent who is also a volunteer, a teacher who is also a substitute, a coordinator who manages one center while a central admin oversees all of them. The custom app also allows us to enforce COPPA compliance controls (no self-registration for minors, admin-provisioned accounts only) that generic platforms either do not offer or charge significantly for. The total cost of building and operating this app is less than the annual licensing cost of most comparable SaaS platforms at our scale.
+A: Existing platforms (e.g. Remind, Brightwheel, ChurchTrac) are built for either K-12 schools or generic church administration. None of them model the specific structure of a multi-center religious education program with the persona complexity we have — a parent who is also a teacher, a teacher who is also a coordinator, a coordinator who manages one session, while a central admin oversees all of them. The custom app also allows us to enforce COPPA compliance controls (no self-registration for minors, admin-provisioned accounts only) that generic platforms either do not offer or charge significantly for. The total cost of building and operating this app is less than the annual licensing cost of most comparable SaaS platforms at our scale.
 
 ---
 
 **Q: How long will this take and what does it cost?**
 
-A: Phase 1 (all seven core personas and the full feature set required for launch) is estimated at approximately 60 developer-days of work, organized into 18 development slices over roughly 12 weeks. Infrastructure cost at launch is approximately $50/month (two Supabase Pro projects for staging and production). There are no per-user licensing fees. The app scales to the full CMDFW Bala Vihar enrollment without a cost increase. Phase 2 (native app store builds, push notifications, self-registration) adds approximately 5 slices and can be pursued after a stable Phase 1 launch.
+A: Phase 1 (all seven core personas and the full feature set required for launch) is estimated at approximately 18 development slices over roughly 8 weeks. Infrastructure cost at launch is approximately $50/month (two Supabase Pro projects for staging and production). There are no per-user licensing fees. The app scales to the full CMDFW Bala Vihar enrollment without a cost increase. Phase 2 (native app store builds, push notifications, self-registration) adds approximately 5 slices and can be pursued after a stable Phase 1 launch.
 
 ---
 
 **Q: What happens if the developer is unavailable? Are we locked into a single person?**
 
-A: The project is built on widely-known, open-source technology: React Native (TypeScript), PostgreSQL (via Supabase), and standard web deployment. The full codebase, schema, and documentation are in version-controlled repositories. Any React Native or web developer can continue the work. The documentation set (9 documents covering architecture, data model, test plan, operations runbook, and all decision rationale) is specifically designed to allow a new developer to onboard without the original developer's involvement. This is explicitly different from the prototype, which was underdocumented and difficult to hand off.
+A: The project is built on widely-known, open-source technology: React Native (TypeScript), PostgreSQL (via Supabase), and standard web deployment. The full codebase, schema, and documentation are in version-controlled repositories. Any React Native or web developer can continue the work. The documentation set (9 documents covering architecture, data model, test plan, operations runbook, and all decision rationale) is specifically designed to allow a new developer to onboard without the original developer's involvement.
 
 ---
 
 **Q: What are the COPPA and privacy risks of building an app that involves minors?**
 
-A: COPPA (Children's Online Privacy Protection Act) applies because the program serves children under 13. The primary COPPA control is that **no child can create their own account** — all student accounts are provisioned by a coordinator. No child's personal information is collected directly from the child. The app collects only the minimum data required to run the program: name, email (for parents and teachers), and class enrollment. Student phone numbers, if stored, are encrypted. The full compliance posture is documented in `01_SECURITY_AND_COMPLIANCE.md`. Critically, all access control is enforced at the database layer via Row Level Security — a parent cannot access another family's records even if the app code had a bug.
+A: COPPA (Children's Online Privacy Protection Act) applies because the program serves children under 13. The primary COPPA control is that **no child can create their own account** — all student accounts are only for high-schoolers (grades 9 - 12) and are provisioned by a coordinator. No child's personal information is collected directly from the child. The app collects only the minimum data required to run the program: name, email (for parents and teachers), and class enrollment. The full compliance posture is documented in `01_SECURITY_AND_COMPLIANCE.md`. Critically, all access control is enforced at the database layer via Row Level Security — a parent cannot access another family's records even if the app code had a bug.
 
 ---
 
 **Q: What if Supabase goes out of business or raises prices significantly?**
 
-A: Supabase is built on standard PostgreSQL. The database can be exported and hosted on any PostgreSQL-compatible service (AWS RDS, Neon, Railway, self-hosted). The application code uses the Supabase JavaScript SDK, but the underlying database queries are standard SQL. Migration to a different PostgreSQL host would require updating the connection configuration and replacing the Supabase Auth integration — estimated at 2–3 weeks of work. This risk is documented in ADR-003. The open-source, non-proprietary nature of the stack is a deliberate choice.
+A: Supabase is built on standard PostgreSQL. The database can be exported and hosted on any PostgreSQL-compatible service (AWS RDS, Neon, Railway, self-hosted). The application code uses the Supabase JavaScript SDK, but the underlying database queries are standard SQL. Migration to a different PostgreSQL host would require updating the connection configuration and replacing the Supabase Auth integration. This risk is documented in ADR-003. The open-source, non-proprietary nature of the stack is a deliberate choice.
 
 ---
 
@@ -75,13 +73,14 @@ A: The prototype validated the concept and the persona model. It was not product
 
 A: Success at 60 days post-launch is defined as:
 
-1. **Attendance compliance rate ≥ 85%** — at least 85% of teachers submit attendance within 24 hours of their class session, as measured by the coordinator compliance dashboard
-2. **Parent adoption ≥ 70%** — at least 70% of enrolled families have logged in at least once
+1. **Attendance compliance rate ≥ 90%** — at least 90% of teachers submit attendance within their class session, as measured by the coordinator compliance dashboard
+2. **Parent adoption ≥ 75%** — at least 75% of enrolled families have logged in at least once
 3. **Zero P1/P2 security incidents** — no unauthorized access to student or family data
-4. **Coordinator time on administrative follow-up reduced** — coordinators self-report spending less than 30 minutes per week on attendance follow-up, compared to the current baseline
+4. **Coordinator time on administrative follow-up reduced** — coordinators self-report spending less than 30 minutes per week on administrative follow-ups, compared to the current baseline
 5. **Teacher absence reporting via app ≥ 90%** — teachers report absences through the app rather than informally
+6. **Customer Satisfaction ≥ 75%** - as measured by response to user surveys
 
-These metrics are measured by the Central Admin using the in-app dashboards and a brief coordinator survey at the 60-day mark.
+These metrics are measured by the Central Admin using the in-app dashboards and a brief survey at the 60-day mark.
 
 ---
 
@@ -89,11 +88,8 @@ These metrics are measured by the Central Admin using the in-app dashboards and 
 
 A: The following are explicitly deferred to Phase 2 or later:
 - Native iOS and Android app store distribution (Phase 1 is PWA only)
-- Push notifications (Phase 2)
-- Student self-registration (Phase 2)
 - Phone OTP as an alternative login method (Phase 2)
 - Lesson plan uploads and training resources (Phase 3)
-- Board Member and Acharya dashboards (Phase 3)
 - The CMDFW public website (descoped entirely from this project)
 
 ---
@@ -129,7 +125,7 @@ A: Yes. Each parent creates their own account with their own email address. Both
 
 **Q: I am a teacher. What does the app replace that I was doing before?**
 
-A: Three things: (1) You no longer text or call the coordinator to report your attendance — you submit it directly in the app during or after class. (2) If you are going to be absent, you report it in the app instead of sending a message to a group chat. (3) You can post a brief class update directly to parents after each session — what was covered, any homework, upcoming topics — without needing to manage a separate group chat.
+A: Three things: (1) You no longer take attendance in the Google Sheet trackers — you submit it directly in the app during class. (2) If you are going to be absent, you report it in the app instead of marking in the Google Sheet, sending a message, or calling the coordinator. (3) You can post a brief class update directly to parents after each session — what was covered, any homework, upcoming topics — without needing to manage a separate group chat.
 
 ---
 
