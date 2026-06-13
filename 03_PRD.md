@@ -183,7 +183,7 @@ The app supports nine personas organized into four groups.
 - Read their own profile, enrollment, and attendance
 - Read class updates for their enrolled class
 - Read announcements targeted to students (and org-wide)
-- Comment on class updates for their own class (public comments only; cannot post private notes)
+- Comment on class updates for their own class (public comments only; cannot post private notes except to teacher)
 
 ---
 
