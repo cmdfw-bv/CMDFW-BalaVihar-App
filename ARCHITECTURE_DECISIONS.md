@@ -3,7 +3,7 @@
 
 **Version:** 1.0  
 **Date:** 2026-06-10  
-**Status:** Living document — append new ADRs as decisions are made. Never edit a closed ADR; supersede it with a new one.
+**Status:** Living document — all decisions are Open until construction begins. Append new ADRs as decisions are made. When a decision changes, add a new ADR that supersedes the old one and update the index.
 
 ---
 
@@ -11,15 +11,16 @@
 
 | ID | Decision | Status | Date |
 |---|---|---|---|
-| [ADR-001](#adr-001-frontend-framework) | Frontend framework: Expo / React Native over Flutter | Closed | 2026-06-10 |
-| [ADR-002](#adr-002-deployment-model) | Deployment model: PWA-first with app store as Phase 2 | Closed | 2026-06-10 |
-| [ADR-003](#adr-003-backend-platform) | Backend platform: Supabase (PostgreSQL + Auth + Realtime + Storage) | Closed | 2026-06-10 |
-| [ADR-004](#adr-004-multi-persona-rls-resolution) | Multi-persona RLS resolution: JWT custom claims via Edge Function | Closed | 2026-06-10 |
-| [ADR-005](#adr-005-access-control-location) | Access control location: database-layer RLS as authoritative | Closed | 2026-06-10 |
-| [ADR-006](#adr-006-academic-year-as-text-label) | Academic year storage: text label FK, not UUID | Closed | 2026-06-10 |
-| [ADR-007](#adr-007-no-self-registration-at-launch) | No self-registration at Phase 1 launch | Closed | 2026-06-10 |
-| [ADR-008](#adr-008-authentication-method) | Authentication method: magic link (passwordless email) over email/password | Closed | 2026-06-10 |
+| [ADR-001](#adr-001-frontend-framework) | Frontend framework: Expo / React Native over Flutter | Open | 2026-06-10 |
+| [ADR-002](#adr-002-deployment-model) | Deployment model: PWA-first with app store as Phase 2 | Open | 2026-06-10 |
+| [ADR-003](#adr-003-backend-platform) | Backend platform: Supabase (PostgreSQL + Auth + Realtime + Storage) | Open | 2026-06-10 |
+| [ADR-004](#adr-004-multi-persona-rls-resolution) | Multi-persona RLS resolution: JWT custom claims via Edge Function | Open | 2026-06-10 |
+| [ADR-005](#adr-005-access-control-location) | Access control location: database-layer RLS as authoritative | Open | 2026-06-10 |
+| [ADR-006](#adr-006-academic-year-as-text-label) | Academic year storage: text label FK, not UUID | Open | 2026-06-10 |
+| [ADR-007](#adr-007-no-self-registration-at-launch) | No self-registration at Phase 1 launch | Open | 2026-06-10 |
+| [ADR-008](#adr-008-authentication-method) | Authentication method: magic link (passwordless email) over email/password | Open | 2026-06-10 |
 | [ADR-009](#adr-009-backend-platform-supabase-vs-firebase) | Backend platform: Supabase vs Firebase | Open | 2026-06-10 |
+| [ADR-010](#adr-010-component-styling-library) | Component styling library: NativeWind vs custom StyleSheet | Open | 2026-06-13 |
 
 ---
 
@@ -37,7 +38,7 @@ Each record has five sections:
 
 ## ADR-001: Frontend Framework
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -109,7 +110,7 @@ The type discipline problems observed in the prototype are not a React Native pr
 
 ## ADR-002: Deployment Model
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -176,7 +177,7 @@ App store presence adds legitimacy and accessibility for users who prefer it —
 
 ## ADR-003: Backend Platform
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -239,7 +240,7 @@ The combination of PostgreSQL RLS for access control and the Realtime subscripti
 
 ## ADR-004: Multi-Persona RLS Resolution
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -383,7 +384,7 @@ The `COALESCE` fallback ensures that users with a single persona (no `app_metada
 
 ## ADR-005: Access Control Location
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -410,7 +411,7 @@ This is a foundational constraint and should not be revisited. If Supabase RLS b
 
 ## ADR-006: Academic Year as Text Label
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -444,7 +445,7 @@ The `current_academic_year()` helper function returns the current label. All ins
 
 ## ADR-007: No Self-Registration at Phase 1 Launch
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -476,7 +477,7 @@ Self-registration with coordinator approval is added in Phase 2 for adult roles 
 
 ## ADR-008: Authentication Method
 
-**Status:** Closed  
+**Status:** Open  
 **Date:** 2026-06-10  
 **Deciders:** Project owner  
 
@@ -655,4 +656,119 @@ Google's NoSQL BaaS. Provides Auth, Firestore (document database), Firebase Stor
 
 ---
 
-*When a new architectural decision is made, append a new ADR to this document following the format above. Assign the next sequential ID. Never edit a closed ADR — if a decision changes, add a new ADR that supersedes the old one and update the index.*
+---
+
+## ADR-010: Component Styling Library
+
+**Status:** Open  
+**Date:** 2026-06-13  
+**Deciders:** Project owner  
+
+### Context
+
+React Native renders using platform-native UI components — a button on iOS looks like an iOS button; the same code on Android looks like an Android button. For most of the app's UI (custom-styled cards, forms, attendance grids), this is managed via a hand-rolled design system in `src/theme/index.ts` using `StyleSheet.create()`. However, there is a risk of subtle visual and behavioral inconsistencies between iOS and Android in untested edge cases.
+
+The question is whether to add a cross-platform component library that renders its own consistent UI, rather than relying on native components.
+
+The current plan uses no third-party component library — the existing design system tokens (colors, spacing, typography) are in `src/theme/index.ts` and all components use `StyleSheet.create()`.
+
+### Options Considered
+
+#### Option A: No library — custom StyleSheet (current plan)
+
+Use React Native's built-in `StyleSheet.create()` with the existing design system tokens in `src/theme/index.ts`. Accept platform-specific rendering differences as a managed risk.
+
+**Pros:**
+- No additional dependency to learn, maintain, or upgrade
+- Full control over every style decision
+- No build tooling changes required — works out of the box with Expo
+- No risk of library compatibility issues with Expo Router or Supabase
+- `src/theme/index.ts` is already designed and can be used immediately
+
+**Cons:**
+- Subtle visual inconsistencies between iOS and Android are possible, particularly for inputs, pickers, and modals
+- No built-in accessibility primitives — must be added manually per component
+- More boilerplate per component
+
+---
+
+#### Option B: NativeWind
+
+Tailwind CSS utility classes for React Native. Works by applying Tailwind class names via a `className` prop. Generates real CSS for web (PWA) and React Native styles for native from the same source. Current version is NativeWind v4 (Tailwind v3/v4).
+
+**Pros:**
+- Cross-platform consistent styling — same `className` values produce consistent output on iOS, Android, and web
+- Tailwind's design constraint system naturally enforces the design token discipline already planned for `src/theme/index.ts`
+- Generates real CSS for the PWA deployment — better integration with the web rendering model than `StyleSheet.create()`
+- Large and active community; widely used in Expo projects
+- Faster to write for developers who know Tailwind
+
+**Cons:**
+- Adds a dependency and build tooling requirement (Metro config, Babel plugin, `tailwind.config.js`)
+- `src/theme/index.ts` must be migrated to `tailwind.config.js` — two sources of design tokens cannot coexist without drift
+- Some React Native components do not natively accept `className` and require wrapper components
+- NativeWind v4 had compatibility friction with Expo Router in early releases — current status requires verification before committing
+- Learning curve for a developer more familiar with `StyleSheet.create()` than Tailwind
+- Must be adopted in Slice 0-01 — cannot be retrofitted without rewriting every styled component
+
+---
+
+#### Option C: Tamagui
+
+A cross-platform UI library for React Native that provides its own component primitives and a compile-time styling system. More comprehensive than NativeWind.
+
+**Pros:**
+- Purpose-built for cross-platform React Native consistency
+- Excellent performance — styles are evaluated at compile time, not runtime
+- Complete component set (buttons, inputs, dialogs, etc.) with accessibility built in
+
+**Cons:**
+- Steepest learning curve of the three options
+- Most opinionated — adopting Tamagui means replacing the component model, not just the styling syntax
+- Larger bundle size
+- Overkill for a forms-and-lists app at this scale
+
+---
+
+### Tradeoffs Summary
+
+| Criterion | Custom StyleSheet | NativeWind | Tamagui |
+|---|---|---|---|
+| Cross-platform consistency | ⚠️ Risk | ✅ Strong | ✅ Strong |
+| PWA CSS integration | ⚠️ StyleSheet only | ✅ Real CSS generated | ⚠️ Custom renderer |
+| Learning curve | None | Low (if Tailwind known) | High |
+| Build tooling impact | None | Moderate | High |
+| Expo Router compatibility | ✅ Native | ⚠️ Verify v4 | ⚠️ Known friction |
+| Adoption timing constraint | Any time | Slice 0-01 only | Slice 0-01 only |
+| Dependency risk | None | Low | Medium |
+
+### Decision
+
+**Open.** The current lean is toward accepting the inconsistent rendering risk and proceeding with the custom `StyleSheet.create()` approach (Option A). The app's UI profile — forms, lists, and dashboards — does not push the limits where platform differences are most visible. The cost of the NativeWind decision (tooling changes, migration of `src/theme/index.ts`, Expo Router compatibility verification) is non-trivial and must be incurred in Slice 0-01 or not at all.
+
+**Before closing this ADR, evaluate:**
+1. Does the developer on Slice 0-01 have existing Tailwind familiarity? If yes, NativeWind cost drops significantly.
+2. What is NativeWind v4's current compatibility status with Expo Router v4+? Check the NativeWind GitHub issues before committing.
+3. After the first design mockup is rendered on both iOS and Android, is the visual delta acceptable?
+
+### Consequences
+
+*If custom StyleSheet (Option A) is confirmed:*
+- No document changes required; current architecture and DoD remain as written
+- Accept that occasional platform-specific style fixes will be needed during development
+
+*If NativeWind (Option B) is chosen:*
+- `04_ARCHITECTURE.md` tech stack and code conventions sections must be updated
+- `05_DEFINITION_OF_DONE.md` item D-07 changes from "use `StyleSheet.create()`" to "use NativeWind `className` props"
+- `src/theme/index.ts` is replaced by `tailwind.config.js`; design tokens must be migrated before any screen work begins
+- Slice 0-01 scope increases by approximately 1–2 days
+
+### Revisit When
+
+- Slice 0-01 begins — this decision must be made before the first component is styled
+- After first design mockup is tested on both iOS and Android — if visual parity is acceptable, Option A is confirmed
+- NativeWind v4 releases a stable Expo Router v4+ compatibility announcement
+
+---
+
+*When a new architectural decision is made, append a new ADR to this document following the format above. Assign the next sequential ID. When a decision changes, add a new ADR that supersedes the old one and update the index.*
