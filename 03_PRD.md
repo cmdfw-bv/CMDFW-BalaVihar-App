@@ -1,3 +1,5 @@
+> ⚠️ **DRAFT — NOT BINDING.** The authoritative source of truth for this project is **[1_GREENFIELD_POC_PROPOSAL.md](1_GREENFIELD_POC_PROPOSAL.md)**. This is an earlier vibe-coded draft to be challenged against requirements, not adopted (per doc 1 §2–§3). Retained for reference only.
+
 # Product Requirements Document
 ### CMDFW Bala Vihar App — Document 3 of 8
 
@@ -183,7 +185,7 @@ The app supports nine personas organized into four groups.
 - Read their own profile, enrollment, and attendance
 - Read class updates for their enrolled class
 - Read announcements targeted to students (and org-wide)
-- Comment on class updates for their own class (public comments only; cannot post private notes except to teacher)
+- Comment on class updates for their own class (public comments only; cannot post private notes)
 
 ---
 

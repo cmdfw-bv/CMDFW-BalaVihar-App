@@ -1,3 +1,5 @@
+> ⚠️ **DRAFT — NOT BINDING.** The authoritative source of truth for this project is **[1_GREENFIELD_POC_PROPOSAL.md](1_GREENFIELD_POC_PROPOSAL.md)**. This is an earlier vibe-coded draft to be challenged against requirements, not adopted (per doc 1 §2–§3). Retained for reference only.
+
 # Test Plan
 ### CMDFW Bala Vihar App — Document 7 of 8
 

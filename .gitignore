@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Tooling / local agent state
+.claude/
+.playwright-cli/
+
+# Node / Expo (in case the app code lands here)
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
