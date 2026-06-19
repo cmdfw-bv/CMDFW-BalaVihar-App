@@ -45,7 +45,11 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "env:init": "node scripts/env-init.mjs",
-    "gen:theme": "node scripts/gen-theme.mjs"
+    "gen:theme": "node scripts/gen-theme.mjs",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "stop": "supabase stop"
   },
   "private": true,
   "engines": {
