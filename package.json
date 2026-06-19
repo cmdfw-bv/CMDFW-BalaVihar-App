@@ -33,11 +33,13 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "netlify-cli": "^26.1.0",
+    "supabase": "^2.107.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
