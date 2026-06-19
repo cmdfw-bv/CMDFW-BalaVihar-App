@@ -1,0 +1,18 @@
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Deployed functions run in US-East (compliance perimeter, §3/§7.2).
+[functions.health]
+  # region pinned at the account/site level; documented here as the intended region
+  # (Netlify region config is set in site settings — see README).
+
+[dev]
+  framework = "#custom"
+  command = "npx expo start --web"
+  targetPort = 8081
+  port = 8888
