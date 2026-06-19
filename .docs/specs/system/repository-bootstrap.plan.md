@@ -767,13 +767,15 @@ git commit -m "chore: repository-bootstrap built — ready for /test"
 ## Build outcome (2026-06-19)
 All 11 tasks implemented subagent-driven (fresh implementer + task review per task; final whole-branch review on opus). **Final review: Ready to merge · secret-hygiene PASS · 0 Critical/Important.** Commits `f3d7a99..73c0e2c` (12).
 
-**Verified (no Docker needed):** clean `npm install` from lockfile · `npm run start` / web export · `typecheck` · `lint` · `doctor` (exit 0) · function responds via `netlify functions:serve` · secret-leak backstop clean · `.env` untracked · §4 tree at root.
+**Verified (no Docker):** clean `npm install` from lockfile · `npm run start` / web export · `typecheck` · `lint` · `doctor` (exit 0) · function responds via `netlify functions:serve` · secret-leak backstop clean · `.env` untracked · §4 tree at root.
 
-**Deferred — needs Docker Desktop (verify before `/promote`):** `npm run dev` full loop · `npm run db:start|db:reset|db:stop`.
+**Verified (Docker, 2026-06-19):** `npm run db:start` brings up all 12 Supabase containers (REST 200) · `npm run db:reset` clean · **full `npm run dev` loop** — netlify proxy on `:8888`, health function 200 through the proxy, all 5 tab routes 200 · `npm run stop` tears down to 0 containers. Two fixes the live run surfaced (committed): root `app/index.tsx` redirect so `/` resolves (was 404); `deno.lock` (supabase edge-runtime artifact) git-ignored.
+- *Note for whoever fills `.env`:* this Supabase CLI prints the new `sb_publishable_…` / `sb_secret_…` key format (replaces anon/service_role JWTs) — the **publishable** key fills `EXPO_PUBLIC_SUPABASE_ANON_KEY`, the **secret** key fills `SUPABASE_SERVICE_ROLE_KEY` (functions only).
 
 **Tracked Minor follow-ups (none merge-blocking):**
 - M1 `scripts/doctor.mjs` Node-floor check is major-only (`>=20`) — should be `>=20.19` to match `engines`. Trivial.
 - M3 `package.json` `name` still `bv-scaffold` (private pkg; cosmetic). App identity correct in `app.json`.
 - M4 Unistyles babel `root:"app"` — revisit when the first `components/`/`features/` UI UoW lands.
 - M5 Netlify US-region is intent-comment only — bind in the cloud-provisioning System item.
+- M6 `npm run db:reset` logs cosmetic warnings ("Skipping migration .gitkeep", "no files matched supabase/seed.sql") — harmless with empty migrations/seed; clears once the first real migration/seed lands.
 ```
