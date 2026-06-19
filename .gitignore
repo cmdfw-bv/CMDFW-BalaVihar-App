@@ -2,7 +2,10 @@
 .DS_Store
 
 # Tooling / local agent state
-.claude/
+# NOTE: the .claude/ governance layer (CLAUDE.md, skills, agents, rules, hooks, settings.json)
+# is intentionally TRACKED — it ships with the repo (3_ARCHITECTURE §12). Only local-only state is ignored.
+.claude/settings.local.json
+.claude/.rls-tests-passed
 .playwright-cli/
 
 # Node / Expo (in case the app code lands here)

@@ -90,7 +90,7 @@ Scored against §5 criteria; the two highest-weighted (per-row access for minors
 | Auth | Supabase Auth — **magic link (passwordless) as the primary method**; accounts provisioned by coordinator/admin (COPPA). No Google SSO needed (org tooling is the member system, not Workspace). |
 | Notifications | **Web Push (VAPID)** for the PWA (POC) + **Expo Push** for native (post-POC); transactional email via **AWS SES (US region, DPA)**. |
 | Server functions | A few **US-region Node/TS serverless functions** (Netlify Functions, default region **US-East/Ohio**, configurable) for: push-send (`web-push`), email-send (SES), CSV enrollment import. **No Deno** — keeps one language; the persona claim stays in the Postgres auth hook (SQL). |
-| Feed sync | **Poll-on-focus + PWA push** for the POC; Supabase **realtime deferred** to avoid the 500-concurrent cliff (§8). |
+| Feed sync | **Poll-on-focus + PWA push** for feeds/announcements (no realtime needed there). **Supabase Realtime is POC-core** for chat (class group + student P2P) per doc 2 §2/§4 — comfortably within Free-tier limits at pilot scale (§8, Appendix A). |
 | Error monitoring | **Sentry (US region, under DPA) is acceptable** (per §3 relaxation); self-hosted **GlitchTip** is an optional alternative. PII kept out of error payloads. |
 | Analytics | **No ad/marketing trackers.** Product analytics only if US-resident + under DPA + no marketing use; pilot uses in-app/Postgres metrics. |
 | AI drafting | **Deferred + privacy-gated.** When built, no minors' PII in prompts; review Anthropic data-handling terms first. $0 and zero exposure during POC. |
@@ -115,12 +115,12 @@ Scored against §5 criteria; the two highest-weighted (per-row access for minors
 |---|---|---|---|---|---|---|---|
 | **Pilot (POC)** | 50–150, 1 center / 1 session | Free (US region) | Netlify Free (300 credits — see caveat) | SES (free tier/pennies) | Sentry Free (US, DPA) | Expo/EAS Free, Push Free | **~$0** (insure w/ $9 Personal) |
 | **Rollout path** | ~800 multi-center | **Pro $25** | Netlify Free → **Personal $9 / Pro $20** if credits exceed | SES ~$1 | Sentry Free→Team if >5k err | EAS Free/local | **~$25–45** |
-| **+ Chat (post-POC, if enabled)** | — | Realtime **within tier** (Free 200 conn·100 msg/s; Pro 500·500, configurable) | marginal fn credits (push-sender) | — | — | more push sends (free) | **$0 add at pilot · Supabase-side at rollout** |
+| **Chat (POC-core)** | included | Realtime **within Free tier** (200 conn·100 msg/s; Pro 500·500, configurable) | marginal fn credits (push-sender) | — | — | push sends (free) | **$0 at pilot · Supabase-side at rollout** |
 
 **One-time/annual (native):** Apple $99/yr (501(c)(3) waiver) · Google Play $25 once.
-**Named cliffs (rollout only):** Supabase Free→Pro (500 MB DB or 7-day pause); EAS OTA free ≤1K MAU; **realtime 500 concurrent / 500 msg-s on Pro — chat (if enabled) is the main driver** (configurable per-project beyond Pro); Netlify credits 300 free → Personal $9 (1k) / Pro $20 (3k). **None bind at pilot scale.**
+**Named cliffs (rollout only):** Supabase Free→Pro (500 MB DB or 7-day pause); EAS OTA free ≤1K MAU; **realtime 500 concurrent / 500 msg-s on Pro — chat is the main driver** (configurable per-project beyond Pro); Netlify credits 300 free → Personal $9 (1k) / Pro $20 (3k). **None bind at pilot scale.**
 
-**Where chat cost lands (if enabled):** chat rides **Supabase Realtime (WebSocket) — not Netlify** — so its cost pressure is on the Supabase realtime limits above (configurable per project), plus marginal DB writes/storage for the `messages` table. Netlify sees only a small bump in push-sender function invocations. **So "add Netlify Pro" is a general rollout-headroom decision, not chat-driven** — at pilot, chat adds **$0**.
+**Where chat cost lands:** chat (POC-core) rides **Supabase Realtime (WebSocket) — not Netlify** — so its cost pressure is on the Supabase realtime limits above (configurable per project), plus marginal DB writes/storage for the `messages` table. Netlify sees only a small bump in push-sender function invocations. **So "add Netlify Pro" is a general rollout-headroom decision, not chat-driven** — at pilot, chat adds **$0**.
 
 **Setup tasks (effort, not $):**
 - **AWS SES** — dollar cost is pennies, but operating it requires **domain verification + DKIM/SPF + bounce/complaint handling**, and a one-time **sandbox-exit request** for production sending. Budget setup time, not money.
@@ -133,8 +133,9 @@ Scored against §5 criteria; the two highest-weighted (per-row access for minors
 1. **Admin** provisions users (CSV import) + assigns roles.
 2. **Teacher** marks attendance + posts a class update.
 3. **Student & Parent** receive a **PWA push notification** ("New update in your class"), open the app, see it, and comment.
-4. **Coordinator** sees the live compliance view for the session.
-5. **BV Coordinator** sees it rolled up (degenerate single-session rollup — validates the role/screens + RLS scoping, not real cross-center aggregation).
+4. **Student** posts in the **class group chat** (teacher + enrolled students) and direct-messages another student — both delivered live via **Supabase Realtime**, access gated by **RLS on `realtime.messages`** (chat-governance gate satisfied first).
+5. **Coordinator** sees the live compliance view for the session.
+6. **BV Coordinator** sees it rolled up (degenerate single-session rollup — validates the role/screens + RLS scoping, not real cross-center aggregation).
 
 **Success =** the loop works with **per-row access enforced per persona**, including **a single account holding multiple roles across the Parent → Teacher → Coordinator → BV Coordinator span** (switching active role, with correctly *scoped* access each time), an **audit entry** on minors'-data access, and a **PWA push delivered to an installed home-screen PWA** (incl. iOS).
 
@@ -170,9 +171,9 @@ Beyond the obvious relational core (centers → sessions → classes → enrollm
 
 ---
 
-## Appendix A — Future-feature feasibility: real-time chat (Supabase)
+## Appendix A — Real-time chat architecture (Supabase) — POC-core
 
-**Status:** post-POC unless explicitly pulled in. **Zero new vendors** — builds on the existing Supabase stack, stays US-resident, DB-enforced, auditable. *(Announcements need no stack change — they're already in POC scope as Postgres tables + RLS + the existing push path.)*
+**Status:** **POC-core** — pulled in per doc 2 §2/§4 and the [3_ARCHITECTURE.md](3_ARCHITECTURE.md) decision (2026-06-16). Supersedes the earlier "post-POC" framing. **Zero new vendors** — builds on the existing Supabase stack, stays US-resident, DB-enforced, auditable. **Hard precondition:** the chat-governance gate (who-can-DM-whom, moderation/report, retention — HS students are minors) must be resolved *before* chat ships (§3, §10, doc 2 §2). *(Announcements need no realtime — they're Postgres tables + RLS + the existing push path.)*
 
 **Verdict:** 1:1 chat, group chat, and **admin visibility** are all feasible on Supabase. Validated against Supabase Realtime docs 2026-06-14.
 
