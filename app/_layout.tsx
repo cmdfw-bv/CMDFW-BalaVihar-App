@@ -1,5 +1,5 @@
+import "../lib/unistyles";
 import { Stack } from "expo-router";
-// Theme registration (Task 4) will be wired here once lib/theme is ready.
 
 export default function RootLayout() {
   return (
