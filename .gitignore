@@ -62,3 +62,6 @@ supabase/.temp
 
 # misc
 *.log
+
+# supabase edge-runtime local artifact (we use netlify functions, not edge fns)
+deno.lock
