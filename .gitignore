@@ -47,3 +47,18 @@ example
 .claude/.rls-tests-passed
 .claude/.instructions-loaded.log
 .playwright-cli/
+
+# secrets / local env (keep .env.example)
+.env
+.env.*
+!.env.example
+
+# local supabase
+supabase/.branches
+supabase/.temp
+
+# netlify
+.netlify
+
+# misc
+*.log
