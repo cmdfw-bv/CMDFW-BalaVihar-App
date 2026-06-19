@@ -1,56 +1,92 @@
-# Welcome to your Expo app 👋
+# CMDFW Bala Vihar — Connect (POC)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Community + operations app for a weekly children's program. Built by a small team **+ Claude Code**.
 
-## Get started
+> **Claude builds; humans decide.** Every change flows through stages, and automatic safety rails block mistakes.
+> Deep docs: [.docs/3_ARCHITECTURE.md](.docs/3_ARCHITECTURE.md) · rules Claude follows: [.claude/CLAUDE.md](.claude/CLAUDE.md) · decisions: [.docs/adr/](.docs/adr/)
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## How we work
 
-2. Start the app
+```mermaid
+flowchart LR
+    idea["💡 you describe<br/>a feature"] --> R["/refine<br/>one item → brief"]
+    R --> A["/architect<br/>review (ADR if needed)"]
+    A --> D["/design<br/>spec"]
+    D --> B["/plan · /migration · /build<br/>code + tests (Claude)"]
+    B --> T["/test<br/>security + design checks"]
+    T --> S["/deploy-staging<br/>you preview"]
+    S --> P["/promote<br/>you approve → live"]
+    style idea fill:#eef
+    style P fill:#efe
+```
+<sub>Every item flows **refine → architect review → design**, in order (architect records an ADR only when a decision is significant). You **type the slash command**; Claude runs the tools.</sub>
 
-   ```bash
-   npx expo start
-   ```
+| Stage | You type | What happens |
+|---|---|---|
+| Design | `/refine` → `/architect` → `/design` | one item refined, reviewed (ADR if needed), then specced |
+| Development | `/plan` `/migration` `/build` | Claude writes the database + code, **tests first** |
+| Testing | `/test` | runs tests + **security (RLS)** + **design** checks |
+| Promotion | `/deploy-staging` → `/promote` | preview, then you approve to go live |
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Get set up (install once)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+| Install | Why |
+|---|---|
+| **Claude Code** | the assistant that does the work |
+| **Git** + a GitHub account | code + history |
+| **Node.js 22+** | app runtime |
+| **Docker Desktop** | runs the local database |
+| **Supabase CLI** | local database + migrations |
+| **Open Design** | design system + screen prototypes |
 
-## Get a fresh project
+> You install these **once**. You don't memorize commands — **Claude runs them**. Ask it: *"set up my local environment."*
 
-When you're ready, run:
+---
 
-```bash
-npm run reset-project
+## A typical task
+
+```text
+You:    "Add the teacher attendance screen."
+Claude: proposes a plan, asks a couple of questions  ← you decide
+You:    /refine → /architect → /design → /plan → /build → /test
+Claude: writes the spec, the database rules, the screen, and the tests
+You:    /deploy-staging   → look at it on the staging link
+You:    /promote          → approve → live
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Safety rails run automatically — Claude **cannot** commit secrets, leak a child's data, or push an untested database change.
 
-### Other setup steps
+---
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Working in parallel
 
-## Learn more
+Each person takes one **feature** on their own copy (branch). Work happens side-by-side; everything merges at **Promote**.
 
-To learn more about developing your project with Expo, look at the following resources:
+```mermaid
+flowchart TB
+    subgraph par["3 people, at the same time"]
+        f1["👤 Feed"]
+        f2["👤 Attendance"]
+        f3["👤 Chat"]
+    end
+    f1 --> M["Promote → main → live"]
+    f2 --> M
+    f3 --> M
+    note["⚠ database changes are done one-at-a-time<br/>(Claude + the migration rail keep this safe)"] -.-> M
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+| Person | Owns (example) |
+|---|---|
+| A | Teacher + Coordinator features |
+| B | Student + Parent features |
+| C | Design system + shared/System pieces |
 
-## Join the community
+---
 
-Join our community of developers creating universal apps.
+## Status
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Greenfield. The **architecture + ways-of-working are set**; the app code and the Sankalp design import come next (see [.docs/3_ARCHITECTURE.md §12.13](.docs/3_ARCHITECTURE.md)). Start any work by describing it to Claude Code.

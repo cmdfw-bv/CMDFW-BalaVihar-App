@@ -41,3 +41,9 @@ example
 # generated native folders
 /ios
 /android
+
+# local agent / governance state (do not commit)
+.claude/settings.local.json
+.claude/.rls-tests-passed
+.claude/.instructions-loaded.log
+.playwright-cli/

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "bv-scaffold",
-    "slug": "bv-scaffold",
+    "name": "CMDFW Bala Vihar",
+    "slug": "cmdfw-balavihar",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bvscaffold",
+    "scheme": "cmdfwbalavihar",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
