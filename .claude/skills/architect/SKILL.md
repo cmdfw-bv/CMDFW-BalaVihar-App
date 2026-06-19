@@ -1,6 +1,7 @@
 ---
 name: architect
 description: Stage 1 step 2 (mandatory review) — review a refined feature item, record an ADR if there's a significant decision, then hand to design. Runs after /refine, before /design.
+disable-model-invocation: true
 ---
 
 # Architect (review) — sequential gate between /refine and /design

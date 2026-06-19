@@ -21,7 +21,8 @@ process.stdin.on("end", () => {
       );
     }
     process.exit(0); // advisory only
-  } catch {
+  } catch (e) {
+    console.error(`⚠️  schema-guard (advisory) could not run (${e && e.message}) — no security-critical-SQL reminder was emitted for this edit.`);
     process.exit(0);
   }
 });

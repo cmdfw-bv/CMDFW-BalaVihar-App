@@ -18,6 +18,14 @@
           { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/migration-guard.js\"" }
         ]
       }
+    ],
+    "InstructionsLoaded": [
+      {
+        "matcher": "session_start|nested_traversal|path_glob_match|include|compact",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/instructions-audit.js\"" }
+        ]
+      }
     ]
   }
 }

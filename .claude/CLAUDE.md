@@ -7,7 +7,7 @@ Future hosting option: @.docs/AWS_HOSTING_PATH.md
 > This file is **context, not enforcement**. Hard blocks live in `.claude/settings.json` hooks (3_ARCHITECTURE §12.1).
 > Maintainers are three non-technical volunteers + Claude Code — favor intent-level commands and the staged pipeline.
 
-## Non-negotiables (also enforced by hooks — §12.1)
+## Non-negotiables (§12.1)
 
 1. **Access control is RLS in the database.** Never gate access in client code only. Every table is RLS-on; policies key off the `active_role` + scope claims set by the auth hook (§5).
 2. **No secrets or PII in the client or Git.** The service-role key, VAPID private key, and SES creds live **only** in `netlify/functions/` env. Client code (`app/`, `features/`, `lib/`) uses the **anon** key only.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // GOVERN hook (3_ARCHITECTURE §12.1): block secrets/private keys from being written into the repo.
-// PreToolUse on Write|Edit|MultiEdit. Fail-open on any error (never brick the session).
-// Exit 2 = block (stderr shown to Claude). Exit 0 = allow.
+// PreToolUse on Write|Edit|MultiEdit. Best-effort early warning — full coverage is CI/gitleaks (.docs/CI_rules.md §2.1).
+// Fail-LOUD on error, fail-open (exit 0) so a session is never bricked. Exit 2 = block.
 let raw = "";
 process.stdin.on("data", c => (raw += c));
 process.stdin.on("end", () => {
@@ -15,24 +15,35 @@ process.stdin.on("end", () => {
     const text = parts.join("\n");
     if (!text) process.exit(0);
 
+    const block = what => {
+      console.error(
+        `BLOCKED: this change looks like it contains ${what}.\n` +
+        `WHY THIS MATTERS: a secret committed to the code or Git history can be read by anyone who ever sees the repo — forever, even after it's deleted.\n` +
+        `WHAT TO DO: keep secrets only in the server's environment settings (the netlify/functions env). In code, refer to them by name (e.g. process.env.NAME) — never paste the value.`
+      );
+      process.exit(2);
+    };
+
     const rules = [
-      [/-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/, "a PEM private key block"],
-      [/AWS_SECRET_ACCESS_KEY\s*[:=]\s*['"]?[A-Za-z0-9/+]{40}/, "an AWS secret access key value"],
-      [/(?:SERVICE_ROLE_KEY|service_role)\s*[:=]\s*['"]?eyJ[A-Za-z0-9_-]{10,}/, "a Supabase service-role key value"],
-      [/VAPID_PRIVATE_KEY\s*[:=]\s*['"]?[A-Za-z0-9_-]{20,}/, "a VAPID private key value"],
+      [/-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/, "a private key block"],
+      [/AWS_SECRET_ACCESS_KEY\s*[:=]\s*['"]?[A-Za-z0-9/+]{40}/, "an AWS secret access key"],
+      [/\bAKIA[0-9A-Z]{16}\b/, "an AWS access key id"],
+      [/VAPID_PRIVATE_KEY\s*[:=]\s*['"]?[A-Za-z0-9_-]{20,}/, "a VAPID private key"],
     ];
-    for (const [re, what] of rules) {
-      if (re.test(text)) {
-        console.error(
-          `BLOCKED (secret-scan): this write appears to contain ${what}. ` +
-          `Secrets must live only in netlify/functions/ env vars, never in the repo (3_ARCHITECTURE §3, §11). ` +
-          `Use an env var reference instead.`
-        );
-        process.exit(2);
-      }
+    for (const [re, what] of rules) if (re.test(text)) block(what);
+
+    // Bare Supabase service-role key: a JWT whose decoded payload has role=service_role.
+    // The anon key is ALSO a JWT but is public/allowed, so decode rather than blanket-block on "eyJ".
+    for (const m of text.matchAll(/\beyJ[A-Za-z0-9_-]{6,}\.([A-Za-z0-9_-]{6,})\.[A-Za-z0-9_-]{6,}/g)) {
+      try {
+        const payload = JSON.parse(Buffer.from(m[1], "base64").toString("utf8"));
+        if (payload && payload.role === "service_role") block("a Supabase service-role key (a token that bypasses access control)");
+      } catch { /* not a decodable JWT — ignore */ }
     }
+
     process.exit(0);
-  } catch {
-    process.exit(0); // fail-open
+  } catch (e) {
+    console.error(`⚠️  secret-scan could not run (${e && e.message}) — this check was SKIPPED; review the write manually.`);
+    process.exit(0); // still fail-open: never brick the session
   }
 });
