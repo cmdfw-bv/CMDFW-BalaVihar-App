@@ -13,9 +13,9 @@ paths: ["app/**", "features/**", "components/**"]
 - **One primary action per view** (indigo `accent`). Everything else secondary / ghost / danger.
 - **Saffron (`brand`) is identity-only** — logo, eyebrow, one highlight. Never a competing CTA.
 - **Tabular numerics** for any compared number (percentages, counts, dates, IDs) → RN `fontVariant: ['tabular-nums']`.
-- **Draw all five states**: loading · empty · error · validation · **permission-denied**. No blank screens, infinite spinners, or raw stack traces.
-- **Permission-denied is a designed state** — RLS filtered server-side; show it and offer "switch role" (§5.3).
-- **Role badge + scope** on role-specific UI; the active-role switcher is global chrome.
+- **Draw all four states**: loading · empty · error-preserving · content. No blank screens, infinite spinners, or raw stack traces.
+- **No permission-denied screen** — navigation is role-derived; out-of-scope routes redirect home (ADR-0014).
+- **Role badge + scope** on role-specific UI; the active-role switcher is shown only for accounts with ≥2 roles — single-role users see a static context chip (Center · Session · Grade/Class).
 - **≥44px touch targets; no horizontal scroll** at breakpoints **360 / 768 / 1024 / 1440**.
 - **Serif display** (`font-display`) for showcase headings only — never body/buttons; **mono** for utility/tabular.
 

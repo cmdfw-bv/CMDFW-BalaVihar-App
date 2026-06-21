@@ -21,6 +21,10 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0011](0011-styling-unistyles.md) | Styling: Unistyles 3 + generated theme from design-tokens.json | Closed | 2026-06-16 |
 | [ADR-0012](0012-animation-reanimated-moti.md) | Animation: Reanimated engine + Moti declarative layer (future gamification) | Closed | 2026-06-16 |
 | [ADR-0013](0013-refine-architect-design-sequence.md) | Sequential refine → architect-review → design for every feature item | Closed | 2026-06-16 |
+| [ADR-0014](0014-access-ux-role-derived-nav-conditional-switcher.md) | Access UX: four states, no permission-denied, role-derived nav, conditional switcher | Closed | 2026-06-20 |
+| [ADR-0015](0015-chat-access-model.md) | Chat access: grade-band membership, participant ladder, @mentions, no open student DMs | Closed | 2026-06-20 |
+| [ADR-0016](0016-notification-preferences.md) | Notification preferences: per-channel levels (All/Mentions/Muted) with role-aware defaults | Closed | 2026-06-20 |
+| [ADR-0017](0017-chat-governance-deferred.md) | Chat governance gate: moderation + retention deferred post-pilot under interim safeguards | Closed | 2026-06-20 |
 
 ## How to read an ADR
 

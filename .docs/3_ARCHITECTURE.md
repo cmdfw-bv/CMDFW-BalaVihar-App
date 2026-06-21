@@ -190,6 +190,8 @@ sequenceDiagram
 
 Switching roles = **re-issuing the token**. The client writes the desired active role to its own (RLS-protected) row, calls `refreshSession()`, and the hook re-stamps the JWT with the new `active_role`/scope. Because every RLS policy reads the *current* JWT, access changes atomically the moment the new token lands — there is no app-side "if role then show" that could leak. The UI's active-role switcher is cosmetic; the JWT is the enforcement.
 
+Navigation is **role-derived** and roles are **distinct modes** — switching swaps the whole app (ADR-0014). The switcher is shown **only when an account holds ≥2 roles**; a single-role user sees a **static context chip** (Center · Session · Grade/Class) instead.
+
 ### 5.4 Scope model
 
 | Role | `scope_type` | Sees |
@@ -234,6 +236,9 @@ The canonical relational core — `centers → sessions → classes → enrollme
 | `push_subscriptions` | Web Push endpoints/keys per user | RLS-scoped to owning user; payloads PII-free |
 | `conversations`, `conversation_participants`, `messages` | Chat durable history (POC-core — §9) | Private; RLS mirrors channel access |
 | Retention fields + scheduled deletion job | Retention/deletion policy enforcement | Org-policy driven (doc 1 §11, legal sign-off) |
+
+> - `conversation_participants` carries the member's **role** and a membership **derived from the class's grade band** (ADR-0015); add **`notify_level`** (`all | mentions | muted`) + a per-user `notification_default` (ADR-0016).
+> - **mentions** (`@Parents` / `@Students` / `@individual`) stored/parsed on `messages`; the `push-send` function (§8.1) evaluates `notify_level` + mention targeting before dispatch, payloads PII-free.
 
 > Schema design is a downstream task. §6 fixes *how* the schema is owned and evolved; the column-level model is the next deliverable (doc 2 §6 item 1), produced as migrations under this regime.
 
@@ -330,6 +335,7 @@ flowchart LR
 - **Subscription:** the client registers a **service worker** and subscribes with the **VAPID public key**; the resulting endpoint + keys are written to the RLS-scoped `push_subscriptions` table. Payloads are kept **PII-free** ("New update in your class" — no names).
 - **Sending:** the **`push-send` Netlify function** (US-East/Ohio) holds the **VAPID private key**, reads the relevant subscriptions, and dispatches `web-push` notifications. Only secret-holder for push (§3).
 - **iOS hard caveat (verified, doc 1 §9):** Web Push on iOS works **only for a PWA added to the Home Screen, iOS 16.4+** — not in a plain Safari tab. The POC must include an **"Add to Home Screen" onboarding step**; on-device verification on a real iPhone is the **highest-risk POC item** (§13).
+- Dispatch respects each recipient's per-channel **`notify_level`** and `@mention` targeting (ADR-0016); high-reach roles default to *Mentions only*.
 
 ### 8.2 Email (SES)
 
@@ -345,7 +351,7 @@ Native builds (post-POC) switch the push transport to **Expo Push → APNs/FCM**
 
 ## 9. Realtime / chat architecture
 
-Chat is POC-core: **class group chat** (teacher + enrolled students) and **student peer-to-peer DMs** (doc 2 §2). It rides the existing Supabase stack — zero new vendors, US-resident, DB-enforced, auditable. The governance gate is a hard precondition before it ships (§9.4).
+Chat is POC-core. Membership keys off **grade** (ADR-0015): KG–Gr 8 class chat = **teacher ↔ parents**; HS (Gr 9+) class chat = **teacher + students + parents** (with `@mentions`). Plus **session staff** (coordinator + teachers) + 1:1 coordinator↔teacher, and an org **leadership** group. **No open student↔student DMs.** It rides the existing Supabase stack — zero new vendors, US-resident, DB-enforced, auditable. The governance gate is a hard precondition before it ships (§9.4).
 
 ### 9.1 Mechanism (verified 2026-06-17)
 
@@ -367,7 +373,7 @@ flowchart LR
 Channel access is governed by **RLS on `realtime.messages`** with **private channels** (`private: true`, "Allow public access" disabled — verified 2026-06-17). Each policy maps to an action: who may **broadcast to**, **receive from**, or **publish presence**. Permissions are computed from the user's JWT (the `active_role`/scope claims, §5) at WebSocket connect.
 
 - **1:1 & group:** participants of a `conversation` may join/receive on its channel; non-participants cannot.
-- **Admin/coordinator visibility:** a SELECT RLS policy on `messages` lets oversight roles read any thread (scope-bound), paired with `audit_log`. DB-enforced oversight a third-party chat SDK couldn't give without breaking US-residency/no-marketing-sharing.
+- **Participant ladder (ADR-0015):** Coordinator is a **participant** (read + write) in any class chat **in their session**; BV Coordinator / Admin are participants in **any thread org-wide**. RLS grants write per role × scope (not SELECT-only), still scope-bound and paired with `audit_log`. DB-enforced participation + oversight a third-party chat SDK couldn't give without breaking US-residency/no-marketing-sharing.
 - **Realtime Authorization is required + enabled by default** for DB-triggered broadcast (verified) — chat cannot bypass the policy layer.
 
 ### 9.3 Capacity (verified, doc 1 §8)
@@ -377,7 +383,7 @@ Free: **200 concurrent / 100 msg-sec / 100 channel-joins-sec / 256 KB payload.**
 ### 9.4 Governance gate (hard precondition — HS students are minors)
 
 Before student chat goes live (doc 2 §2, doc 1 App. A, §3/§10), the org must define:
-1. **Who-may-chat-whom** policy (default: adult↔adult; **no open student DMs** without an explicit, governed policy).
+1. **Who-may-chat-whom** — **resolved** by ADR-0015 (grade-band class chats; participant ladder; **no open student DMs**). Notification noise → ADR-0016. **Moderation/report + retention → deferred post-pilot** under interim safeguards (ADR-0017); revisit before go-live.
 2. **Moderation / report** mechanism.
 3. **Message retention** policy.
 
@@ -677,7 +683,7 @@ Design, prototyping, and the design system are produced in **Open Design** (loca
 
 **Per-feature flow** (expands Stage 1, §12.3): `/refine` → `/architect` (review) → Open Design **prototype(s)** → `/design` (spec references prototype + DoD) → `/plan` → `/migration` → `/build` (Unistyles + `theme.ts`, matched to prototype, DoD enforced) → `/test` + **playwright-cli design review** (rendered app vs prototype) → `/deploy-staging` → `/promote`.
 
-**Definition of Done** (`.claude/rules/design-system.md`, from Sankalp `USAGE.md`): tokens never hex · one primary action (indigo) · saffron identity-only · tabular numerics · all five states incl. **permission-denied-as-designed** (offer switch-role) · role badge + scope · ≥44px · the four breakpoints · serif display for showcase only.
+**Definition of Done** (`.claude/rules/design-system.md`, from Sankalp `USAGE.md`): tokens never hex · one primary action (indigo) · saffron identity-only · tabular numerics · all **four** states (loading · empty · error-preserving · content); **no permission-denied** — navigation is role-derived and out-of-scope routes redirect home (ADR-0014) · role badge + scope · ≥44px · the four breakpoints · serif display for showcase only.
 
 **Media is orthogonal to styling** — `expo-image` / `expo-video` / `expo-audio` / `react-native-youtube-iframe` (web + native), with either styling library. Media *governance* (Supabase Storage US region, **media-consent** gating, YouTube `nocookie`/link-out for minors) is specced when media features land (mostly deferred, doc 2).
 

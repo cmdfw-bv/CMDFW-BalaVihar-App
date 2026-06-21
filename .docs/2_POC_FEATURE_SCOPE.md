@@ -26,7 +26,7 @@ A **community-engagement + operations platform** for a weekly children's program
 "POC core" = needed to prove value. "Defer" = a real requirement, scheduled later.
 
 ### Student *(grade 9+, HS)*
-- **POC core:** home feed (announcements + class updates) · own class info · attendance stats (present/absent/%) · two-way comments (public + private) · notifications/alerts · class group chat (teacher + all enrolled students in the class) · peer-to-peer direct messaging with other students
+- **POC core:** home feed (announcements + class updates) · own class info · attendance stats (present/absent/%) · two-way comments (public + private) · notifications/alerts · class chat — membership by grade: HS (Gr 9+) students join their own class chat alongside teacher + parents (with `@Parents` / `@Students` / `@individual` mentions); KG–Gr 8 class chat is teacher ↔ parents. **No open student-to-student DMs.** (ADR-0015)
 - **Defer:** karma/gamification · BV Connect social feed (broader HS social feed — distinct from class chat and P2P DMs) · daily inspiration · satsang feed
 
 ### Parent
@@ -117,6 +117,6 @@ Additions from the full feature set at POC scale: **$0** — AI drafting and Sup
 
 1. **Schema design:** define the canonical relational model (centers → sessions → classes → enrollments → attendance → students → families) plus the privacy/multi-role/push additions described in `1_GREENFIELD_POC_PROPOSAL.md §10`.
 2. **Synthetic seed:** generate realistic test data from scratch for POC testing (no reuse of any prior scratch data).
-3. **Which member/enrollment system?** Determines CSV-only vs API sync and field mapping.
-4. **Chat governance:** define who-can-DM-whom policy · moderation/report mechanism · message retention policy — must be resolved before student P2P chat ships.
+3. ~~**Which member/enrollment system?** Determines CSV-only vs API sync and field mapping.~~ **Resolved 2026-06-20:** **CSV-only for the POC** (matches the §5 thinnest slice); member-system API sync is deferred. Schema is designed for CSV enrollment import now.
+4. **Chat governance:** who-may-chat-whom **resolved** by ADR-0015; message **moderation/report** + **retention** are **deferred post-pilot** under interim safeguards (ADR-0017 — adult-presence oversight via the participant ladder, no open student DMs, messages purged at pilot close). Revisit before any rollout / go-live.
 5. **Substitute/Volunteer:** confirmed deferred — any pilot dependency that pulls them in earlier?
