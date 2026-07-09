@@ -5,7 +5,7 @@ Non-human persona owning cross-cutting/infra concerns: the auth/RLS engine, cons
 | functionality | priority | owner | consumers | scope | status |
 |---|---|---|---|---|---|
 | [repository-bootstrap](repository-bootstrap.md) | POC-core (foundational) | System | all 6 personas + every later System item | infra / pre-data (no RLS) | Built — review-clean, ready for `/test` ([plan](repository-bootstrap.plan.md)) |
-| [core-schema-and-rls](core-schema-and-rls.md) | POC-core (foundational) | System | all 6 personas + auth-hook/notifications/chat/CSV-import System items | infra / data-layer (RLS-on, no auth-hook wiring) | Built — pending `/test` ([plan](core-schema-and-rls.plan.md)) |
+| [core-schema-and-rls](core-schema-and-rls.md) | POC-core (foundational) | System | all 6 personas + auth-hook/notifications/chat/CSV-import System items | infra / data-layer (RLS-on, no auth-hook wiring) | Built — ADR-0021 attendance-write RPC landed; full suite green (73/73) ([plan](core-schema-and-rls.plan.md)) |
 | auth-hook-and-identity | POC-core (foundational) | System | all 6 personas | identity / JWT claims (plugs into `user_roles`) | Not started |
 | csv-enrollment-import | POC-core (thinnest-slice prerequisite) | System | Admin; all personas indirectly (provisioned via import) | enrollment import (CSV baseline) | Not started |
 | notifications-infra | POC-core (thinnest-slice prerequisite) | System | Student, Parent, Teacher (push/email recipients) | Web Push (VAPID) + SES email delivery (plugs into `push_subscriptions`) | Not started |

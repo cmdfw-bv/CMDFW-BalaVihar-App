@@ -1,6 +1,6 @@
 # System — Core schema & RLS foundation
 
-> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
+> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)**, **ADR-0020 (superseded same day by ADR-0021)**, **ADR-0021 (Teacher attendance-write RPC, new)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
 
 **Stage:** 1 — Design (Inception). `/refine` ✓ → `/architect` ✓ (2 ADRs recorded) → next is `/design`.
 
@@ -198,5 +198,89 @@ For every table above, using **simulated** `request.jwt.claims` (no real hook), 
 
 ## Sign-off
 - [x] **Human sign-off on this design** (2026-07-08, shree.srinivas@outlook.com) → ready for **`/plan`**.
+
+---
+
+## Architect review — deferred-findings pass (2026-07-09)
+
+Two documentation-level findings from the item's final whole-branch review (build complete, tests green, pushed as `033ca8a`) were deferred to a future `/architect` pass rather than blocking merge. This pass resolves both.
+
+1. **Teacher `attendance` UPDATE bypasses the ADR-0019 audit RPC — real gap, not just documentation.** `attendance_teacher_update`'s `USING`/`RETURNING` lets a Teacher read full row data via a no-op update, with zero `audit_log` entry — contradicts ADR-0019's requirement that all non-self/parent staff reads of a minor's record are audited. **ADR-0020 recorded** (addendum to ADR-0019, not a supersession): add an `AFTER UPDATE` trigger on `attendance` that writes an `audit_log` row (`action='read'`) whenever a Teacher updates a row, closing the bypass natively (UPDATE triggers fire, unlike SELECT). **Follow-up migration required** — not built in this pass; routes to `/design`/`/migration` as a small addition to the existing `core-schema-and-rls` item (trigger + trigger function + one new pgTAP assertion), not a new backlog item.
+2. **Unguarded `scope_id` JWT-claim casts (13 occurrences, 2 migration files) — not ADR-worthy.** `(auth.jwt()->>'scope_id')::uuid` throws on a malformed claim before any audit write. Assessed as a robustness **precondition**, not an access-control decision — no new access pattern, no schema change. Recorded as a requirement to carry into `auth-hook-and-identity` when that item is `/refine`d: the real Custom Access Token Hook must guarantee `scope_id` is always a valid UUID (or absent) for every issued token, since every RLS policy and RPC in this item assumes that shape unguarded.
+
+**Hand-off:** `core-schema-and-rls` gets one small follow-up migration (ADR-0020's trigger) before its next `/test` pass. `auth-hook-and-identity` (not yet started) carries finding 2 as a spec precondition when it's next `/refine`d.
+
+---
+
+## Design addendum — ADR-0020 (superseded same day) → ADR-0021 (Teacher attendance-write RPC, 2026-07-09)
+
+**Stage:** 1 — Design (second addendum to the design signed off 2026-07-08; replaces the first addendum above ADR-0020, superseded before it was ever built). No new UoW, no new spec file — folded into this item per ADR-0021's Consequences (owner locked: System, `core-schema-and-rls`).
+
+**Why this replaces the ADR-0020 addendum:** implementing ADR-0020's trigger (as Task 11) surfaced during TDD that its premise didn't hold. Root-cause investigation found `attendance_teacher_update`/`attendance_teacher_insert` (Task 2, shipped in `033ca8a`) have never actually been usable by a real client: Postgres RLS requires SELECT-policy-equivalent visibility to locate rows for `UPDATE` and for any `RETURNING` clause, and Teacher was deliberately given zero SELECT policy on `attendance` (ADR-0019). A Teacher `UPDATE` silently matches zero rows; a Teacher `INSERT ... RETURNING *` (what `supabase-js`'s `.insert().select()` sends) throws an outright RLS error. No prior test asserted a row-count on a Teacher write, so this shipped unnoticed. See ADR-0021 for full detail — this section documents the resulting design.
+
+### DDL-level spec
+
+```sql
+create or replace function mark_attendance_for_staff(
+  p_enrollment_id uuid,
+  p_class_meeting_date date,
+  p_status text
+)
+returns attendance
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text := auth.jwt()->>'active_role';
+  v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
+  v_authorized boolean := false;
+  v_row attendance%rowtype;
+begin
+  if v_role = 'teacher' then
+    v_authorized := exists (
+      select 1 from enrollments e
+      where e.id = p_enrollment_id and e.class_id = v_scope_id
+    );
+  end if;
+
+  if not v_authorized then
+    insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+    values (auth.uid(), v_role, 'denied', 'attendance', p_enrollment_id, null);
+    return null;
+  end if;
+
+  insert into attendance (enrollment_id, class_meeting_date, status, marked_by)
+  values (p_enrollment_id, p_class_meeting_date, p_status, auth.uid())
+  on conflict (enrollment_id, class_meeting_date)
+  do update set status = excluded.status, marked_by = excluded.marked_by, submitted_at = now()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+revoke all on function mark_attendance_for_staff(uuid, date, text) from public;
+grant execute on function mark_attendance_for_staff(uuid, date, text) to authenticated;
+```
+
+Plus, in the same migration: drop `attendance_teacher_insert` and `attendance_teacher_update` (Task 2), and `revoke insert, update on attendance from authenticated` (the `select` grant/policies for Parent/Student are untouched — only Teacher ever had insert/update).
+
+- **No `audit_log` row on a successful mark/correction** — `marked_by`/`submitted_at` already attribute the write; matches the original design rationale ("writes are already attributed... don't need a redundant audit row"). A **denied** (out-of-scope) call *does* log one `audit_log` row, matching the existing `get_*_for_staff` RPCs' denied-logging precedent (defense-in-depth, doc 3 §11.1) — this is the one asymmetry between successful and denied calls, intentional.
+- **Upsert on the existing unique constraint** `(enrollment_id, class_meeting_date)` (Task 2) — one call handles both the initial mark and a same-day correction; no separate insert-vs-update branching needed.
+- **Migration placement:** new timestamped migration appended after `20260709045311_retention_fields.sql`, not a rewrite of `20260709032818_core_operational_rls_policies.sql` — additive, per constitution #3.
+- **Client impact:** any staff-facing screen marking/correcting attendance calls `mark_attendance_for_staff(...)`, not `.from('attendance').insert()/.update()` — same constraint the existing read RPCs already impose on staff reads, now extended to this one write.
+
+### pgTAP addition (extends the existing adversarial suite, §"pgTAP adversarial test plan" above)
+- Teacher direct `insert`/`update` on `attendance` now returns nothing / fails outright — locked down like the read RPCs (proves the grant revocation + policy drop actually took effect, not just assumed).
+- `mark_attendance_for_staff` succeeds for an in-class Teacher on a **new** date (insert branch) and on an **existing** date (update/correction branch via the upsert), returning the row each time.
+- An out-of-class Teacher's call returns nothing and creates exactly one `audit_log` row (`action='denied'`, `target_table='attendance'`).
+- No `audit_log` row is created by a successful in-scope call (confirms the "no redundant audit row" decision holds).
+
+### Out of scope (unchanged)
+Everything already listed in the item's "Out of scope" section above; this addendum touches only `attendance`'s write path.
+
+### Sign-off
+- [x] **Human sign-off on this addendum** (2026-07-09, shree.srinivas@outlook.com) → ready for **`/plan`** (rewrite Task 11 of `core-schema-and-rls.plan.md`) → **`/migration`**.
 
 ---

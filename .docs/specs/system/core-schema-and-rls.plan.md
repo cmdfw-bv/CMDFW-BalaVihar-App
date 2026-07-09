@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Spec:** [core-schema-and-rls.md](core-schema-and-rls.md) (Design signed off 2026-07-08; ADR-0018, ADR-0019).
+**Spec:** [core-schema-and-rls.md](core-schema-and-rls.md) (Design signed off 2026-07-08, ADR-0018/ADR-0019; addendum signed off 2026-07-09, ADR-0021 — supersedes the same-day ADR-0020). **Tasks 1–10 built, tested, pushed** (`033ca8a`). **Task 11 (below) is the ADR-0021 attendance-write-RPC fix, not yet built** — also the first task to discover that Task 2's `attendance_teacher_update`/`insert` policies never actually worked for a real client (see Task 11's rationale).
 
 **Goal:** Ship the full §6.2 table set — operational core, `user_roles`, `consents`, `audit_log` + ADR-0019 staff RPCs, `push_subscriptions`, chat durability tables, retention fields — as timestamped migrations with RLS proven by an adversarial pgTAP suite using **simulated** JWT claims, plus a synthetic seed, so every later persona/System item has real, access-controlled tables to build against.
 
@@ -1950,6 +1950,176 @@ git commit -m "test: multi-role isolation coverage + full-suite green; core-sche
 
 ---
 
+### Task 11: ADR-0021 — Teacher attendance-write RPC (supersedes the ADR-0020 trigger approach)
+
+**Spec:** [core-schema-and-rls.md](core-schema-and-rls.md) — "Design addendum — ADR-0020 (superseded same day) → ADR-0021" section (signed off 2026-07-09). **Governing ADR:** ADR-0021 (supersedes ADR-0020 in full; does not touch ADR-0019's read-RPC model).
+
+**Files:**
+- Create: `supabase/migrations/<ts>_attendance_teacher_write_rpc.sql`
+- Create: `supabase/tests/100_attendance_teacher_write_rpc.sql`
+
+**Interfaces:**
+- Consumes: `attendance`, `enrollments`, `audit_log` (Tasks 2, 5).
+- Produces: `mark_attendance_for_staff(p_enrollment_id uuid, p_class_meeting_date date, p_status text) returns attendance`. Drops `attendance_teacher_insert`, `attendance_teacher_update` (Task 2); revokes `insert`, `update` on `attendance` from `authenticated`.
+
+**Why this task exists (root cause, found mid-implementation of the original Task 11):** `attendance_teacher_update`/`attendance_teacher_insert` (Task 2) have never actually been usable by a real client. Postgres RLS requires SELECT-policy-equivalent visibility to locate rows for `UPDATE` and for any `RETURNING` clause; Teacher has zero SELECT policy on `attendance` by design (ADR-0019). A Teacher `UPDATE` silently matches zero rows; `INSERT ... RETURNING *` (what `supabase-js`'s `.insert().select()` sends) throws an RLS error outright. No prior test asserted a row-count on a Teacher write, so this shipped unnoticed in `033ca8a`. ADR-0021 replaces the client-side write policies with a `SECURITY DEFINER` RPC — the same pattern as the existing ADR-0019 read RPCs — which sidesteps the visibility problem entirely (the function runs as owner, bypassing RLS).
+
+- [ ] **Step 1: Write the pgTAP test first (RED — RPC doesn't exist yet; also proves the Task-2 policies are currently broken, not just "not yet audited")**
+
+`supabase/tests/100_attendance_teacher_write_rpc.sql`:
+```sql
+begin;
+select plan(7);
+
+insert into families (id, label) values ('ff111111-0000-0000-0000-000000000001', 'Write RPC Family');
+select tests.create_supabase_user('write-rpc-teacher-in@test.local') as v_teacher_in \gset
+select tests.create_supabase_user('write-rpc-teacher-out@test.local') as v_teacher_out \gset
+
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('5f111111-0000-0000-0000-000000000001', 'ff111111-0000-0000-0000-000000000001', 'Wrt', 'Rpc', 'Grade5');
+
+insert into centers (id, name) values ('cf111111-0000-0000-0000-000000000001', 'Write RPC Center');
+insert into sessions (id, center_id, name, start_date, end_date)
+  values ('af111111-0000-0000-0000-000000000001', 'cf111111-0000-0000-0000-000000000001', 'Write-RPC-Session', '2026-01-01', '2026-06-01');
+insert into classes (id, session_id, name, grade_band)
+  values ('cf222222-0000-0000-0000-000000000001', 'af111111-0000-0000-0000-000000000001', 'Write RPC Class', 'Grade5');
+insert into enrollments (id, student_id, class_id, session_id, status)
+  values ('ef111111-0000-0000-0000-000000000001', '5f111111-0000-0000-0000-000000000001', 'cf222222-0000-0000-0000-000000000001', 'af111111-0000-0000-0000-000000000001', 'active');
+
+-- Lock-down check: Teacher direct insert/update on attendance must no longer work at all.
+select tests.authenticate_as(:'v_teacher_in'::uuid, 'teacher', 'class', 'cf222222-0000-0000-0000-000000000001'::uuid);
+select throws_ok(
+  $$insert into attendance (enrollment_id, class_meeting_date, status) values ('ef111111-0000-0000-0000-000000000001', '2026-02-03', 'present')$$,
+  '42501',
+  null,
+  'direct insert on attendance is now locked down for teacher (grant revoked)'
+);
+
+-- RPC insert branch: new date, no existing row.
+select ok(
+  (select status from mark_attendance_for_staff('ef111111-0000-0000-0000-000000000001'::uuid, '2026-02-03'::date, 'present')) = 'present',
+  'mark_attendance_for_staff creates a new attendance row (insert branch)'
+);
+select is((select count(*) from attendance where enrollment_id = 'ef111111-0000-0000-0000-000000000001')::int, 1,
+  'exactly one attendance row exists after the insert-branch call');
+
+-- RPC update branch: same date, correction.
+select ok(
+  (select status from mark_attendance_for_staff('ef111111-0000-0000-0000-000000000001'::uuid, '2026-02-03'::date, 'absent')) = 'absent',
+  'mark_attendance_for_staff corrects the same date (update/upsert branch)'
+);
+select is((select count(*) from attendance where enrollment_id = 'ef111111-0000-0000-0000-000000000001')::int, 1,
+  'still exactly one row after the correction (upsert, not a duplicate)');
+
+-- No audit_log row for a successful in-scope call (per ADR-0021: marked_by attribution is enough).
+select is(
+  (select count(*) from audit_log where target_table = 'attendance' and target_id = 'ef111111-0000-0000-0000-000000000001' and action = 'read')::int, 0,
+  'no audit_log row is created by a successful mark_attendance_for_staff call'
+);
+
+-- Denied case: out-of-class teacher gets no row + a denied audit_log entry.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_teacher_out'::uuid, 'teacher', 'class', gen_random_uuid());
+select is(
+  (select mark_attendance_for_staff('ef111111-0000-0000-0000-000000000001'::uuid, '2026-02-10'::date, 'present')) is null,
+  'out-of-class teacher gets no row from mark_attendance_for_staff'
+);
+
+select tests.clear_authentication();
+select * from finish();
+rollback;
+```
+
+```bash
+npx supabase test db
+```
+Expected: **RED** — the lock-down `throws_ok` fails (Task 2's grants still allow the insert), and every RPC call fails (function doesn't exist yet).
+
+- [ ] **Step 2: Create the migration**
+```bash
+npx supabase migration new attendance_teacher_write_rpc
+```
+
+- [ ] **Step 3: Write it**
+```sql
+-- ADR-0021 (supersedes ADR-0020): attendance_teacher_insert/update (Task 2) never
+-- actually worked for a real client — Postgres RLS needs SELECT-equivalent
+-- visibility for UPDATE/RETURNING, and Teacher intentionally has none on
+-- attendance (ADR-0019). Replaced with a SECURITY DEFINER RPC, same pattern as
+-- the ADR-0019 read RPCs.
+drop policy if exists attendance_teacher_insert on attendance;
+drop policy if exists attendance_teacher_update on attendance;
+revoke insert, update on attendance from authenticated;
+
+create or replace function mark_attendance_for_staff(
+  p_enrollment_id uuid,
+  p_class_meeting_date date,
+  p_status text
+)
+returns attendance
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text := auth.jwt()->>'active_role';
+  v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
+  v_authorized boolean := false;
+  v_row attendance%rowtype;
+begin
+  if v_role = 'teacher' then
+    v_authorized := exists (
+      select 1 from enrollments e
+      where e.id = p_enrollment_id and e.class_id = v_scope_id
+    );
+  end if;
+
+  if not v_authorized then
+    insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+    values (auth.uid(), v_role, 'denied', 'attendance', p_enrollment_id, null);
+    return null;
+  end if;
+
+  insert into attendance (enrollment_id, class_meeting_date, status, marked_by)
+  values (p_enrollment_id, p_class_meeting_date, p_status, auth.uid())
+  on conflict (enrollment_id, class_meeting_date)
+  do update set status = excluded.status, marked_by = excluded.marked_by, submitted_at = now()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+revoke all on function mark_attendance_for_staff(uuid, date, text) from public;
+grant execute on function mark_attendance_for_staff(uuid, date, text) to authenticated;
+```
+
+- [ ] **Step 4: Apply locally + rerun — expect GREEN**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: `100_attendance_teacher_write_rpc.sql` — 7/7 passing.
+
+- [ ] **Step 5: Full clean-reset + full-suite regression run**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: every test file `000`–`100` passes — confirms revoking Task 2's insert/update grants doesn't disturb Parent/Student's `select` access, Task 5's RPC audit rows, or the seed data (Task 9, which inserts attendance directly as the seed superuser, not through RLS) applying cleanly.
+
+- [ ] **Step 6: Update spec + index**
+- `.docs/specs/system/core-schema-and-rls.md`: no change needed beyond what's already recorded (Design addendum already carries this task's DDL — this step is just the verification pass).
+- `.docs/specs/system/_index.md`: change the `core-schema-and-rls` row's status cell from `Built + tested; ADR-0020 follow-up trigger migration pending` to `Built — ADR-0021 attendance-write RPC landed; full suite green`.
+
+- [ ] **Step 7: Commit**
+```bash
+git add supabase/migrations supabase/tests/100_attendance_teacher_write_rpc.sql .docs/specs/system/_index.md
+git commit -m "fix: replace broken Teacher attendance-write RLS with mark_attendance_for_staff RPC (ADR-0021)"
+```
+
+---
+
 ## Self-Review (against the spec)
 
 **Acceptance criteria coverage:**
@@ -1964,16 +2134,22 @@ git commit -m "test: multi-role isolation coverage + full-suite green; core-sche
 - AC #9 (adversarial pgTAP suite, no cross-scope leakage) → Tasks 2,3,4,5,6,7,10 (multi-role) ✓
 - AC #10 (synthetic seed, clean `db reset`) → Task 9 ✓
 - AC #11 (migrations-only) → every task uses `supabase migration new` ✓
+- **ADR-0021** (Teacher `attendance` write RPC — fixes a previously-shipped, previously-untested defect in the Task 2 write policies, not an original spec AC — added via the "Design addendum" section of `core-schema-and-rls.md`, 2026-07-09) → Task 11 ✓
 
-**Edge cases covered:** cross-scope join leakage (Task 2 test, teacher/coordinator join-path assertions) · multi-role isolation (Task 10) · Coordinator vs BV Coordinator boundary (Task 2 test, sibling-session assertion) · chat governance under simulated Student claim (Task 7 test) · audit-log completeness via RPC (Task 5) · retention job not accidentally deleting anything (Task 8, structural no-trigger check) · CSV-import-shaped schema (enrollments/students/families shape from Task 2, import mechanism itself correctly excluded) · enrollment mid-session class change (partial-unique index only constrains active rows, Task 2) · HS-student-without-login gap (`students.user_id` nullable throughout, exercised in Task 7's seed/test).
+**Edge cases covered:** cross-scope join leakage (Task 2 test, teacher/coordinator join-path assertions) · multi-role isolation (Task 10) · Coordinator vs BV Coordinator boundary (Task 2 test, sibling-session assertion) · chat governance under simulated Student claim (Task 7 test) · audit-log completeness via RPC (Task 5) · retention job not accidentally deleting anything (Task 8, structural no-trigger check) · CSV-import-shaped schema (enrollments/students/families shape from Task 2, import mechanism itself correctly excluded) · enrollment mid-session class change (partial-unique index only constrains active rows, Task 2) · HS-student-without-login gap (`students.user_id` nullable throughout, exercised in Task 7's seed/test) · **Teacher `attendance` write silently non-functional under RLS (Task 11, ADR-0021) — Task 2's own test plan only asserted the `UPDATE`/`INSERT` didn't throw, never that a row actually changed/returned, so a real defect (0-row `UPDATE`, erroring `INSERT...RETURNING`) shipped and stayed hidden until Task 11's row-count assertions caught it.**
 
 **Placeholder scan:** no TBD/TODO markers; every step carries complete SQL or an exact command with expected output.
 
-**Type consistency check:** `students`, `attendance`, `consents`, `enrollments`, `classes`, `conversations`, `conversation_participants`, `user_roles` column names/types are identical everywhere they're referenced across Tasks 2–10 (verified by re-reading each cross-task join against Task 2/3/4/7's DDL while drafting).
+**Type consistency check:** `students`, `attendance`, `consents`, `enrollments`, `classes`, `conversations`, `conversation_participants`, `user_roles` column names/types are identical everywhere they're referenced across Tasks 2–11 (verified by re-reading each cross-task join against Task 2/3/4/7's DDL while drafting; Task 11 reuses Task 2's `attendance`/`enrollments` shapes unchanged).
 
-**Nothing architecturally significant surfaced beyond the resolved deferred mechanics documented in Global Constraints** (families/family_members scope, chat trigger behavior, audit_log SELECT predicate) — these are schema/policy-shape judgment calls within the already-approved design, not new architectural decisions, so no bounce to `/architect`.
+**Nothing architecturally significant surfaced beyond the resolved deferred mechanics documented in Global Constraints** (families/family_members scope, chat trigger behavior, audit_log SELECT predicate) — these are schema/policy-shape judgment calls within the already-approved design, not new architectural decisions, so no bounce to `/architect`. **Task 11 is the one exception in this plan's history** — it went through `/architect` twice in one day (ADR-0020, then its immediate supersession ADR-0021 once implementation revealed ADR-0020's premise was wrong) before reaching this plan — nothing further to bounce.
 
 ---
 
 ## Sign-off
 - [ ] **Human sign-off on this plan** → `/migration` (already embedded — every task *is* a migration) → ready for `/build`.
+
+---
+
+## Addendum sign-off — Task 11 (ADR-0021, rewritten from the original ADR-0020 version)
+- [x] **Human sign-off on the rewritten Task 11** (2026-07-09, shree.srinivas@outlook.com) → ready for `/migration`/`/build` of just this task (Tasks 1–10 already built, tested, and pushed as `033ca8a`; Task 11 is the only remaining unbuilt task in this plan).

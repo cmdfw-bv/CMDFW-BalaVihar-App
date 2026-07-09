@@ -27,6 +27,8 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0017](0017-chat-governance-deferred.md) | Chat governance gate: moderation + retention deferred post-pilot under interim safeguards | Closed | 2026-06-20 |
 | [ADR-0018](0018-family-household-model.md) | Family/household data model: one family per student, multiple guardians per household | Closed | 2026-07-08 |
 | [ADR-0019](0019-minors-record-read-audit.md) | Minors'-record read-audit: hybrid RPC for cross-scope reads, plain RLS for self/parent | Closed | 2026-07-08 |
+| [ADR-0020](0020-teacher-attendance-write-audit-trigger.md) | Teacher attendance-write audit trigger (ADR-0019 addendum): closes RETURNING-as-read bypass | Superseded by ADR-0021 | 2026-07-09 |
+| [ADR-0021](0021-teacher-attendance-write-rpc.md) | Teacher attendance-write via SECURITY DEFINER RPC: fixes broken UPDATE/INSERT-RETURNING under RLS | Closed | 2026-07-09 |
 
 ## How to read an ADR
 
