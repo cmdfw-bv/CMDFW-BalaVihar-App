@@ -1,9 +1,11 @@
 -- Entirely synthetic POC seed data (doc 2 §6 item 2). No real program-member data, ever.
+-- Shaped after the actual pilot: one center (Frisco), one session (F3), covering the
+-- full Shishu Vihaar (Kindergarten) through Gr12 grade range as 13 individual classes
+-- (not the coarse grade-bands used by earlier drafts of this seed).
 do $$
 declare
   v_center_id uuid := gen_random_uuid();
-  v_session_1 uuid := gen_random_uuid();
-  v_session_2 uuid := gen_random_uuid();
+  v_session uuid := gen_random_uuid();
   v_class_ids uuid[] := array[]::uuid[];
   v_class_id uuid;
   v_family_id uuid;
@@ -13,30 +15,32 @@ declare
   v_coordinator_user_id uuid;
   v_bv_admin_user_id uuid;
   v_multirole_user_id uuid;
-  grade_bands text[] := array['KG','Grade3','Grade5','Grade7','HS9-12'];
+  grade_bands text[] := array[
+    'Shishu Vihaar','Gr1','Gr2','Gr3','Gr4','Gr5','Gr6',
+    'Gr7','Gr8','Gr9','Gr10','Gr11','Gr12'
+  ];
+  v_grade_count int := 13;
   i int;
   j int;
   d date;
 begin
-  insert into centers (id, name) values (v_center_id, 'DFW Metroplex Center');
+  insert into centers (id, name) values (v_center_id, 'Frisco');
   insert into sessions (id, center_id, name, start_date, end_date) values
-    (v_session_1, v_center_id, '2026-Spring', '2026-01-11', '2026-05-24'),
-    (v_session_2, v_center_id, '2026-Fall', '2026-08-16', '2026-12-13');
+    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24');
 
-  -- 5 classes spanning KG..HS across the two sessions.
-  for i in 1..5 loop
+  -- 13 classes spanning Shishu Vihaar (KG) through Gr12, all within the single F3 session.
+  for i in 1..v_grade_count loop
     v_class_id := gen_random_uuid();
     v_class_ids := array_append(v_class_ids, v_class_id);
     insert into classes (id, session_id, name, grade_band)
-    values (v_class_id, case when i <= 3 then v_session_1 else v_session_2 end,
-            grade_bands[i] || ' Class', grade_bands[i]);
+    values (v_class_id, v_session, grade_bands[i] || ' Class', grade_bands[i]);
 
     v_teacher_user_id := tests.create_supabase_user('teacher' || i || '@bv-seed.test.local');
     insert into user_roles (user_id, role, scope_type, scope_id)
       values (v_teacher_user_id, 'teacher', 'class', v_class_id);
   end loop;
 
-  -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 5 classes.
+  -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 13 classes.
   for i in 1..20 loop
     v_family_id := gen_random_uuid();
     insert into families (id, label) values (v_family_id, 'Seed Family ' || i);
@@ -52,13 +56,15 @@ begin
 
     -- 1 or 2 students per family (multi-child for the first 10 families).
     for j in 1..(case when i <= 10 then 2 else 1 end) loop
-      v_class_id := v_class_ids[1 + ((i + j) % 5)];
+      v_class_id := v_class_ids[1 + ((i + j) % v_grade_count)];
       v_student_id := gen_random_uuid();
       insert into students (id, family_id, first_name, last_name, grade_level, user_id)
       values (
         v_student_id, v_family_id, 'Student' || i || '_' || j, 'Seed',
         (select grade_band from classes where id = v_class_id),
-        case when (select grade_band from classes where id = v_class_id) = 'HS9-12'
+        -- Only Gr9-Gr12 students get a login (students.user_id) -- KG/Shishu Vihaar
+        -- through Gr8 have no login and can't be chat participants (§7 note).
+        case when (select grade_band from classes where id = v_class_id) in ('Gr9','Gr10','Gr11','Gr12')
           then tests.create_supabase_user('student' || i || '_' || j || '@bv-seed.test.local')
           else null
         end
@@ -83,7 +89,7 @@ begin
 
   -- Session-scoped Coordinator + org-scoped BV Coordinator/Admin.
   v_coordinator_user_id := tests.create_supabase_user('coordinator1@bv-seed.test.local');
-  insert into user_roles (user_id, role, scope_type, scope_id) values (v_coordinator_user_id, 'coordinator', 'session', v_session_1);
+  insert into user_roles (user_id, role, scope_type, scope_id) values (v_coordinator_user_id, 'coordinator', 'session', v_session);
 
   v_bv_admin_user_id := tests.create_supabase_user('bvcoordinator1@bv-seed.test.local');
   insert into user_roles (user_id, role, scope_type, scope_id) values (v_bv_admin_user_id, 'bv_coordinator', 'org', null);
@@ -100,6 +106,6 @@ begin
     on conflict do nothing;
   insert into user_roles (user_id, role, scope_type, scope_id) values
     (v_multirole_user_id, 'teacher', 'class', v_class_ids[1]),
-    (v_multirole_user_id, 'coordinator', 'session', v_session_1),
+    (v_multirole_user_id, 'coordinator', 'session', v_session),
     (v_multirole_user_id, 'bv_coordinator', 'org', null);
 end $$;
