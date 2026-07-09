@@ -95,12 +95,16 @@ select ok(
 select tests.clear_authentication();
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
 select is(
-  (select count(*) from centers)::int, 2,
-  'admin sees all centers (org scope)'
+  (select count(*) from centers where id in (
+    '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'
+  ))::int, 2,
+  'admin sees both fixture centers, org scope unrestricted (scoped by id: seed.sql also persists centers across db reset)'
 );
 select is(
-  (select count(*) from classes)::int, 3,
-  'admin sees all classes (org scope)'
+  (select count(*) from classes where id in (
+    'c1111111-0000-0000-0000-000000000001', 'c1111111-0000-0000-0000-000000000002', 'c2222222-0000-0000-0000-000000000001'
+  ))::int, 3,
+  'admin sees all 3 fixture classes, org scope unrestricted (scoped by id: seed.sql also persists classes across db reset)'
 );
 
 -- Negative: cross-family parent leakage, including via the enrollment/student join path.
