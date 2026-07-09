@@ -25,6 +25,8 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0015](0015-chat-access-model.md) | Chat access: grade-band membership, participant ladder, @mentions, no open student DMs | Closed | 2026-06-20 |
 | [ADR-0016](0016-notification-preferences.md) | Notification preferences: per-channel levels (All/Mentions/Muted) with role-aware defaults | Closed | 2026-06-20 |
 | [ADR-0017](0017-chat-governance-deferred.md) | Chat governance gate: moderation + retention deferred post-pilot under interim safeguards | Closed | 2026-06-20 |
+| [ADR-0018](0018-family-household-model.md) | Family/household data model: one family per student, multiple guardians per household | Closed | 2026-07-08 |
+| [ADR-0019](0019-minors-record-read-audit.md) | Minors'-record read-audit: hybrid RPC for cross-scope reads, plain RLS for self/parent | Closed | 2026-07-08 |
 
 ## How to read an ADR
 
