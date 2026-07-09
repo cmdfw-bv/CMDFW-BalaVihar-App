@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(14);
 
 insert into families (id, label) values ('fd111111-0000-0000-0000-000000000001', 'Audit Family');
 select tests.create_supabase_user('audit-teacher-in@test.local') as v_teacher_in \gset
@@ -68,6 +68,57 @@ select throws_ok(
   null,
   'authenticated cannot insert into audit_log directly — only the RPCs (owned by the migration role) can'
 );
+
+-- Coverage gap close (review finding, ADR-0019): audit_log_org_read and
+-- audit_log_coordinator_read were verified correct via manual psql probes but had
+-- no pgTAP assertions. By this point audit_log holds exactly 5 rows, all keyed to
+-- target_student_id = 5e111111...0001 (whose sole enrollment is in class
+-- c3111111...0001 / session a3111111...0001).
+
+-- (d): an out-of-scope teacher's roster call creates a 'denied' audit_log row with
+-- target_table = 'classes' (target_student_id null) — exercises the classes-target
+-- branch of audit_log_coordinator_read (condition b), the less-tested branch.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_teacher_out'::uuid, 'teacher', 'class', gen_random_uuid());
+select is((select count(*) from get_class_roster_for_staff('c3111111-0000-0000-0000-000000000001'::uuid))::int, 0,
+  'get_class_roster_for_staff returns nothing for an out-of-class teacher');
+
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where target_table = 'classes' and target_id = 'c3111111-0000-0000-0000-000000000001' and action = 'denied')::int, 1,
+  'exactly one audit_log denied row was created with target_table = classes'
+);
+
+-- audit_log now holds exactly 6 rows total, all reachable from session
+-- a3111111...0001 — 5 via target_student_id/enrollment (condition a) and 1 via
+-- target_table='classes' (condition b).
+
+-- (a): bv_coordinator/admin (audit_log_org_read) sees every row, org-wide, unconditionally.
+select tests.create_supabase_user('audit-admin@test.local') as v_admin \gset
+select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
+select is((select count(*) from audit_log)::int, 6,
+  'admin (org scope) sees every audit_log row created so far (audit_log_org_read)');
+
+-- (b): a coordinator scoped to the matching session sees all rows — both the
+-- student/enrollment branch (condition a) and the classes-target branch (condition b).
+select tests.clear_authentication();
+select tests.create_supabase_user('audit-coordinator-in@test.local') as v_coord_in \gset
+select tests.authenticate_as(:'v_coord_in'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from audit_log)::int, 6,
+  'coordinator scoped to the matching session sees all audit_log rows (audit_log_coordinator_read, both branches)');
+
+-- (c): a coordinator scoped to a different, freshly-created session/class not
+-- connected to any existing audit_log row sees zero rows — proves the scoping
+-- actually excludes, not just includes.
+select tests.clear_authentication();
+insert into sessions (id, center_id, name, start_date, end_date)
+  values ('a3111111-0000-0000-0000-000000000099', 'c9999999-0000-0000-0000-000000000001', 'Audit-Session-Unrelated', '2026-01-01', '2026-06-01');
+insert into classes (id, session_id, name, grade_band)
+  values ('c3111111-0000-0000-0000-000000000099', 'a3111111-0000-0000-0000-000000000099', 'Audit Class Unrelated', 'Grade6');
+select tests.create_supabase_user('audit-coordinator-out@test.local') as v_coord_out \gset
+select tests.authenticate_as(:'v_coord_out'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000099'::uuid);
+select is((select count(*) from audit_log)::int, 0,
+  'coordinator scoped to an unrelated session sees zero audit_log rows');
 
 select tests.clear_authentication();
 select * from finish();
