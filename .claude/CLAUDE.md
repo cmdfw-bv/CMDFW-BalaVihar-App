@@ -20,6 +20,8 @@ Future hosting option: @.docs/AWS_HOSTING_PATH.md
 
 Every feature flows (sequential, per item): **`/refine` → `/architect` (review) → `/design` → `/plan` → `/migration` → `/build` → `/test` → `/deploy-staging` → `/promote`.**
 
+- **Picking up parallel work:** ask "what feature can I work on next" (or run `/next-feature`) — fetches open, unassigned GitHub issues labeled `feature`, lets you pick one, assigns it to you, and hands off into `/refine`. Issues are a pickable view onto the persona `_index.md` backlogs (§12.12); the `_index.md` row is always the source of truth if the two ever disagree.
+
 - **Plan → ask → human-validate (AI-DLC):** propose, ask clarifying questions, and act **only after human validation**. Defer critical decisions to humans. Do not assume.
 - **Spec is the source of truth (SDD):** features are specced under `.docs/specs/<persona>/<functionality>.md` before they are built.
 - **Docs are organized persona → functionality** (7 personas incl. **System**); each spec carries `owner · consumers · scope · governing ADR · covers` (§12.12).
