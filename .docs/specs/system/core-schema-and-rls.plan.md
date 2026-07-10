@@ -40,14 +40,14 @@
 **Interfaces:**
 - Produces: `tests.authenticate_as(p_user_id uuid, p_role text, p_scope_type text default null, p_scope_id uuid default null)`, `tests.clear_authentication()`, `tests.create_supabase_user(p_email text) returns uuid` — every later test file in this plan calls these three functions and nothing else to simulate a role.
 
-- [ ] **Step 1: Create the migration file**
+- [x] **Step 1: Create the migration file**
 ```bash
 cd /Users/shree/Documents/claude-code/CMDFW-BalaVihar---Pilot-App
 npx supabase migration new enable_pgtap_and_test_helpers
 ```
 Expected: a new `supabase/migrations/<ts>_enable_pgtap_and_test_helpers.sql` (empty).
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 ```sql
 -- pgTAP for adversarial RLS testing (§11.3)
 create extension if not exists pgtap with schema extensions;
@@ -119,13 +119,13 @@ revoke execute on function tests.clear_authentication() from public, anon, authe
 revoke execute on function tests.create_supabase_user(text) from public, anon, authenticated;
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 Expected: migration applies cleanly (no other migrations yet).
 
-- [ ] **Step 4: Write the smoke test** `supabase/tests/000_pgtap_smoke.sql`
+- [x] **Step 4: Write the smoke test** `supabase/tests/000_pgtap_smoke.sql`
 ```sql
 begin;
 select plan(3);
@@ -144,13 +144,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run it**
+- [x] **Step 5: Run it**
 ```bash
 npx supabase test db
 ```
 Expected: `000_pgtap_smoke.sql` — 3/3 passing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add supabase/migrations supabase/tests/000_pgtap_smoke.sql
 git commit -m "feat: pgTAP harness + simulated-claims test helpers"
@@ -167,12 +167,12 @@ git commit -m "feat: pgTAP harness + simulated-claims test helpers"
 **Interfaces:**
 - Produces: `centers(id,name,created_at)`, `sessions(id,center_id,name,start_date,end_date,created_at)`, `classes(id,session_id,name,grade_band,created_at)`, `families(id,label,created_at)`, `family_members(id,family_id,user_id,relationship,created_at)`, `students(id,family_id,first_name,last_name,grade_level,external_member_id,user_id,created_at)`, `enrollments(id,student_id,class_id,session_id,status,enrolled_at)`, `attendance(id,enrollment_id,class_meeting_date,status,marked_by,submitted_at)`.
 
-- [ ] **Step 1: Create the migration file**
+- [x] **Step 1: Create the migration file**
 ```bash
 npx supabase migration new core_operational_schema
 ```
 
-- [ ] **Step 2: Write the DDL + grants + RLS-enable (no policies yet)**
+- [x] **Step 2: Write the DDL + grants + RLS-enable (no policies yet)**
 ```sql
 create table if not exists centers (
   id uuid primary key default gen_random_uuid(),
@@ -264,13 +264,13 @@ grant select on enrollments to authenticated;
 grant select, insert, update on attendance to authenticated;
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 Expected: all 8 tables created; `\d+ students` (via `npx supabase db psql` or Studio) shows `rowsecurity = t` and zero policies.
 
-- [ ] **Step 4: Write the adversarial pgTAP test (positive + negative + join-path + uniqueness)**
+- [x] **Step 4: Write the adversarial pgTAP test (positive + negative + join-path + uniqueness)**
 
 `supabase/tests/010_operational_core_rls.sql`:
 ```sql
@@ -404,13 +404,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run it — expect RED on the scope-positive cases**
+- [x] **Step 5: Run it — expect RED on the scope-positive cases**
 ```bash
 npx supabase test db
 ```
 Expected: the enrollment-uniqueness test (partial unique index already exists) passes; every scope-positive test (parent/student/teacher/coordinator/admin "sees own X") **fails** — RLS is enabled with zero policies, so every role sees 0 rows everywhere. This is the RED state.
 
-- [ ] **Step 6: Write the RLS-policy migration**
+- [x] **Step 6: Write the RLS-policy migration**
 ```bash
 npx supabase migration new core_operational_rls_policies
 ```
@@ -618,18 +618,18 @@ with check (
 );
 ```
 
-- [ ] **Step 7: Apply locally**
+- [x] **Step 7: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 8: Run the test again — expect GREEN**
+- [x] **Step 8: Run the test again — expect GREEN**
 ```bash
 npx supabase test db
 ```
 Expected: `010_operational_core_rls.sql` — 14/14 passing.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 ```bash
 git add supabase/migrations supabase/tests/010_operational_core_rls.sql
 git commit -m "feat: operational core schema (centers..families) + role x scope RLS"
@@ -646,12 +646,12 @@ git commit -m "feat: operational core schema (centers..families) + role x scope 
 **Interfaces:**
 - Produces: `user_roles(id,user_id,role,scope_type,scope_id,created_at)` — every later task's RLS policies read `auth.jwt()` claims that this table is the intended (future) source of, but this item never reads `user_roles` itself from a policy; only the hook will.
 
-- [ ] **Step 1: Create the migration**
+- [x] **Step 1: Create the migration**
 ```bash
 npx supabase migration new user_roles_catalog
 ```
 
-- [ ] **Step 2: Write it**
+- [x] **Step 2: Write it**
 ```sql
 create type app_role as enum ('student','parent','teacher','coordinator','bv_coordinator','admin');
 create type app_scope_type as enum ('org','center','session','class');
@@ -678,12 +678,12 @@ to supabase_auth_admin
 using (true);
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 4: Write the pgTAP test**
+- [x] **Step 4: Write the pgTAP test**
 
 `supabase/tests/020_user_roles_lockdown.sql`:
 ```sql
@@ -720,13 +720,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run — expect the auth_admin case to pass and the lockdown cases to already pass (default-deny is correct from the start here; there's no positive client-facing policy to be RED about)**
+- [x] **Step 5: Run — expect the auth_admin case to pass and the lockdown cases to already pass (default-deny is correct from the start here; there's no positive client-facing policy to be RED about)**
 ```bash
 npx supabase test db
 ```
 Expected: `020_user_roles_lockdown.sql` — 4/4 passing (this table's correct end-state *is* default-deny plus one auth_admin policy, so there's no RED step distinct from Task 2's pattern — the "test first" discipline here is satisfied by having written the assertions before confirming, in Step 4→5, that the lockdown is real and not just assumed).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add supabase/migrations supabase/tests/020_user_roles_lockdown.sql
 git commit -m "feat: user_roles catalog, locked to supabase_auth_admin only"
@@ -743,12 +743,12 @@ git commit -m "feat: user_roles catalog, locked to supabase_auth_admin only"
 **Interfaces:**
 - Produces: `consents(id,student_id,consent_type,granted,granted_by,granted_at,revoked_at)`.
 
-- [ ] **Step 1: Create the migration**
+- [x] **Step 1: Create the migration**
 ```bash
 npx supabase migration new consents_table
 ```
 
-- [ ] **Step 2: Write the DDL with RLS enabled, no policies (RED setup)**
+- [x] **Step 2: Write the DDL with RLS enabled, no policies (RED setup)**
 ```sql
 create table if not exists consents (
   id uuid primary key default gen_random_uuid(),
@@ -766,12 +766,12 @@ alter table consents enable row level security;
 grant select, insert, update on consents to authenticated;
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 4: Write the pgTAP test**
+- [x] **Step 4: Write the pgTAP test**
 
 `supabase/tests/030_consents_rls.sql`:
 ```sql
@@ -832,13 +832,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run — expect RED** (no policies exist yet, so even the parent's own-child cases fail)
+- [x] **Step 5: Run — expect RED** (no policies exist yet, so even the parent's own-child cases fail)
 ```bash
 npx supabase test db
 ```
 Expected: parent positive cases fail; teacher zero-rows case trivially passes (already default-deny).
 
-- [ ] **Step 6: Write the RLS-policy migration**
+- [x] **Step 6: Write the RLS-policy migration**
 ```bash
 npx supabase migration new consents_rls_policies
 ```
@@ -881,14 +881,14 @@ with check (
 );
 ```
 
-- [ ] **Step 7: Apply locally + run — expect GREEN**
+- [x] **Step 7: Apply locally + run — expect GREEN**
 ```bash
 npx supabase db reset
 npx supabase test db
 ```
 Expected: `030_consents_rls.sql` — 6/6 passing.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 ```bash
 git add supabase/migrations supabase/tests/030_consents_rls.sql
 git commit -m "feat: consents table, per-student, Parent/Student-direct RLS"
@@ -906,12 +906,12 @@ git commit -m "feat: consents table, per-student, Parent/Student-direct RLS"
 - Consumes: `students`, `attendance`, `consents`, `enrollments`, `classes` (Tasks 2, 4).
 - Produces: `audit_log(id,actor_user_id,actor_role,action,target_table,target_id,target_student_id,accessed_at)`; `get_student_for_staff(p_student_id uuid) returns setof students`; `get_class_roster_for_staff(p_class_id uuid) returns setof students`; `get_class_attendance_for_staff(p_class_id uuid, p_date_from date, p_date_to date) returns setof attendance`; `get_consents_for_staff(p_student_id uuid) returns setof consents`.
 
-- [ ] **Step 1: Create the migration**
+- [x] **Step 1: Create the migration**
 ```bash
 npx supabase migration new audit_log_and_staff_rpcs
 ```
 
-- [ ] **Step 2: Write `audit_log` + lockdown**
+- [x] **Step 2: Write `audit_log` + lockdown**
 ```sql
 create table if not exists audit_log (
   id uuid primary key default gen_random_uuid(),
@@ -959,7 +959,7 @@ using (
 );
 ```
 
-- [ ] **Step 3: Write the four RPCs**
+- [x] **Step 3: Write the four RPCs**
 ```sql
 create or replace function get_student_for_staff(p_student_id uuid)
 returns setof students
@@ -1121,12 +1121,12 @@ grant execute on function get_class_attendance_for_staff(uuid, date, date) to au
 grant execute on function get_consents_for_staff(uuid) to authenticated;
 ```
 
-- [ ] **Step 4: Apply locally**
+- [x] **Step 4: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 5: Write the pgTAP test (RPC-bypass, denied-logging, audit integrity — test plan #3/#3a/#4)**
+- [x] **Step 5: Write the pgTAP test (RPC-bypass, denied-logging, audit integrity — test plan #3/#3a/#4)**
 
 `supabase/tests/040_audit_rpc_and_denied_logging.sql`:
 ```sql
@@ -1201,13 +1201,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 6: Run — expect GREEN** (this task ships schema, RPCs, and policy together since the RPCs *are* the deliverable — there's no meaningful RED state for a function that doesn't exist yet)
+- [x] **Step 6: Run — expect GREEN** (this task ships schema, RPCs, and policy together since the RPCs *are* the deliverable — there's no meaningful RED state for a function that doesn't exist yet)
 ```bash
 npx supabase test db
 ```
 Expected: `040_audit_rpc_and_denied_logging.sql` — 9/9 passing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 ```bash
 git add supabase/migrations supabase/tests/040_audit_rpc_and_denied_logging.sql
 git commit -m "feat: audit_log + ADR-0019 staff RPCs (get_student/roster/attendance/consents_for_staff)"
@@ -1224,12 +1224,12 @@ git commit -m "feat: audit_log + ADR-0019 staff RPCs (get_student/roster/attenda
 **Interfaces:**
 - Produces: `push_subscriptions(id,user_id,endpoint,p256dh_key,auth_key,created_at)`.
 
-- [ ] **Step 1: Create the migration**
+- [x] **Step 1: Create the migration**
 ```bash
 npx supabase migration new push_subscriptions
 ```
 
-- [ ] **Step 2: Write it (DDL + RLS + policy together — this table's rule is a single `auth.uid()` predicate, not role/scope-based, so there's no useful RED/GREEN split)**
+- [x] **Step 2: Write it (DDL + RLS + policy together — this table's rule is a single `auth.uid()` predicate, not role/scope-based, so there's no useful RED/GREEN split)**
 ```sql
 create table if not exists push_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -1249,12 +1249,12 @@ using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 4: Write the pgTAP test**
+- [x] **Step 4: Write the pgTAP test**
 
 `supabase/tests/050_push_subscriptions_rls.sql`:
 ```sql
@@ -1286,13 +1286,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run — expect GREEN**
+- [x] **Step 5: Run — expect GREEN**
 ```bash
 npx supabase test db
 ```
 Expected: `050_push_subscriptions_rls.sql` — 4/4 passing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add supabase/migrations supabase/tests/050_push_subscriptions_rls.sql
 git commit -m "feat: push_subscriptions, owner-only RLS"
@@ -1311,12 +1311,12 @@ git commit -m "feat: push_subscriptions, owner-only RLS"
 - Consumes: `classes`, `sessions`, `enrollments`, `students`, `family_members`, `user_roles` (Tasks 2, 3).
 - Produces: `conversations(id,kind,scope_type,scope_id,created_at)`, `conversation_participants(id,conversation_id,user_id,participant_role,notify_level,notification_default,created_at)`, `messages(id,conversation_id,sender_user_id,body,mention_targets,created_at)`; triggers `sync_class_conversation`, `sync_session_conversation`, `sync_class_participants`, `sync_staff_participants`.
 
-- [ ] **Step 1: Create the tables migration**
+- [x] **Step 1: Create the tables migration**
 ```bash
 npx supabase migration new chat_durability_tables
 ```
 
-- [ ] **Step 2: Write the DDL + RLS (member-only, no client write on conversations/participants)**
+- [x] **Step 2: Write the DDL + RLS (member-only, no client write on conversations/participants)**
 ```sql
 create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
@@ -1390,17 +1390,17 @@ with check (
 -- makes "no open student-to-student DM" structural rather than policy-dependent.
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 4: Create the triggers migration**
+- [x] **Step 4: Create the triggers migration**
 ```bash
 npx supabase migration new chat_sync_triggers
 ```
 
-- [ ] **Step 5: Write the trigger functions (resolved deferred mechanic #2)**
+- [x] **Step 5: Write the trigger functions (resolved deferred mechanic #2)**
 ```sql
 create or replace function sync_class_conversation() returns trigger
 language plpgsql
@@ -1559,12 +1559,12 @@ after insert or delete on user_roles
 for each row execute function sync_staff_participants();
 ```
 
-- [ ] **Step 6: Apply locally**
+- [x] **Step 6: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 7: Write the pgTAP test (membership scoping + no-P2P-DM — test plan #6)**
+- [x] **Step 7: Write the pgTAP test (membership scoping + no-P2P-DM — test plan #6)**
 
 `supabase/tests/060_chat_rls.sql`:
 ```sql
@@ -1630,13 +1630,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 8: Run — expect GREEN**
+- [x] **Step 8: Run — expect GREEN**
 ```bash
 npx supabase test db
 ```
 Expected: `060_chat_rls.sql` — 6/6 passing.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 ```bash
 git add supabase/migrations supabase/tests/060_chat_rls.sql
 git commit -m "feat: chat durability tables + trigger-maintained membership (no P2P DM path)"
@@ -1653,12 +1653,12 @@ git commit -m "feat: chat durability tables + trigger-maintained membership (no 
 **Interfaces:**
 - Modifies: `students`, `attendance`, `consents`, `messages` — adds nullable `retention_eligible_at timestamptz`.
 
-- [ ] **Step 1: Create the migration**
+- [x] **Step 1: Create the migration**
 ```bash
 npx supabase migration new retention_fields
 ```
 
-- [ ] **Step 2: Write it**
+- [x] **Step 2: Write it**
 ```sql
 alter table students add column if not exists retention_eligible_at timestamptz;
 alter table attendance add column if not exists retention_eligible_at timestamptz;
@@ -1675,12 +1675,12 @@ comment on column messages.retention_eligible_at is
   'Provisional: purged at pilot close per ADR-0017, not by this column value. Inert until a future retention job.';
 ```
 
-- [ ] **Step 3: Apply locally**
+- [x] **Step 3: Apply locally**
 ```bash
 npx supabase db reset
 ```
 
-- [ ] **Step 4: Write the pgTAP test** (structural only: columns exist, nullable, no deletion trigger reads them)
+- [x] **Step 4: Write the pgTAP test** (structural only: columns exist, nullable, no deletion trigger reads them)
 
 `supabase/tests/070_retention_columns.sql`:
 ```sql
@@ -1705,13 +1705,13 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 5: Run — expect GREEN**
+- [x] **Step 5: Run — expect GREEN**
 ```bash
 npx supabase test db
 ```
 Expected: `070_retention_columns.sql` — 5/5 passing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add supabase/migrations supabase/tests/070_retention_columns.sql
 git commit -m "feat: retention_eligible_at placeholder columns (inert, provisional POC value documented)"
@@ -1728,7 +1728,7 @@ git commit -m "feat: retention_eligible_at placeholder columns (inert, provision
 - Consumes: every table + trigger from Tasks 2–8.
 - Produces: a full synthetic POC dataset loaded automatically on `supabase db reset` (per `config.toml`'s `db.seed.sql_paths = ["./seed.sql"]`).
 
-- [ ] **Step 1: Write `supabase/seed/seed.sql`**
+- [x] **Step 1: Write `supabase/seed/seed.sql`**
 ```sql
 -- Entirely synthetic POC seed data (doc 2 §6 item 2). No real program-member data, ever.
 do $$
@@ -1837,7 +1837,7 @@ begin
 end $$;
 ```
 
-- [ ] **Step 2: Apply + verify it re-applies cleanly (AC #10)**
+- [x] **Step 2: Apply + verify it re-applies cleanly (AC #10)**
 ```bash
 npx supabase db reset
 ```
@@ -1848,13 +1848,13 @@ npx supabase db psql -c "select count(*) from families;"   # expect 20
 npx supabase db psql -c "select count(*) from conversation_participants;"  # expect > 0 (trigger-populated)
 ```
 
-- [ ] **Step 3: Run the full pgTAP suite against the seeded DB** (confirms fixture-based tests still pass with real seed data present — each test file wraps in `begin;...rollback;` so seed data isn't disturbed)
+- [x] **Step 3: Run the full pgTAP suite against the seeded DB** (confirms fixture-based tests still pass with real seed data present — each test file wraps in `begin;...rollback;` so seed data isn't disturbed)
 ```bash
 npx supabase test db
 ```
 Expected: all prior test files still pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add supabase/seed/seed.sql
 git commit -m "feat: synthetic POC seed data (20 families, ~35 students, multi-role account)"
@@ -1870,7 +1870,7 @@ git commit -m "feat: synthetic POC seed data (20 families, ~35 students, multi-r
 
 **Interfaces:** none new — this task proves the whole suite together and closes out the spec.
 
-- [ ] **Step 1: Write the multi-role isolation test (test plan #5)** — uses the seeded `multirole@bv-seed.test.local` account from Task 9, proving each simulated role yields only that role's scope with zero cross-contamination.
+- [x] **Step 1: Write the multi-role isolation test (test plan #5)** — uses the seeded `multirole@bv-seed.test.local` account from Task 9, proving each simulated role yields only that role's scope with zero cross-contamination.
 
 `supabase/tests/090_multi_role_isolation.sql`:
 ```sql
@@ -1925,24 +1925,24 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: Run the new test**
+- [x] **Step 2: Run the new test**
 ```bash
 npx supabase test db
 ```
 Expected: `090_multi_role_isolation.sql` — 4/4 passing.
 
-- [ ] **Step 3: Full clean-reset + full-suite run (final gate, mirrors the §6.3 workflow diagram)**
+- [x] **Step 3: Full clean-reset + full-suite run (final gate, mirrors the §6.3 workflow diagram)**
 ```bash
 npx supabase db reset
 npx supabase test db
 ```
 Expected: every test file (`000` through `090`) passes — this is the "merge gate" the constitution requires before this migration set can be considered prod-eligible (the actual prod gate is the migration-guard hook at promotion time, outside this plan's scope).
 
-- [ ] **Step 4: Self-review against the spec's acceptance criteria** (run through AC #1–#11 from `core-schema-and-rls.md` and confirm each has a task+test; no code changes, verification only).
+- [x] **Step 4: Self-review against the spec's acceptance criteria** (run through AC #1–#11 from `core-schema-and-rls.md` and confirm each has a task+test; no code changes, verification only).
 
-- [ ] **Step 5: Mark the spec Built** — in `.docs/specs/system/_index.md`, change the `core-schema-and-rls` row's status cell from `Design signed off (ADR-0018, ADR-0019) — ready for /plan` to `Built — pending /test ([plan](core-schema-and-rls.plan.md))`.
+- [x] **Step 5: Mark the spec Built** — in `.docs/specs/system/_index.md`, change the `core-schema-and-rls` row's status cell from `Design signed off (ADR-0018, ADR-0019) — ready for /plan` to `Built — pending /test ([plan](core-schema-and-rls.plan.md))`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add supabase/tests/090_multi_role_isolation.sql .docs/specs/system/_index.md
 git commit -m "test: multi-role isolation coverage + full-suite green; core-schema-and-rls built"
@@ -1964,7 +1964,7 @@ git commit -m "test: multi-role isolation coverage + full-suite green; core-sche
 
 **Why this task exists (root cause, found mid-implementation of the original Task 11):** `attendance_teacher_update`/`attendance_teacher_insert` (Task 2) have never actually been usable by a real client. Postgres RLS requires SELECT-policy-equivalent visibility to locate rows for `UPDATE` and for any `RETURNING` clause; Teacher has zero SELECT policy on `attendance` by design (ADR-0019). A Teacher `UPDATE` silently matches zero rows; `INSERT ... RETURNING *` (what `supabase-js`'s `.insert().select()` sends) throws an RLS error outright. No prior test asserted a row-count on a Teacher write, so this shipped unnoticed in `033ca8a`. ADR-0021 replaces the client-side write policies with a `SECURITY DEFINER` RPC — the same pattern as the existing ADR-0019 read RPCs — which sidesteps the visibility problem entirely (the function runs as owner, bypassing RLS).
 
-- [ ] **Step 1: Write the pgTAP test first (RED — RPC doesn't exist yet; also proves the Task-2 policies are currently broken, not just "not yet audited")**
+- [x] **Step 1: Write the pgTAP test first (RED — RPC doesn't exist yet; also proves the Task-2 policies are currently broken, not just "not yet audited")**
 
 `supabase/tests/100_attendance_teacher_write_rpc.sql`:
 ```sql
@@ -2035,12 +2035,12 @@ npx supabase test db
 ```
 Expected: **RED** — the lock-down `throws_ok` fails (Task 2's grants still allow the insert), and every RPC call fails (function doesn't exist yet).
 
-- [ ] **Step 2: Create the migration**
+- [x] **Step 2: Create the migration**
 ```bash
 npx supabase migration new attendance_teacher_write_rpc
 ```
 
-- [ ] **Step 3: Write it**
+- [x] **Step 3: Write it**
 ```sql
 -- ADR-0021 (supersedes ADR-0020): attendance_teacher_insert/update (Task 2) never
 -- actually worked for a real client — Postgres RLS needs SELECT-equivalent
@@ -2094,25 +2094,25 @@ revoke all on function mark_attendance_for_staff(uuid, date, text) from public;
 grant execute on function mark_attendance_for_staff(uuid, date, text) to authenticated;
 ```
 
-- [ ] **Step 4: Apply locally + rerun — expect GREEN**
+- [x] **Step 4: Apply locally + rerun — expect GREEN**
 ```bash
 npx supabase db reset
 npx supabase test db
 ```
 Expected: `100_attendance_teacher_write_rpc.sql` — 7/7 passing.
 
-- [ ] **Step 5: Full clean-reset + full-suite regression run**
+- [x] **Step 5: Full clean-reset + full-suite regression run**
 ```bash
 npx supabase db reset
 npx supabase test db
 ```
 Expected: every test file `000`–`100` passes — confirms revoking Task 2's insert/update grants doesn't disturb Parent/Student's `select` access, Task 5's RPC audit rows, or the seed data (Task 9, which inserts attendance directly as the seed superuser, not through RLS) applying cleanly.
 
-- [ ] **Step 6: Update spec + index**
+- [x] **Step 6: Update spec + index**
 - `.docs/specs/system/core-schema-and-rls.md`: no change needed beyond what's already recorded (Design addendum already carries this task's DDL — this step is just the verification pass).
 - `.docs/specs/system/_index.md`: change the `core-schema-and-rls` row's status cell from `Built + tested; ADR-0020 follow-up trigger migration pending` to `Built — ADR-0021 attendance-write RPC landed; full suite green`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 ```bash
 git add supabase/migrations supabase/tests/100_attendance_teacher_write_rpc.sql .docs/specs/system/_index.md
 git commit -m "fix: replace broken Teacher attendance-write RLS with mark_attendance_for_staff RPC (ADR-0021)"

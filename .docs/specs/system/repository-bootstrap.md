@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all 6 personas + every later System item (universal dependency) · **scope:** infra / pre-data — no rows, no RLS · **governing ADR:** none new — covered by ADR-0001 (Expo), ADR-0002 (Supabase), ADR-0006 (environments), ADR-0011 (Unistyles) + doc 3 §4 · **covers:** doc 2 §2 Cross-cutting, §5 thinnest-slice prerequisites; doc 3 §4 (repo structure), §7.1 (local env), §12.6 (parallel delivery)
 
-**Stage:** 1 — Design (Inception). `/refine` ✓ → `/architect` ✓ (signed off, no ADR) → next is `/design`.
+**Stage:** Built — review-clean (2026-06-19), manually verified end-to-end (Docker + no-Docker paths). `/refine` ✓ → `/architect` ✓ (signed off, no ADR) → `/design` ✓ → `/plan` ✓ → `/build` ✓ → next is `/test` (formal stage not yet run; build-outcome verification already covers most of it).
 
 ---
 

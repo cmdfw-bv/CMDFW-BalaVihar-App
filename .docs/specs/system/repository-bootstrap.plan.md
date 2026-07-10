@@ -39,14 +39,14 @@
 **Interfaces:**
 - Produces: a working Expo Router app at repo root; `npm` scripts namespace to extend in later tasks; `engines.node` floor.
 
-- [ ] **Step 1: Scaffold into a temp dir** (keeps the existing `.docs/`, `.claude/`, `.git/` untouched)
+- [x] **Step 1: Scaffold into a temp dir** (keeps the existing `.docs/`, `.claude/`, `.git/` untouched)
 
 ```bash
 npx create-expo-app@latest /tmp/bv-scaffold
 ```
 Expected: a new Expo app with Expo Router + an example tabs layout under `/tmp/bv-scaffold/app`.
 
-- [ ] **Step 2: Merge the scaffold into the repo root** (do not overwrite `.docs/`, `.claude/`, `.git/`, existing `README` if present)
+- [x] **Step 2: Merge the scaffold into the repo root** (do not overwrite `.docs/`, `.claude/`, `.git/`, existing `README` if present)
 
 ```bash
 cd /tmp/bv-scaffold
@@ -56,7 +56,7 @@ rsync -a --exclude='.git' --exclude='node_modules' --exclude='.docs' --exclude='
 ```
 Expected: `app/`, `package.json`, `app.json`, `tsconfig.json` now exist at repo root.
 
-- [ ] **Step 3: Pin Node** — create the version files and add the `engines` floor
+- [x] **Step 3: Pin Node** — create the version files and add the `engines` floor
 
 `.nvmrc`:
 ```
@@ -75,7 +75,7 @@ Add to `package.json`:
 "engines": { "node": ">=20.19.0" }
 ```
 
-- [ ] **Step 4: Install deterministically**
+- [x] **Step 4: Install deterministically**
 
 ```bash
 cd /Users/shree/Documents/claude-code/CMDFW-BalaVihar---Pilot-App
@@ -83,21 +83,21 @@ npm install
 ```
 Expected: clean install, `package-lock.json` written. (Node 26 passes the `>=20.19.0` floor.)
 
-- [ ] **Step 5: Verify the app boots on web**
+- [x] **Step 5: Verify the app boots on web**
 
 ```bash
 npx expo start --web
 ```
 Expected: Metro builds; a browser opens the default Expo Router app. `Ctrl-C` to stop.
 
-- [ ] **Step 6: Sanity-check the Expo install**
+- [x] **Step 6: Sanity-check the Expo install**
 
 ```bash
 npx expo-doctor
 ```
 Expected: passes, or prints concrete fixes. If it reports Node 26 incompatibility, the README/doctor (Task 6) directs `nvm use` to 22.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
@@ -115,7 +115,7 @@ git commit -m "chore: scaffold Expo Router app + pin Node toolchain"
 **Interfaces:**
 - Produces: the canonical tree every later UoW writes into; a routable five-tab shell (Feed · Classes · Attendance · Chat · Dashboard) with blank screens; an empty `(auth)` group.
 
-- [ ] **Step 1: Reshape `app/` to the §4 route groups**
+- [x] **Step 1: Reshape `app/` to the §4 route groups**
 
 Replace the example tabs with the project's groups. `app/_layout.tsx`:
 ```tsx
@@ -158,7 +158,7 @@ export default function TabsLayout() {
 }
 ```
 
-- [ ] **Step 2: Add one blank stub per tab** — five files under `app/(tabs)/`, each identical in shape. `app/(tabs)/feed.tsx`:
+- [x] **Step 2: Add one blank stub per tab** — five files under `app/(tabs)/`, each identical in shape. `app/(tabs)/feed.tsx`:
 ```tsx
 import { View, Text } from "react-native";
 export default function FeedScreen() {
@@ -171,7 +171,7 @@ export default function FeedScreen() {
 ```
 Repeat verbatim for `classes.tsx`, `attendance.tsx`, `chat.tsx`, `dashboard.tsx`, changing only the component name and the label text.
 
-- [ ] **Step 3: Create the empty homes** (so the tree matches §4 and survives git)
+- [x] **Step 3: Create the empty homes** (so the tree matches §4 and survives git)
 
 ```bash
 for d in components features lib/auth lib/push netlify/functions supabase/migrations supabase/seed supabase/tests public design/sankalp; do
@@ -179,7 +179,7 @@ for d in components features lib/auth lib/push netlify/functions supabase/migrat
 done
 ```
 
-- [ ] **Step 4: Verify the tree + routable shell**
+- [x] **Step 4: Verify the tree + routable shell**
 
 ```bash
 ls -d app/'(auth)' app/'(tabs)' components features lib/auth lib/push netlify/functions supabase/migrations supabase/seed supabase/tests public design/sankalp
@@ -187,7 +187,7 @@ npx expo start --web
 ```
 Expected: all paths listed; the web app shows five tabs that navigate to the placeholder screens.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -206,7 +206,7 @@ git commit -m "chore: prune app to §4 skeleton + create empty feature homes"
 **Interfaces:**
 - Produces: `npm run env:init` (copies `.env.example`→`.env` if absent, never overwrites); the env-var contract.
 
-- [ ] **Step 1: Extend `.gitignore`** (append; keep Expo's defaults)
+- [x] **Step 1: Extend `.gitignore`** (append; keep Expo's defaults)
 ```
 # secrets / local env (keep .env.example)
 .env
@@ -225,7 +225,7 @@ supabase/.temp
 .DS_Store
 ```
 
-- [ ] **Step 2: Write `.env.example`** (no real secrets — local defaults + placeholders)
+- [x] **Step 2: Write `.env.example`** (no real secrets — local defaults + placeholders)
 ```bash
 # ── Client (safe to expose; EXPO_PUBLIC_ is bundled into the app) ──
 # Local Supabase defaults printed by `npm run db:start`.
@@ -242,7 +242,7 @@ SES_ACCESS_KEY_ID=
 SES_SECRET_ACCESS_KEY=
 ```
 
-- [ ] **Step 3: Write `scripts/env-init.mjs`**
+- [x] **Step 3: Write `scripts/env-init.mjs`**
 ```js
 import { existsSync, copyFileSync } from "node:fs";
 const src = ".env.example";
@@ -253,12 +253,12 @@ copyFileSync(src, dest);
 console.log("✓ created .env from .env.example — fill in the blanks");
 ```
 
-- [ ] **Step 4: Wire the script** — add to `package.json` `scripts`:
+- [x] **Step 4: Wire the script** — add to `package.json` `scripts`:
 ```json
 "env:init": "node scripts/env-init.mjs"
 ```
 
-- [ ] **Step 5: Verify** (idempotent + never clobbers)
+- [x] **Step 5: Verify** (idempotent + never clobbers)
 ```bash
 rm -f .env && npm run env:init   # expect: "✓ created .env ..."
 npm run env:init                 # expect: "• .env already exists ..."
@@ -266,7 +266,7 @@ git check-ignore .env            # expect: ".env" (it is ignored)
 git check-ignore -v .env.example || echo "tracked-OK"  # expect: tracked-OK (not ignored)
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add .gitignore .env.example scripts/env-init.mjs package.json
 git commit -m "chore: env contract + .gitignore secret hygiene + env:init"
@@ -284,13 +284,13 @@ git commit -m "chore: env contract + .gitignore secret hygiene + env:init"
 - Consumes: root `_layout.tsx` imports `../lib/unistyles` (Task 2 Step 1).
 - Produces: a registered Unistyles theme on the `od-design-tokens/v1` taxonomy with breakpoints 360/768/1024/1440; `npm run gen:theme` regenerates `lib/theme.ts` (placeholder until Sankalp).
 
-- [ ] **Step 1: Install Unistyles 3** (tooling picks SDK-compatible versions)
+- [x] **Step 1: Install Unistyles 3** (tooling picks SDK-compatible versions)
 ```bash
 npx expo install react-native-unistyles react-native-nitro-modules react-native-edge-to-edge
 ```
 Expected: three deps added to `package.json` + lockfile.
 
-- [ ] **Step 2: Add the Unistyles babel plugin** — in `babel.config.js`, add to `plugins`:
+- [x] **Step 2: Add the Unistyles babel plugin** — in `babel.config.js`, add to `plugins`:
 ```js
 // babel.config.js
 module.exports = function (api) {
@@ -302,7 +302,7 @@ module.exports = function (api) {
 };
 ```
 
-- [ ] **Step 3: Write the placeholder `lib/theme.ts`** (stable taxonomy, neutral values — NO brand hex)
+- [x] **Step 3: Write the placeholder `lib/theme.ts`** (stable taxonomy, neutral values — NO brand hex)
 ```ts
 // GENERATED placeholder (od-design-tokens/v1). Real values arrive via `gen:theme`
 // once design/sankalp/design-tokens.json is imported (ADR-0010/0011). Do not hand-tune.
@@ -324,7 +324,7 @@ export const breakpoints = { xs: 0, sm: 360, md: 768, lg: 1024, xl: 1440 } as co
 export type AppTheme = typeof lightTheme;
 ```
 
-- [ ] **Step 4: Write `lib/unistyles.ts`** (registers themes + breakpoints)
+- [x] **Step 4: Write `lib/unistyles.ts`** (registers themes + breakpoints)
 ```ts
 import { StyleSheet } from "react-native-unistyles";
 import { lightTheme, breakpoints } from "./theme";
@@ -344,7 +344,7 @@ StyleSheet.configure({
 });
 ```
 
-- [ ] **Step 5: Write `scripts/gen-theme.mjs`** (no-op-with-notice until tokens exist)
+- [x] **Step 5: Write `scripts/gen-theme.mjs`** (no-op-with-notice until tokens exist)
 ```js
 import { existsSync } from "node:fs";
 const tokens = "design/sankalp/design-tokens.json";
@@ -356,19 +356,19 @@ if (!existsSync(tokens)) {
 console.log("✓ design-tokens.json found — TODO(impl when Sankalp imports): regenerate lib/theme.ts");
 ```
 
-- [ ] **Step 6: Wire `gen:theme`** — add to `package.json` `scripts`:
+- [x] **Step 6: Wire `gen:theme`** — add to `package.json` `scripts`:
 ```json
 "gen:theme": "node scripts/gen-theme.mjs"
 ```
 
-- [ ] **Step 7: Verify** (theme registers, app still builds, gen:theme reports placeholder)
+- [x] **Step 7: Verify** (theme registers, app still builds, gen:theme reports placeholder)
 ```bash
 npm run gen:theme        # expect: "• design/sankalp/design-tokens.json not present yet ..."
 npx tsc --noEmit         # expect: no type errors
 npx expo start --web     # expect: app builds with Unistyles registered; tabs still render
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 ```bash
 git add lib/unistyles.ts lib/theme.ts scripts/gen-theme.mjs babel.config.js package.json package-lock.json
 git commit -m "feat: wire Unistyles 3 + placeholder theme (od-design-tokens/v1) + gen:theme"
@@ -386,12 +386,12 @@ git commit -m "feat: wire Unistyles 3 + placeholder theme (od-design-tokens/v1) 
 - Consumes: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Task 3).
 - Produces: a single exported `supabase` client (anon key only) that every feature UoW imports for data access.
 
-- [ ] **Step 1: Install the client**
+- [x] **Step 1: Install the client**
 ```bash
 npx expo install @supabase/supabase-js
 ```
 
-- [ ] **Step 2: Write `lib/supabase.ts`** (anon key only — never service role; §12.1#2, `stack-conventions`)
+- [x] **Step 2: Write `lib/supabase.ts`** (anon key only — never service role; §12.1#2, `stack-conventions`)
 ```ts
 import { createClient } from "@supabase/supabase-js";
 
@@ -407,14 +407,14 @@ if (!url || !anonKey) {
 export const supabase = createClient(url ?? "", anonKey ?? "");
 ```
 
-- [ ] **Step 3: Verify** (typechecks; guard against a service-role leak)
+- [x] **Step 3: Verify** (typechecks; guard against a service-role leak)
 ```bash
 npx tsc --noEmit                                  # expect: no errors
 grep -rn "SERVICE_ROLE" lib app features components 2>/dev/null && echo "LEAK!" || echo "clean"
 ```
 Expected: `clean` (no service-role reference anywhere in client code).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add lib/supabase.ts package.json package-lock.json
 git commit -m "feat: anon-key-only Supabase client (lib/supabase.ts)"
@@ -431,7 +431,7 @@ git commit -m "feat: anon-key-only Supabase client (lib/supabase.ts)"
 **Interfaces:**
 - Produces: `npm run doctor` — ✓/✗ checklist; **exits non-zero if any hard check fails**. Hard: Node floor, npm, Supabase CLI, Netlify CLI. Hard-for-`dev`: Docker running. Warn: `.nvmrc` match, `.env`, git, port availability.
 
-- [ ] **Step 1: Write `scripts/doctor.mjs`**
+- [x] **Step 1: Write `scripts/doctor.mjs`**
 ```js
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -482,18 +482,18 @@ if (hardFail) { console.log("✗ doctor failed — fix the ✗ items above.\n");
 console.log("✓ doctor passed.\n");
 ```
 
-- [ ] **Step 2: Wire `doctor`** — add to `package.json` `scripts`:
+- [x] **Step 2: Wire `doctor`** — add to `package.json` `scripts`:
 ```json
 "doctor": "node scripts/doctor.mjs"
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 ```bash
 npm run doctor; echo "exit=$?"
 ```
 Expected on this machine: ✓ Node/npm/git/CLIs, ⚠ Docker not running, ⚠ `.nvmrc` (Node 26 ≠ 22), ports free → **exit=0** (no hard failures). Hard-fail path only triggers if a CLI or npm is genuinely missing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add scripts/doctor.mjs package.json
 git commit -m "feat: cross-platform environment doctor"
@@ -512,13 +512,13 @@ git commit -m "feat: cross-platform environment doctor"
 **Interfaces:**
 - Produces: `npm run db:start|db:stop|db:reset|stop`; a running local Postgres + Studio; the local anon/service keys printed for `.env`.
 
-- [ ] **Step 1: Initialize Supabase locally**
+- [x] **Step 1: Initialize Supabase locally**
 ```bash
 npx supabase init
 ```
 Expected: `supabase/config.toml` created (alongside the empty `migrations/`,`seed/`,`tests/` from Task 2).
 
-- [ ] **Step 2: Add the scripts** — `package.json` `scripts`:
+- [x] **Step 2: Add the scripts** — `package.json` `scripts`:
 ```json
 "db:start": "supabase start",
 "db:stop": "supabase stop",
@@ -526,7 +526,7 @@ Expected: `supabase/config.toml` created (alongside the empty `migrations/`,`see
 "stop": "supabase stop"
 ```
 
-- [ ] **Step 3: Verify (Docker required)**
+- [x] **Step 3: Verify (Docker required)**
 ```bash
 npm run db:start    # expect: containers boot; prints API URL (http://127.0.0.1:54321) + anon/service keys
 ```
@@ -536,7 +536,7 @@ npm run db:reset    # expect: re-applies (currently empty) migrations + seed cle
 npm run db:stop     # expect: containers stop
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add supabase/config.toml package.json
 git commit -m "feat: local Supabase init + db lifecycle scripts"
@@ -554,7 +554,7 @@ git commit -m "feat: local Supabase init + db lifecycle scripts"
 - Consumes: Expo web dev server on port 8081.
 - Produces: `netlify dev` serving functions at `/.netlify/functions/*` + proxying the Expo web app; US-region pin for deployed functions.
 
-- [ ] **Step 1: Write `netlify.toml`** (dev command proxies Expo web; functions dir + US region)
+- [x] **Step 1: Write `netlify.toml`** (dev command proxies Expo web; functions dir + US region)
 ```toml
 [build]
   command = "npx expo export --platform web"
@@ -576,7 +576,7 @@ git commit -m "feat: local Supabase init + db lifecycle scripts"
   port = 8888
 ```
 
-- [ ] **Step 2: Write a placeholder function** `netlify/functions/health.ts`
+- [x] **Step 2: Write a placeholder function** `netlify/functions/health.ts`
 ```ts
 import type { Handler } from "@netlify/functions";
 
@@ -588,12 +588,12 @@ export const handler: Handler = async () => ({
 });
 ```
 
-- [ ] **Step 3: Install function types**
+- [x] **Step 3: Install function types**
 ```bash
 npm install --save-dev @netlify/functions
 ```
 
-- [ ] **Step 4: Verify (Docker not required for this task)**
+- [x] **Step 4: Verify (Docker not required for this task)**
 ```bash
 npx netlify dev &     # starts on http://localhost:8888, proxying Expo web + functions
 sleep 25
@@ -601,7 +601,7 @@ curl -s http://localhost:8888/.netlify/functions/health   # expect: {"status":"o
 kill %1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add netlify.toml netlify/functions/health.ts package.json package-lock.json
 git commit -m "feat: netlify dev runtime + health function + US-region intent"
@@ -618,7 +618,7 @@ git commit -m "feat: netlify dev runtime + health function + US-region intent"
 - Consumes: `doctor` (Task 6), `db:start` (Task 7), `netlify dev` + netlify.toml `[dev]` (Task 8).
 - Produces: one command (`dev`) that brings up the whole local loop; granular scripts beneath.
 
-- [ ] **Step 1: Finalize the script catalog** — `package.json` `scripts` (merge with entries from earlier tasks):
+- [x] **Step 1: Finalize the script catalog** — `package.json` `scripts` (merge with entries from earlier tasks):
 ```json
 "start": "expo start",
 "predev": "npm run doctor && npm run db:start",
@@ -629,7 +629,7 @@ git commit -m "feat: netlify dev runtime + health function + US-region intent"
 ```
 (`predev` runs `doctor` then `db:start`; if `doctor` hard-fails or Docker is down, `dev` aborts before starting. `start` has no `predev`, so app-only work needs no Docker.)
 
-- [ ] **Step 2: Verify the full loop (Docker required)**
+- [x] **Step 2: Verify the full loop (Docker required)**
 ```bash
 npm run dev
 ```
@@ -638,12 +638,12 @@ Expected: doctor prints ✓, local DB starts, Netlify dev serves on `http://loca
 npm run stop   # expect: DB containers stop
 ```
 
-- [ ] **Step 3: Verify app-only path (no Docker)**
+- [x] **Step 3: Verify app-only path (no Docker)**
 ```bash
 npm run start   # expect: Expo dev server; choose web; app loads without Docker
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add package.json
 git commit -m "feat: npm run dev orchestrates the local loop (doctor → db → netlify+expo)"
@@ -658,7 +658,7 @@ git commit -m "feat: npm run dev orchestrates the local loop (doctor → db → 
 
 **Interfaces:** none (docs).
 
-- [ ] **Step 1: Write the README quickstart + conventions**
+- [x] **Step 1: Write the README quickstart + conventions**
 ```markdown
 # CMDFW Bala Vihar — Pilot App
 
@@ -698,7 +698,7 @@ Override ports via env if 54321/8081/8888 are taken (see `supabase/config.toml`,
 - The pipeline per item: `/refine` → `/architect` → `/design` → `/plan` → `/migration` → `/build` → `/test` → `/deploy-staging` → `/promote`.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 ```bash
 git add README.md
 git commit -m "docs: contributor quickstart + parallel-work conventions"
@@ -710,7 +710,7 @@ git commit -m "docs: contributor quickstart + parallel-work conventions"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Simulate a fresh maintainer** (clean install + checks)
+- [x] **Step 1: Simulate a fresh maintainer** (clean install + checks)
 ```bash
 rm -rf node_modules && npm install      # expect: clean install from lockfile
 npm run typecheck                        # expect: no errors
@@ -718,7 +718,7 @@ npm run lint                             # expect: clean (or only intentional wa
 npm run doctor; echo "exit=$?"           # expect: exit=0 on a configured machine
 ```
 
-- [ ] **Step 2: Full loop smoke (Docker required)**
+- [x] **Step 2: Full loop smoke (Docker required)**
 ```bash
 npm run env:init
 npm run dev        # doctor ✓ → DB up → app on :8888 with 5 tabs → /health returns ok
@@ -726,14 +726,14 @@ npm run dev        # doctor ✓ → DB up → app on :8888 with 5 tabs → /heal
 npm run stop
 ```
 
-- [ ] **Step 3: Secret-leak backstop**
+- [x] **Step 3: Secret-leak backstop**
 ```bash
 grep -rn "SERVICE_ROLE\|VAPID_PRIVATE\|SES_SECRET" app features components lib 2>/dev/null && echo "LEAK!" || echo "clean"
 git status --porcelain   # expect: clean; .env NOT listed
 ```
 Expected: `clean`, and `.env` absent from git status.
 
-- [ ] **Step 4: Mark the spec done** — in `.docs/specs/system/_index.md`, set status to `Built — pending /test`. Commit.
+- [x] **Step 4: Mark the spec done** — in `.docs/specs/system/_index.md`, set status to `Built — pending /test`. Commit.
 ```bash
 git add .docs/specs/system/_index.md
 git commit -m "chore: repository-bootstrap built — ready for /test"
