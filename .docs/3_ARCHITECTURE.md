@@ -472,7 +472,7 @@ flowchart TB
         t1["rls-adversarial-tester subagent<br/>role × scope attack suite"]
     end
     subgraph govern["GOVERN — hooks (deterministic, non-bypassable)"]
-        h1["secret-scan · migration-guard<br/>schema-guard · residency-guard"]
+        h1["secret-scan · migration-guard<br/>schema-guard · residency-guard · pr-guard"]
     end
     guide --> deliver --> test --> govern
     govern -->|"blocks unsafe commit / migration / deploy"| stop["⛔ stopped before damage"]
@@ -488,6 +488,7 @@ Deterministic `PreToolUse` / `UserPromptExpansion` hooks in `.claude/settings.js
 | **migration-guard** | prod migration / `/promote` | Any prod DB change unless the RLS test suite passed (§6.3, §11.3) |
 | **schema-guard** | edits to consent/audit/RLS/auth-hook migrations | Silent changes to security-critical SQL — forces explicit review |
 | **residency-guard** | new external endpoints/deps | Non-US processors or marketing/analytics trackers (§3) |
+| **pr-guard** | `gh pr create` (any stage, incl. `/promote`) | Opening a PR unless `/test` passed for exactly this source tree (§12.1, §12.3) — TDD non-negotiable |
 
 ### 12.2 GUIDE — reference skills (knowledge Claude applies inline)
 

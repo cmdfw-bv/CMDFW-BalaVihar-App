@@ -45,6 +45,7 @@ example
 # local agent / governance state (do not commit)
 .claude/settings.local.json
 .claude/.rls-tests-passed
+.claude/.tests-passed
 .claude/.instructions-loaded.log
 .playwright-cli/
 
