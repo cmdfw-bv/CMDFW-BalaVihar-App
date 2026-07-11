@@ -1,0 +1,37 @@
+# ADR-0023: Active-role storage, switch mechanism & auto-activation placement
+
+**Status:** Closed · **Date:** 2026-07-10 · **Deciders:** Project owner + architect
+**Governs:** System → `auth-hook-and-identity` (`.docs/specs/system/auth-hook-and-identity.md`). Implements ADR-0004's "active-role switch" concept with a concrete mechanism; does not change ADR-0004's decision to use a Postgres Custom Access Token Hook, which stands unchanged.
+
+### Context
+ADR-0004 decided *that* an active-role switch exists and 3_ARCHITECTURE §5.3 describes it at a narrative level ("the client writes the desired active role to its own (RLS-protected) row, calls `refreshSession()`"), but neither settles the concrete schema shape, the write mechanism, or where the "never issue a token with a null `active_role` for a user who holds a grant" guarantee (§5.2) is enforced. Three things surfaced during `/refine` that need a recorded decision:
+
+1. **Where "currently active" lives.** `user_roles` is the catalog of role-grants (many rows per user); "currently active" is a different concept (at most one row per user) that needs storage.
+2. **How the switch is written.** §5.3's prose reads as a direct client `UPDATE` to the user's own row. But `core-schema-and-rls` (AC#3, confirmed in `supabase/migrations/20260709033959_user_roles_catalog.sql`) grants `user_roles` **zero** INSERT/UPDATE/DELETE to `authenticated` — not even RLS-gated ones, only `select`. A literal direct client write is not possible against the schema as built; the mechanism must reconcile with that.
+3. **Where auto-activation runs.** The refined brief proposed this could live "in the hook — or a before trigger on first token issuance," leaving the choice open rather than deciding it.
+
+### Options Considered
+
+**Storage shape for "active":**
+- **`is_active boolean` column on `user_roles`, partial unique index `where is_active`** (chosen) — Pros: one table already read by the hook; the partial unique index makes "at most one active row per user" a DB-enforced invariant, not an app-level promise. Cons: none material.
+- **Separate `active_roles(user_id, user_roles_id)` table** — Pros: keeps "grants" and "selection" fully decoupled. Cons: a second join on every token issuance for no expressed benefit; rejected as unnecessary indirection.
+
+**Switch write mechanism:**
+- **`SECURITY DEFINER` RPC `switch_active_role(p_user_roles_id uuid)`** (chosen) — Pros: reconciles with `user_roles` having no client write grants at all; mirrors the established pattern from ADR-0019 (cross-scope read RPCs) and ADR-0021 (attendance-write RPC) — a privileged function does its own ownership check (`user_id = auth.uid()`) and the atomic clear-old/set-new in one statement, with no data path that bypasses it. Cons: one more RPC to maintain (same cost every prior privileged-write item has already accepted).
+- **Grant client UPDATE on `user_roles` gated by an RLS policy (own row only)** — Pros: matches §5.3's prose most literally. Cons: directly reopens client write access to the role/scope catalog table that `core-schema-and-rls` deliberately locked down to zero grants — the *narrowest possible* client-writable surface would still be strictly wider than an RPC that only ever touches the `is_active` flag on a caller-owned row. Rejected; §5.3's prose is read as intent ("the user's own action moves the pointer"), not as a literal grant-model mandate.
+
+**Auto-activation placement (no active row for a user who holds ≥1 grant):**
+- **Inside the Custom Access Token Hook function only** (chosen) — Pros: idempotent, single choke point, runs on every issue/refresh so it self-heals regardless of *how* the gap arose (first login, multi-role first login, or role-revoked-while-active per the brief's edge case); extends the same "hook is the sole guarantor of shape" principle the `scope_id`-cast precondition already establishes (carried from `core-schema-and-rls`'s 2026-07-09 deferred-findings pass). Cons: none material — the hook already reads `user_roles` on every call, so this adds one conditional `UPDATE` to a path that already exists.
+- **`BEFORE INSERT` trigger on `user_roles`** — Pros: activates a role at the moment it's provisioned, before any token is even requested. Cons: does not cover "active row deleted, others remain" (no insert occurs on that path) — the hook-time fallback would still be needed for that case regardless, so a trigger alone is an incomplete solution to the invariant, not an alternative to it. Rejected as the sole mechanism.
+- **Both (trigger + hook backstop)** — Pros: defense-in-depth against a future bulk-provisioning path that might skip per-row trigger semantics. Cons: two mechanisms enforcing one invariant, more surface to keep in sync, for a benefit (protecting against a future insert path that doesn't exist yet) that isn't a present requirement. Rejected — echoes ADR-0021's exact lesson: splitting one guarantee across a trigger and another mechanism is how a silent gap shipped before (Task 11, `attendance_teacher_update`/`insert`). One choke point, not two.
+
+### Decision
+1. **`is_active boolean` column on `user_roles`** with a partial unique index (`create unique index ... where is_active`) enforcing at most one active row per `user_id`.
+2. **`switch_active_role(p_user_roles_id uuid)`**, `SECURITY DEFINER`, verifies `user_id = auth.uid()` on the target row, atomically clears the old active flag and sets the new one, no-ops (no error, no existence leak) if the row isn't the caller's. This is the *only* write path to `is_active` — no client grant is added to `user_roles` itself.
+3. **Auto-activation logic lives entirely inside the Custom Access Token Hook function** — on every token issue/refresh, the hook checks for an active row for the caller; if none exists and the caller holds ≥1 `user_roles` row, it picks one per the deterministic rule (narrowest scope first — `class` > `session` > `org`; **`center` is a defined `app_scope_type` value not currently mapped to any role's grant per §5.4 and needs no tie-break entry today** — tie-broken by `created_at` ascending), `UPDATE`s it to active, then stamps claims from the now-guaranteed active row. No separate trigger is built.
+
+### Consequences
+- `auth-hook-and-identity`'s Design stage writes the hook function so the "read active role" step is really "ensure-then-read": one `SELECT`, a conditional `UPDATE` on the no-active-row branch, then the stamp — all inside the hook's existing `SECURITY DEFINER` execution context, no new grants beyond what §5.5 hardening already specifies.
+- The "role revoked while active" edge case (brief's edge-case list) is now explicitly covered by this same mechanism, not a separate concern: the next token refresh after a revocation finds no active row and re-runs the identical ensure-then-read logic.
+- If a future item (e.g. `user-role-approval`) wants a role active *immediately* at provisioning time, before any token is next requested, that is a UX nicety it may add later (e.g. setting `is_active` directly on insert when it's the user's first row) — it does not change this ADR's decision that the hook is the enforcement backstop of record; any such convenience path must not become a second place the invariant can silently fail to hold.
+- No RLS/RPC policy rewrites elsewhere: `is_active` is internal to how the hook computes claims, not a new column any existing policy reads.
