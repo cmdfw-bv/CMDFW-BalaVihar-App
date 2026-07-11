@@ -38,7 +38,8 @@
     "eslint-config-expo": "~56.0.4",
     "netlify-cli": "^26.1.0",
     "supabase": "^2.107.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
@@ -50,7 +51,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "echo \"no tests yet — feature UoWs add unit + pgTAP suites\" && exit 0",
+    "test": "vitest run",
     "env:init": "node scripts/env-init.mjs",
     "gen:theme": "node scripts/gen-theme.mjs",
     "db:start": "supabase start",

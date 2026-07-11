@@ -1,0 +1,5 @@
+family_ref,family_label,guardian_1_first_name,guardian_1_last_name,guardian_1_email,guardian_2_first_name,guardian_2_last_name,guardian_2_email,student_first_name,student_last_name,student_external_id,grade_band,session_name,student_email
+F001,Patel Family,Priya,Patel,priya.patel@example.test,Raj,Patel,raj.patel@example.test,Arjun,Patel,EXT-101,Gr5,F3,
+F001,Patel Family,Priya,Patel,priya.patel@example.test,Raj,Patel,raj.patel@example.test,Meera,Patel,EXT-102,Gr8,F3,
+F002,Kumar Family,Anita,Kumar,anita.kumar@example.test,,,,Rohan,Kumar,EXT-103,Gr10,F3,rohan.kumar@example.test
+F003,Singh Family,Deepa,Singh,deepa.singh@example.test,,,,Isha,Singh,EXT-104,Shishu Vihaar,F3,

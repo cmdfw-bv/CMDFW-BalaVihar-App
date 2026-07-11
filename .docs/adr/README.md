@@ -29,6 +29,7 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0019](0019-minors-record-read-audit.md) | Minors'-record read-audit: hybrid RPC for cross-scope reads, plain RLS for self/parent | Closed | 2026-07-08 |
 | [ADR-0020](0020-teacher-attendance-write-audit-trigger.md) | Teacher attendance-write audit trigger (ADR-0019 addendum): closes RETURNING-as-read bypass | Superseded by ADR-0021 | 2026-07-09 |
 | [ADR-0021](0021-teacher-attendance-write-rpc.md) | Teacher attendance-write via SECURITY DEFINER RPC: fixes broken UPDATE/INSERT-RETURNING under RLS | Closed | 2026-07-09 |
+| [ADR-0022](0022-csv-import-auth-provisioning-boundary.md) | CSV import: DB transaction commits first, auth provisioning runs after commit (DB-first boundary) | Closed | 2026-07-11 |
 
 ## How to read an ADR
 
