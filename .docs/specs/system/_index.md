@@ -12,6 +12,6 @@ Non-human persona owning cross-cutting/infra concerns: the auth/RLS engine, cons
 | realtime-chat-delivery | POC-core (ADR-0007) | System | Student, Teacher, Parent | Supabase Realtime broadcast wiring on durable chat tables | Not started |
 | user-role-approval | POC-core (doc 2: Coordinator/BV Coordinator/Admin approval flows) | System | Admin, Coordinator, BV Coordinator | privileged role/scope-assignment function (writes `user_roles`) | Not started |
 | retention-deletion-job | Defer — pending real org/legal sign-off on policy value | System | n/a (infra) | scheduled deletion job against the provisional retention fields | Not started |
-| cicd-pipeline | POC-core (foundational — doc 3 §6.3 migration-guard gate) | System | all (delivery pipeline) | CI/CD + migration-guard/promotion gates | Not started |
+| [cicd-pipeline](cicd-pipeline.md) | POC-core (foundational — doc 3 §6.3 migration-guard gate) | System | all (delivery pipeline) | CI/CD + migration-guard/promotion gates | Design ✓ — ADR-0024 + ADR-0025 addendum (residency-scan + CODEOWNERS folded in), ready for `/plan` |
 | cloud-environment-provisioning | POC-core (needed before staging/prod deploy, doc 3 §7.1) | System | all | cloud Supabase project A/B + staging/prod env wiring | Not started |
 | error-monitoring-infra | POC-core (doc 2: Admin "error monitoring") | System | Admin | Sentry setup (US region) + PII scrubbing before capture | Not started |
