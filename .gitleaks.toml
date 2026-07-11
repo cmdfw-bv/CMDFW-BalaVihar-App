@@ -1,0 +1,15 @@
+# .gitleaks.toml
+# Narrow, content-based allowlist (NOT a path exclusion, NOT a rule-wide disable).
+# See .docs/specs/system/cicd-pipeline.plan.md (Task 3, Step 7) for the remediation
+# rationale: a confirmed false positive gets a scoped allowlist entry, never a
+# lowered --exit-code or a disabled job.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known false positive: empty VAPID_PRIVATE_KEY= placeholder in .env.example and its mirrored doc snippet — never a real key. Scoped to the literal empty-value pattern (key immediately followed by a newline); a non-empty VAPID_PRIVATE_KEY=<value> does not match this allowlist regex. Independently, scripts/check-secrets.js (secrets-pii job, non-gitleaks half) also flags any VAPID_PRIVATE_KEY with a 20+ char value via hasVapidPrivateKey()."
+regexTarget = "match"
+regexes = [
+  '''VAPID_PRIVATE_KEY=\n''',
+]

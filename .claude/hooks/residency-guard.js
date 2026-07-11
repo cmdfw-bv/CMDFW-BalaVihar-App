@@ -3,6 +3,8 @@
 // Scans code-file writes (tracker hostnames in real URL/import/script contexts, ignoring comments)
 // AND package.json (tracker SDK dependencies). Best-effort early warning — full coverage is CI (.docs/CI_rules.md §2.4).
 // Fail-LOUD on error, fail-open (exit 0) so a session is never bricked. Exit 2 = block.
+const { TRACKER_PACKAGE_RE, stripComments, domainUsageRegex } = require("./_tracker-denylist.js");
+
 let raw = "";
 process.stdin.on("data", c => (raw += c));
 process.stdin.on("end", () => {
@@ -28,8 +30,7 @@ process.stdin.on("end", () => {
 
     // 1) Dependencies: tracker SDK package names in package.json
     if (/(^|\/)package\.json$/.test(path)) {
-      const pkgs = /"(react-ga4?|mixpanel-browser|amplitude-js|@amplitude\/[\w-]+|@segment\/[\w-]+|analytics-node|@fullstory\/[\w-]+|@hotjar\/[\w-]+)"/i;
-      if (pkgs.test(text)) block("a marketing/analytics tracker dependency");
+      if (TRACKER_PACKAGE_RE.test(text)) block("a marketing/analytics tracker dependency");
       process.exit(0);
     }
 
@@ -37,17 +38,8 @@ process.stdin.on("end", () => {
     if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(path)) process.exit(0);
 
     // Strip comments so a domain merely mentioned in prose/comments doesn't trip the guard.
-    text = text.replace(/(?<!:)\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-
-    const domains = [
-      "google-analytics.com", "googletagmanager.com", "connect.facebook.net", "facebook.com/tr",
-      "mixpanel.com", "cdn.segment.com", "cdn.segment.io", "api.amplitude.com",
-      "static.hotjar.com", "fullstory.com",
-    ];
-    const dom = domains.map(s => s.replace(/[.]/g, "\\.")).join("|");
-    // Require the domain inside a quote or right after a URL scheme — i.e. actually used, not named.
-    const ctx = new RegExp("(?:https?://|['\"`])(?:www\\.)?(" + dom + ")", "i");
-    if (ctx.test(text)) block("a marketing/ad/analytics tracker");
+    text = stripComments(text);
+    if (domainUsageRegex().test(text)) block("a marketing/ad/analytics tracker");
 
     process.exit(0);
   } catch (e) {
