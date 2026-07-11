@@ -10,7 +10,7 @@ allowed-tools: Bash(git *) Bash(gh *) Read
 Authoritative: `.docs/3_ARCHITECTURE.md` §7.2, §12.1, §12.6.
 
 1. Confirm staging was validated and `/test` (incl. RLS audit) is green.
-2. Open a PR from the feature/staging branch → `main`. Summarize the spec, the governing ADR(s), and test evidence.
+2. Open a PR from the feature/staging branch → `main` (enforced by the **pr-guard hook**, §12.1 — blocked unless `/test` is green for the current source tree). Summarize the spec, the governing ADR(s), and test evidence.
 3. Prod migration applies **only after the RLS test suite passes** — enforced by the **migration-guard hook** (§12.1). Do not bypass.
 4. Promotion is the single convergence funnel — all parallel Units of Work merge here in migration order.
 5. **Get explicit human approval before merging/deploying to prod.** This is real users + minors' data.
