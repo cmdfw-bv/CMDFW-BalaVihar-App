@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all 6 personas (every persona feature UoW that needs a real, non-simulated JWT) · **scope:** identity / JWT claims — Postgres Custom Access Token Hook, magic-link sign-in wiring, active-role storage + switch mechanism (plugs into `user_roles`) · **governing ADR:** ADR-0004 (multipersona-auth-hook, Closed — this item implements it), ADR-0003 (access-control-rls, consumer), **ADR-0022 (active-role storage/switch/auto-activation, new)**, ADR-0014 (access-UX role-derived nav/switcher — UI layer, out of scope here) · **covers:** doc 3 §5.1–§5.2–§5.3 (identity, claims chain, active-role switching), §5.5 (hook hardening); doc 1 §6 (magic-link); core-schema-and-rls's deferred precondition (unguarded `scope_id` casts)
 
-**Stage:** Refined ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → `/plan` ✓ → Built (pgTAP 100/100, full whole-branch review clean) → next is the live `/test` AC#7 sign-in pass (blocking before `/promote` — see plan's sign-off checklist), then `/promote`.
+**Stage:** Refined ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → `/plan` ✓ → Built (pgTAP 100/100, full whole-branch review clean) → `/test` ✓ (live AC#7 sign-in pass, 2026-07-11, real magic-link sign-in verified against `supabase_auth_admin` path) → ready for `/promote` (PR #11).
 
 ---
 

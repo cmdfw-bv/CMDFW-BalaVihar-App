@@ -673,7 +673,11 @@ git commit -m "feat: register custom_access_token_hook with local Supabase Auth"
 
 - [x] All 4 tasks above complete, all commits made.
 - [x] `npx supabase test db` shows the full suite (000–120) green — this is the AC#8 regression gate and stays the gate going forward.
-- [ ] **BLOCKING before `/promote`** (final whole-branch review finding, not optional): run the live end-to-end verification pass in the appendix below (AC#7) at least once against local dev. Reason: every pgTAP case in `110_auth_hook_claims.sql`/`105_user_roles_active_flag.sql` runs as the `postgres` test-runner, which bypasses RLS/grants entirely (`rolbypassrls=true`, independently confirmed not a superuser during Task 1/2 review) — this local harness structurally cannot `SET ROLE supabase_auth_admin`, so the `grant update (is_active) ... to supabase_auth_admin` + `user_roles_auth_admin_activate` policy Task 1 adds, which the hook's ensure-step depends on in production, has **zero positive automated coverage** anywhere in this suite. The function/grant/policy are correct by inspection and mirror the already-shipped `user_roles_auth_admin_read` pattern, but if that grant were subtly wrong, the whole suite would stay green while every real sign-in for a user with grants-but-no-active-row throws at the Auth service (fail-closed, but a full sign-in outage for that class of user). The live magic-link pass is the only mechanism that exercises the real `supabase_auth_admin` path and is the sole remaining proof this actually works end-to-end — do not skip it before `/promote`.
+- [x] **Live end-to-end verification (AC#7) — run 2026-07-11.** Ran the appendix script below against local dev (adjusted twice from its first draft: Inbucket's actual REST API in this bundled version is `/api/v1/messages?mailbox=<name>` + `/api/v1/message/<id>` returning newest-first, not `/api/v1/mailbox/<name>` returning oldest-first; and the delivered email carries a `token_hash` for `verifyOtp({ token_hash, type: 'magiclink' })`, not a 6-digit OTP code, despite `otp_length=6` in config — that setting doesn't apply to the magic-link template used here). Results, real signed-in sessions:
+  - `teacher1@bv-seed.test.local` (single role) → `{active_role: 'teacher', scope_type: 'class', scope_id: 'e88cb6c6-6112-4170-8322-85acf9822d5a'}` — matches their seeded row exactly.
+  - `multirole@bv-seed.test.local` (4 grants, none pre-active) → hook auto-activated `{active_role: 'teacher', scope_type: 'class', scope_id: 'e88cb6c6-...'}` — narrowest-scope-first tie-break confirmed against real data.
+  - After `switch_active_role(<coordinator row>)` + `refreshSession()` → `{active_role: 'coordinator', scope_type: 'session', scope_id: 'f97fde6b-6e58-4e80-8736-05aa6919d4ab'}` — matches the switch target exactly.
+  - This positively proves the `supabase_auth_admin` grant/policy path (Task 1) that pgTAP structurally couldn't exercise — the blocking gate from the final whole-branch review is closed. **`/promote` is now unblocked.**
 
 ---
 
@@ -687,20 +691,20 @@ npx supabase status
 ```
 Copy the `anon key` value from the output.
 
-**Step B — find a real target row id for the switch test (local dev only; direct DB access, not a client credential):**
+**Step B — find a real target row id for the switch test (local dev only; direct DB access, not a client credential).** This repo's local dev machines may not have a `psql` client installed — the Postgres container always does, so `docker exec` into it rather than assuming a host `psql`:
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "
+docker exec -i supabase_db_CMDFW-BalaVihar---Pilot-App psql -U postgres -d postgres -c "
   select ur.id, ur.role, ur.scope_type, ur.scope_id, ur.is_active
   from user_roles ur join auth.users u on u.id = ur.user_id
   where u.email = 'multirole@bv-seed.test.local'
   order by ur.role;
 "
 ```
-Note the `id` of a row whose `role` differs from whichever comes back active in Step D below (e.g. note the `coordinator` row's id if `teacher` activates first, per the hook's narrowest-scope-first rule from `seed.sql`'s fixture — `teacher`@class, `coordinator`@session, `bv_coordinator`@org, `parent`@org).
+(Container name follows the pattern `supabase_db_<project-dir-name>` — confirm with `docker ps --format '{{.Names}}' | grep supabase_db` if it differs.) Note the `id` of a row whose `role` differs from whichever comes back active in Step D below (e.g. note the `coordinator` row's id if `teacher` activates first, per the hook's narrowest-scope-first rule from `seed.sql`'s fixture — `teacher`@class, `coordinator`@session, `bv_coordinator`@org, `parent`@org).
 
-**Step C — write the verification script** to a scratch path (not committed — this is a one-time manual check per the design spec, not a regression-suite script):
+**Step C — write the verification script.** Node's ESM resolver walks up from the script's own location to find `node_modules`, so write it inside the project tree (e.g. its root) rather than `/tmp` — `@supabase/supabase-js` won't resolve otherwise. It's still a one-time manual-check script, not a regression-suite script: don't `git add` it, and delete it in Step F.
 
-`/tmp/verify-auth-hook.mjs`:
+`verify-auth-hook.local.mjs` (project root):
 ```js
 import { createClient } from '@supabase/supabase-js';
 
@@ -719,15 +723,23 @@ function decodeJwt(token) {
   return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
 }
 
-async function fetchOtp(email) {
+async function fetchTokenHash(email) {
+  // This bundled Inbucket version's REST API is /api/v1/messages?mailbox=<name>
+  // (returns newest-first) + /api/v1/message/<id> for the full body -- NOT
+  // /api/v1/mailbox/<name> (that 404s on this version). Confirmed against the
+  // running container's own /dist/app.js, not assumed from upstream docs.
   const mailbox = email.split('@')[0];
-  const listRes = await fetch(`${INBUCKET_URL}/api/v1/mailbox/${mailbox}`);
-  const messages = await listRes.json();
-  const latest = messages[messages.length - 1];
-  const msgRes = await fetch(`${INBUCKET_URL}/api/v1/mailbox/${mailbox}/${latest.id}`);
+  const listRes = await fetch(`${INBUCKET_URL}/api/v1/messages?mailbox=${mailbox}`);
+  const list = await listRes.json();
+  const latest = list.messages[0]; // newest-first; index 0, not length-1
+  const msgRes = await fetch(`${INBUCKET_URL}/api/v1/message/${latest.ID}`);
   const msg = await msgRes.json();
-  const match = msg.body.text.match(/(\d{6})/);
-  if (!match) throw new Error(`no 6-digit OTP found in email to ${email}`);
+  // The magic-link email carries a token_hash in the verify URL, not a 6-digit
+  // OTP code, regardless of config.toml's otp_length -- that setting doesn't
+  // apply to this template. verifyOtp({ token_hash, type: 'magiclink' })
+  // redeems it directly, independent of PKCE/implicit flow state.
+  const match = msg.Text.match(/token=([a-f0-9]+)&type=magiclink/);
+  if (!match) throw new Error(`no magiclink token_hash found in email to ${email}`);
   return match[1];
 }
 
@@ -736,8 +748,8 @@ async function signInAndDecode(email) {
   const { error: otpError } = await supabase.auth.signInWithOtp({ email });
   if (otpError) throw otpError;
 
-  const token = await fetchOtp(email);
-  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+  const token_hash = await fetchTokenHash(email);
+  const { data, error } = await supabase.auth.verifyOtp({ token_hash, type: 'magiclink' });
   if (error) throw error;
 
   const claims = decodeJwt(data.session.access_token);
@@ -763,9 +775,9 @@ console.log('--- multirole@bv-seed.test.local (after switch_active_role + refres
 console.log({ active_role: newClaims.active_role, scope_type: newClaims.scope_type, scope_id: newClaims.scope_id });
 ```
 
-**Step D — run it:**
+**Step D — run it (from the project root, per Step C's node_modules note):**
 ```bash
-node /tmp/verify-auth-hook.mjs '<anon-key-from-Step-A>' '<row-id-from-Step-B>'
+node verify-auth-hook.local.mjs '<anon-key-from-Step-A>' '<row-id-from-Step-B>'
 ```
 
 **Step E — confirm by inspection:**
@@ -775,6 +787,8 @@ node /tmp/verify-auth-hook.mjs '<anon-key-from-Step-A>' '<row-id-from-Step-B>'
 
 **Step F — clean up:**
 ```bash
-rm /tmp/verify-auth-hook.mjs
+rm verify-auth-hook.local.mjs
 ```
 This script is not committed — it's a one-time proof, not part of the regression suite (design spec, explicit).
+
+**Verified 2026-07-11** — see the checked box in the sign-off checklist above for actual output. The three fixes folded into this appendix (Inbucket's real REST paths/ordering, the `token_hash`/`magiclink` redemption method, running from the project root) were all discovered live during that run, not theoretical — this version of the script is the one that actually worked, not the first draft.
