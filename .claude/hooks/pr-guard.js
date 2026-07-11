@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // GOVERN hook (3_ARCHITECTURE §12.1, §12.3): gate opening a PR (`gh pr create`) behind a green /test run.
-// PreToolUse on Bash. Structural match on `gh pr create` (any flags).
+// PreToolUse on Bash. Tokenized match on `gh ... pr create` (see _gh-pr-create-match.js for why a raw
+// regex isn't enough — it both misses `gh --repo x pr create` and false-fires on commit messages that
+// merely mention the phrase).
 // A PR is blocked unless .claude/.tests-passed holds the CURRENT source-tree content-hash, which /test
 // writes on a full green run (unit/integration + RLS) — so a stale "tests passed" marker can't wave a
 // PR through code that changed (or broke) since the tests ran.
@@ -8,6 +10,7 @@
 const fs = require("fs");
 const path = require("path");
 const { computeHash } = require("./_tests-hash.js");
+const { isGhPrCreate } = require("./_gh-pr-create-match.js");
 let raw = "";
 process.stdin.on("data", c => (raw += c));
 process.stdin.on("end", () => {
@@ -15,8 +18,7 @@ process.stdin.on("end", () => {
     const d = JSON.parse(raw || "{}");
     const cmd = (d.tool_input && d.tool_input.command) || "";
 
-    const isPrCreate = /(^|[\s;&|])gh\s+pr\s+create\b/.test(cmd);
-    if (!isPrCreate) process.exit(0); // not opening a PR — never gated
+    if (!isGhPrCreate(cmd)) process.exit(0); // not opening a PR — never gated
 
     const proj = d.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     let recorded = null;
