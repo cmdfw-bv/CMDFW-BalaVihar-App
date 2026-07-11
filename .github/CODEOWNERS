@@ -8,6 +8,7 @@
 # CI/scanner code itself — added per the cicd-pipeline final review recommendation
 # (issue #8): these are the files someone could edit to silently disable a required
 # check, so they get the same review gate as the code they protect.
-/.github/workflows/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.github/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /scripts/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /.claude/hooks/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.gitleaks.toml @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
