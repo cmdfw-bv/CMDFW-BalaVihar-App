@@ -1,0 +1,8 @@
+# Security-critical paths require review — no single person (including a maintainer)
+# can wave these through (ADR-0025). Enforced via branch protection's "Require review
+# from Code Owners" — a one-time human repo-admin step, see cicd-pipeline.plan.md Task 8.
+# Replace the placeholder handle below with a real GitHub user or team before this is
+# meaningful — inventing a specific handle isn't this UoW's call (ADR-0025 consequence).
+/supabase/migrations/ @<maintainer-handle>
+/supabase/tests/ @<maintainer-handle>
+/netlify/functions/ @<maintainer-handle>
