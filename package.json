@@ -41,6 +41,9 @@
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
   },
+  "overrides": {
+    "@opentelemetry/api": "1.8.0"
+  },
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
     "start": "expo start",
