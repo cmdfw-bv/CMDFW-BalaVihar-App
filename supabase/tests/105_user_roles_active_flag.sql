@@ -60,7 +60,7 @@ insert into user_roles (id, user_id, role, scope_type, scope_id) values
   ('af333333-0000-0000-0000-000000000003', :'v_user2'::uuid, 'parent', 'org', null);
 update user_roles set is_active = true where id = 'af333333-0000-0000-0000-000000000003';
 select is(
-  (select count(*) from user_roles where is_active)::int, 2,
+  (select count(*) from user_roles where user_id in (:'v_user'::uuid, :'v_user2'::uuid) and is_active)::int, 2,
   'two different users can each have their own active row at the same time'
 );
 

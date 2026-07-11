@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(10);
 
 -- Fixture: user X holds role A (active) + role B (inactive).
 select tests.create_supabase_user('switch-x@test.local') as v_x \gset
@@ -69,6 +69,23 @@ select is(
   ))->'claims'->>'active_role',
   'coordinator',
   'case 5: hook and switch_active_role share one source of truth (is_active)'
+);
+
+-- Case 6: a session with no `sub` claim (auth.uid() is null) must not be able to activate any row.
+-- Regression for a NULL-unsafe ownership check: `v_owner <> auth.uid()` evaluates to NULL (not
+-- true) when auth.uid() is NULL, so a naive `if v_owner is null or v_owner <> auth.uid()` guard
+-- is bypassed by an IF treating a NULL condition as false and falling through to the update.
+select set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+select set_config('role', 'authenticated', true);
+select lives_ok(
+  $$select switch_active_role('90000001-0000-0000-0000-00000000000a'::uuid)$$,
+  'case 6: a sub-less authenticated session does not error calling switch_active_role'
+);
+select tests.clear_authentication();
+
+select is(
+  (select is_active from user_roles where id = '90000001-0000-0000-0000-00000000000a'), false,
+  'case 6: a sub-less authenticated session cannot activate a row it does not (and cannot) own'
 );
 
 select * from finish();

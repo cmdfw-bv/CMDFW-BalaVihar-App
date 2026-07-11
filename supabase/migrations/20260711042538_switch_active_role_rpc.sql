@@ -9,7 +9,7 @@ declare
 begin
   select user_id into v_owner from user_roles where id = p_user_roles_id;
 
-  if v_owner is null or v_owner <> auth.uid() then
+  if auth.uid() is null or v_owner is distinct from auth.uid() then
     return; -- no-op: no error, no existence leak, per ADR-0022
   end if;
 

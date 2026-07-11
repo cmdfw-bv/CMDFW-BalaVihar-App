@@ -791,4 +791,9 @@ rm verify-auth-hook.local.mjs
 ```
 This script is not committed — it's a one-time proof, not part of the regression suite (design spec, explicit).
 
+**Step G — reset the local DB before the next pgTAP run.** Steps C/D activate real roles for the `bv-seed` fixture users outside any pgTAP transaction, so those `is_active` rows persist after this script exits. `105_user_roles_active_flag.sql`'s per-user isolation assertion counts active rows scoped to its own two fixture users, so it isn't affected — but re-run `npx supabase db reset` anyway before treating the next `/test` pass as a clean baseline, since this appendix intentionally mutates persistent local dev state.
+```bash
+npx supabase db reset
+```
+
 **Verified 2026-07-11** — see the checked box in the sign-off checklist above for actual output. The three fixes folded into this appendix (Inbucket's real REST paths/ordering, the `token_hash`/`magiclink` redemption method, running from the project root) were all discovered live during that run, not theoretical — this version of the script is the one that actually worked, not the first draft.
