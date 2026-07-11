@@ -11,6 +11,10 @@
   # region pinned at the account/site level; documented here as the intended region
   # (Netlify region config is set in site settings — see README).
 
+[functions.csv-import]
+  # US-East region (compliance perimeter §3/§7.2) — same as health.
+  # Holds the service-role key; never add EXPO_PUBLIC_* secrets here.
+
 [dev]
   framework = "#custom"
   command = "npx expo start --web"

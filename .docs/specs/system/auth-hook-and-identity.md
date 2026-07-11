@@ -1,8 +1,8 @@
 # System — Auth hook & identity
 
-> **owner:** System · **consumers:** all 6 personas (every persona feature UoW that needs a real, non-simulated JWT) · **scope:** identity / JWT claims — Postgres Custom Access Token Hook, magic-link sign-in wiring, active-role storage + switch mechanism (plugs into `user_roles`) · **governing ADR:** ADR-0004 (multipersona-auth-hook, Closed — this item implements it), ADR-0003 (access-control-rls, consumer), **ADR-0022 (active-role storage/switch/auto-activation, new)**, ADR-0014 (access-UX role-derived nav/switcher — UI layer, out of scope here) · **covers:** doc 3 §5.1–§5.2–§5.3 (identity, claims chain, active-role switching), §5.5 (hook hardening); doc 1 §6 (magic-link); core-schema-and-rls's deferred precondition (unguarded `scope_id` casts)
+> **owner:** System · **consumers:** all 6 personas (every persona feature UoW that needs a real, non-simulated JWT) · **scope:** identity / JWT claims — Postgres Custom Access Token Hook, magic-link sign-in wiring, active-role storage + switch mechanism (plugs into `user_roles`) · **governing ADR:** ADR-0004 (multipersona-auth-hook, Closed — this item implements it), ADR-0003 (access-control-rls, consumer), **ADR-0023 (active-role storage/switch/auto-activation, new)**, ADR-0014 (access-UX role-derived nav/switcher — UI layer, out of scope here) · **covers:** doc 3 §5.1–§5.2–§5.3 (identity, claims chain, active-role switching), §5.5 (hook hardening); doc 1 §6 (magic-link); core-schema-and-rls's deferred precondition (unguarded `scope_id` casts)
 
-**Stage:** Refined ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → `/plan` ✓ → Built (pgTAP 100/100, full whole-branch review clean) → `/test` ✓ (live AC#7 sign-in pass, 2026-07-11, real magic-link sign-in verified against `supabase_auth_admin` path) → ready for `/promote` (PR #11).
+**Stage:** Refined ✓ → `/architect` ✓ (ADR-0023) → `/design` ✓ → `/plan` ✓ → Built (pgTAP 100/100, full whole-branch review clean) → `/test` ✓ (live AC#7 sign-in pass, 2026-07-11, real magic-link sign-in verified against `supabase_auth_admin` path) → ready for `/promote` (PR #11).
 
 ---
 
@@ -57,22 +57,22 @@ All six POC personas — every later feature UoW authenticates through this item
 
 **Outcome: signed off, 1 ADR recorded.** The brief is sound against the architecture — scope model (§5.4), RLS-in-DB (non-negotiable #1), hook hardening (§5.5), minors'-data default-deny on missing claims, and no new external processor/residency concern. One genuinely new decision was surfaced (a schema/mechanism shape not yet settled at the system level) and one point the brief itself left open was resolved rather than passed downstream unresolved:
 
-1. **ADR-0022 — active-role storage, switch mechanism & auto-activation placement.** Three sub-decisions bundled as one ADR because they're the same underlying "how is 'currently active' represented and mutated" question: (a) `is_active boolean` + partial unique index on `user_roles`, (b) a `SECURITY DEFINER` RPC as the switch's only write path — reconciling §5.3's "client writes its own row" prose with `core-schema-and-rls`'s AC#3 that `user_roles` has **zero** client write grants (mirrors the ADR-0019/ADR-0021 privileged-RPC precedent), (c) auto-activation logic lives **only** inside the hook function (human-decided, see ADR-0022 Options) — not a `BEFORE INSERT` trigger, and not both — since a trigger alone can't cover the "role revoked while active" edge case and splitting one invariant across two mechanisms is the exact failure shape ADR-0021 already diagnosed once (Task 11).
+1. **ADR-0023 — active-role storage, switch mechanism & auto-activation placement.** Three sub-decisions bundled as one ADR because they're the same underlying "how is 'currently active' represented and mutated" question: (a) `is_active boolean` + partial unique index on `user_roles`, (b) a `SECURITY DEFINER` RPC as the switch's only write path — reconciling §5.3's "client writes its own row" prose with `core-schema-and-rls`'s AC#3 that `user_roles` has **zero** client write grants (mirrors the ADR-0019/ADR-0021 privileged-RPC precedent), (c) auto-activation logic lives **only** inside the hook function (human-decided, see ADR-0023 Options) — not a `BEFORE INSERT` trigger, and not both — since a trigger alone can't cover the "role revoked while active" edge case and splitting one invariant across two mechanisms is the exact failure shape ADR-0021 already diagnosed once (Task 11).
 
 **Not ADR-worthy (already-settled precondition, not a new decision):**
 - **`scope_id` shape guarantee (AC#5).** Carried forward verbatim from `core-schema-and-rls`'s 2026-07-09 deferred-findings pass as a requirement, not a new choice — the hook is already the designated single choke point for this by that item's own ADR-scoped precondition.
-- **`center` as an unused `app_scope_type` enum value.** Confirmed (`supabase/migrations/20260709033959_user_roles_catalog.sql`) that `center` is a defined enum value with no role in §5.4's scope matrix mapped to it today — the auto-activation tie-break rule (`class` > `session` > `org`) correctly has no entry for it. Noted in ADR-0022's Decision for traceability, not a gap requiring resolution now; if a future role is added at center scope, the tie-break rule extends then.
+- **`center` as an unused `app_scope_type` enum value.** Confirmed (`supabase/migrations/20260709033959_user_roles_catalog.sql`) that `center` is a defined enum value with no role in §5.4's scope matrix mapped to it today — the auto-activation tie-break rule (`class` > `session` > `org`) correctly has no entry for it. Noted in ADR-0023's Decision for traceability, not a gap requiring resolution now; if a future role is added at center scope, the tie-break rule extends then.
 
-**Hand-off → `/design`:** produce the detailed spec — exact hook function SQL (ensure-then-read logic per ADR-0022), the `is_active` column + partial unique index DDL, `switch_active_role`'s exact signature/grant matrix, the Supabase Auth magic-link + hook-registration wiring steps, and the adversarial pgTAP test plan for AC#9 (multi-role switch, zero-role no-op, hook-forgery resistance) plus a live end-to-end verification pass (AC#7) replacing simulated claims with a real signed-in session.
+**Hand-off → `/design`:** produce the detailed spec — exact hook function SQL (ensure-then-read logic per ADR-0023), the `is_active` column + partial unique index DDL, `switch_active_role`'s exact signature/grant matrix, the Supabase Auth magic-link + hook-registration wiring steps, and the adversarial pgTAP test plan for AC#9 (multi-role switch, zero-role no-op, hook-forgery resistance) plus a live end-to-end verification pass (AC#7) replacing simulated claims with a real signed-in session.
 
 ---
 
 ## Design (detailed spec)
 
-> **Stage:** 1 — Design ✓ (this section). `/refine` ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → next is `/plan`.
+> **Stage:** 1 — Design ✓ (this section). `/refine` ✓ → `/architect` ✓ (ADR-0023) → `/design` ✓ → next is `/plan`.
 > **Design decisions captured this pass:**
 > 1. **The hook is invoker-rights, not `security definer`.** It runs *as* `supabase_auth_admin` — the role GoTrue already connects as — relying on grants/policies scoped to that one trusted role, rather than the `security definer` pattern used by every other privileged RPC in this codebase. `core-schema-and-rls` already pre-built the `select` grant + `user_roles_auth_admin_read` policy for exactly this purpose; this item adds one column-scoped `update (is_active)` grant + matching policy for the same role, instead of switching mechanisms.
-> 2. **Migration backfill covers only the unambiguous single-row case.** `/migration` auto-activates a user's sole `user_roles` row (no tie-break needed). Multi-role users with no active row are left for the hook's own ensure-then-read logic to resolve on first token request — the narrowest-scope-first tie-break rule is implemented in exactly one place (the hook), per ADR-0022's "one choke point, not two" principle, not duplicated into a migration-time backfill query too.
+> 2. **Migration backfill covers only the unambiguous single-row case.** `/migration` auto-activates a user's sole `user_roles` row (no tie-break needed). Multi-role users with no active row are left for the hook's own ensure-then-read logic to resolve on first token request — the narrowest-scope-first tie-break rule is implemented in exactly one place (the hook), per ADR-0023's "one choke point, not two" principle, not duplicated into a migration-time backfill query too.
 > 3. **`scope_id` is omitted from claims, not stamped `null`, when the active grant is org-scoped.** `event->>'scope_id'` reads back as SQL `NULL` either way (missing key vs. JSON null), matching the existing `nullif(auth.jwt()->>'scope_id','')::uuid` cast pattern used throughout `core-schema-and-rls` — "omitted" is the literal shape AC#5 asks for.
 > 4. **A genuine concurrent double-switch is caught by the partial unique index as a constraint-violation error, not silently resolved.** `switch_active_role`'s clear-then-set is atomic per call under normal (sequential) use; two truly simultaneous calls activating two *different* target rows for the same user will have one caller's transaction fail on the unique index rather than leave two active rows or silently pick a winner — acceptable at pilot scale (one user, one device, not a multi-tab race in practice), documented in Edge cases below rather than papered over with a retry loop.
 
@@ -124,7 +124,7 @@ declare
 begin
   -- Ensure: if the caller holds >=1 grant and none is active, auto-activate
   -- one deterministically (narrowest scope first: class > session > center >
-  -- org; center has no role mapped today per ADR-0022 but is included so the
+  -- org; center has no role mapped today per ADR-0023 but is included so the
   -- CASE never falls through unhandled; tie-broken by created_at ascending).
   if not exists (select 1 from user_roles where user_id = v_user_id and is_active) then
     update user_roles
@@ -190,7 +190,7 @@ begin
   select user_id into v_owner from user_roles where id = p_user_roles_id;
 
   if v_owner is null or v_owner <> auth.uid() then
-    return; -- no-op: no error, no existence leak, per ADR-0022
+    return; -- no-op: no error, no existence leak, per ADR-0023
   end if;
 
   update user_roles set is_active = false where user_id = auth.uid() and is_active;
@@ -266,7 +266,7 @@ Documented as a `/test`-stage manual pass, not pgTAP (this is exactly the "real 
 ### Edge cases (carried + refined)
 - **Zero-role user** — covered by pgTAP #5 above; every existing RLS policy already default-denies on a missing claim, so this is a no-op, not an error state (unchanged from refine).
 - **Switch race / concurrent switch calls** — refined (Design decision #4): sequential calls are safe via row-level locking; a genuinely concurrent double-switch to two *different* target rows surfaces as a unique-constraint-violation error on the losing caller, not a silent double-active state or a silently-resolved winner. No retry logic is built for this — out of scope at pilot scale.
-- **Role revoked while active** — covered by pgTAP #8 above: the next token refresh re-runs the same ensure-then-read path, no separate revocation-handling code needed (ADR-0022's "one choke point" consequence, made concrete).
+- **Role revoked while active** — covered by pgTAP #8 above: the next token refresh re-runs the same ensure-then-read path, no separate revocation-handling code needed (ADR-0023's "one choke point" consequence, made concrete).
 - **HS student without a login yet** — unchanged from refine; `students.user_id` stays nullable until account provisioning (separate item) links it, and this hook simply has nothing to stamp for that student until a `user_roles` row exists.
 - **`scope_id` malformed defensive check** — resolved by design, not by hook-side validation: the existing `user_roles_org_scope_null_id` check constraint (`core-schema-and-rls`) already makes a malformed row impossible to write, so the hook's read-time job is just "mirror the shape," covered under Data & RLS impact above.
 

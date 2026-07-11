@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Spec:** [auth-hook-and-identity.md](auth-hook-and-identity.md) (Design signed off 2026-07-10, ADR-0022). Implements ADR-0004's Custom Access Token Hook concept with a concrete `is_active` storage + switch mechanism, on top of `core-schema-and-rls`'s already-shipped `user_roles` catalog (Task 3, `20260709033959_user_roles_catalog.sql`).
+**Spec:** [auth-hook-and-identity.md](auth-hook-and-identity.md) (Design signed off 2026-07-10, ADR-0023). Implements ADR-0004's Custom Access Token Hook concept with a concrete `is_active` storage + switch mechanism, on top of `core-schema-and-rls`'s already-shipped `user_roles` catalog (Task 3, `20260709033959_user_roles_catalog.sql`).
 
 **Goal:** Ship the Custom Access Token Hook, the `is_active` storage/switch mechanism it depends on, and local magic-link/hook wiring — as timestamped migrations proven by adversarial pgTAP tests that call the hook and RPC directly — so every existing RLS policy (built against **simulated** claims in `core-schema-and-rls`) now enforces against **real**, database-issued JWT claims, with no code changes to those policies.
 
@@ -15,8 +15,8 @@
 - **Migrations are the only path** (constitution #3, doc 3 §6.1): every DDL/function below lands as a `supabase migration new <name>` file in `supabase/migrations/`. The CLI stamps each file with the real timestamp at creation time; this plan refers to files by descriptive suffix.
 - **No RLS/RPC policy rewrites anywhere else** (spec AC#8): every existing policy already reads `auth.jwt()->>'active_role'`/`'scope_type'`/`'scope_id'`; this item only changes where those claims come from. The full existing 73-test pgTAP suite must keep passing unmodified.
 - **The hook is invoker-rights, not `security definer`** (Design decision #1): it runs *as* `supabase_auth_admin` (the role GoTrue connects as), relying on grants/policies scoped to that one trusted role. `core-schema-and-rls` already built the `select` grant + `user_roles_auth_admin_read` policy; this item adds one column-scoped `update (is_active)` grant + matching policy for the same role.
-- **`switch_active_role` is the only write path to `is_active`, and it *is* `SECURITY DEFINER`** (ADR-0022 Decision #2) — no client grant is ever added to `user_roles` itself; mirrors the `mark_attendance_for_staff` precedent (ADR-0021).
-- **Auto-activation logic lives in exactly one place: the hook function** (ADR-0022 Decision #3, "one choke point, not two" — the same lesson ADR-0021 already taught once, Task 11 of `core-schema-and-rls`). No trigger is built. The migration's backfill covers only the unambiguous single-row case (Design decision #2); multi-role users with no active row are left for the hook's own ensure-then-read logic.
+- **`switch_active_role` is the only write path to `is_active`, and it *is* `SECURITY DEFINER`** (ADR-0023 Decision #2) — no client grant is ever added to `user_roles` itself; mirrors the `mark_attendance_for_staff` precedent (ADR-0021).
+- **Auto-activation logic lives in exactly one place: the hook function** (ADR-0023 Decision #3, "one choke point, not two" — the same lesson ADR-0021 already taught once, Task 11 of `core-schema-and-rls`). No trigger is built. The migration's backfill covers only the unambiguous single-row case (Design decision #2); multi-role users with no active row are left for the hook's own ensure-then-read logic.
 - **`scope_id` is omitted from claims, not stamped `null`, when the active grant is org-scoped** (Design decision #3) — matches the existing `nullif(auth.jwt()->>'scope_id','')::uuid` cast pattern already used throughout `core-schema-and-rls`.
 - **Hook hardening (§5.5, constitution #1):** `grant execute` on the hook function to `supabase_auth_admin` only; `revoke` from `anon`, `authenticated`, `public`.
 - **Synthetic data only** (constitution #6): every pgTAP fixture in this plan uses fictional people (`*.test.local` emails via `tests.create_supabase_user`), matching every prior test file's convention.
@@ -156,7 +156,7 @@ Expected: all prior test files (000–100) still pass unmodified — this column
 - [ ] **Step 7: Commit**
 ```bash
 git add supabase/migrations supabase/tests/105_user_roles_active_flag.sql
-git commit -m "feat: is_active flag + partial unique index on user_roles (ADR-0022)"
+git commit -m "feat: is_active flag + partial unique index on user_roles (ADR-0023)"
 ```
 
 ---
@@ -190,7 +190,7 @@ declare
 begin
   -- Ensure: if the caller holds >=1 grant and none is active, auto-activate
   -- one deterministically (narrowest scope first: class > session > center >
-  -- org; center has no role mapped today per ADR-0022 but is included so the
+  -- org; center has no role mapped today per ADR-0023 but is included so the
   -- CASE never falls through unhandled; tie-broken by created_at ascending).
   if not exists (select 1 from user_roles where user_id = v_user_id and is_active) then
     update user_roles
@@ -462,7 +462,7 @@ Expected: all prior test files (000–105) still pass unmodified.
 - [ ] **Step 7: Commit**
 ```bash
 git add supabase/migrations supabase/tests/110_auth_hook_claims.sql
-git commit -m "feat: custom_access_token_hook, ensure-then-read auto-activation (ADR-0022)"
+git commit -m "feat: custom_access_token_hook, ensure-then-read auto-activation (ADR-0023)"
 ```
 
 ---
@@ -496,7 +496,7 @@ begin
   select user_id into v_owner from user_roles where id = p_user_roles_id;
 
   if v_owner is null or v_owner <> auth.uid() then
-    return; -- no-op: no error, no existence leak, per ADR-0022
+    return; -- no-op: no error, no existence leak, per ADR-0023
   end if;
 
   update user_roles set is_active = false where user_id = auth.uid() and is_active;
@@ -609,7 +609,7 @@ Expected: every test file 000–120 passes. This is the concrete proof of AC#8 �
 - [ ] **Step 7: Commit**
 ```bash
 git add supabase/migrations supabase/tests/120_switch_active_role_rpc.sql
-git commit -m "feat: switch_active_role RPC, the only client write path to is_active (ADR-0022)"
+git commit -m "feat: switch_active_role RPC, the only client write path to is_active (ADR-0023)"
 ```
 
 ---

@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 // GOVERN hook (3_ARCHITECTURE §6.3, §11.3): gate REMOTE Supabase migration pushes behind passing RLS tests.
-// PreToolUse on Bash. Decision is STRUCTURAL, not string-matching on "prod":
-//   - `supabase db push`      defaults to the linked REMOTE project  -> gated (unless --local)
-//   - `supabase migration up` defaults to LOCAL                      -> gated only with --linked/--db-url
-//   - `--local` / `db reset`  -> always allowed (local dev)
+// PreToolUse on Bash. Decision is STRUCTURAL, not string-matching on "prod" — see
+// _migration-command-match.js for the push/migration-up/--local rules and _shell-command-match.js
+// for why matching is tokenized per invocation rather than a raw regex over the whole command string.
 // A remote push is blocked unless .claude/.rls-tests-passed holds the CURRENT migrations content-hash,
 // which /test writes on a green RLS run (so a stale marker can't pass migrations that changed since).
-// NOT a migration command (csv-import, data loads, anything else) -> never gated.
 // Fail-LOUD on error, but fail-open (exit 0) so a session is never bricked. Exit 2 = block.
 const fs = require("fs");
 const path = require("path");
 const { computeHash } = require("./_migrations-hash.js");
+const { isRemoteMigrationPush } = require("./_migration-command-match.js");
 let raw = "";
 process.stdin.on("data", c => (raw += c));
 process.stdin.on("end", () => {
@@ -18,18 +17,7 @@ process.stdin.on("end", () => {
     const d = JSON.parse(raw || "{}");
     const cmd = (d.tool_input && d.tool_input.command) || "";
 
-    const isPush = /(^|[\s;&|])(npx\s+)?supabase\s+db\s+push\b/.test(cmd);
-    const isMigUp = /(^|[\s;&|])(npx\s+)?supabase\s+migration\s+up\b/.test(cmd);
-    if (!isPush && !isMigUp) process.exit(0); // not a schema-migration command (e.g. csv-import) — never gated
-
-    const hasLocal = /--local\b/.test(cmd);
-    const hasRemoteFlag = /--linked\b|--db-url\b/.test(cmd);
-    let remote;
-    if (hasLocal) remote = false;
-    else if (hasRemoteFlag) remote = true;
-    else if (isPush) remote = true; // db push defaults to the linked remote project
-    else remote = false;            // migration up defaults to local
-    if (!remote) process.exit(0);
+    if (!isRemoteMigrationPush(cmd)) process.exit(0); // not a gated remote migration push — never gated
 
     const proj = d.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     let recorded = null;

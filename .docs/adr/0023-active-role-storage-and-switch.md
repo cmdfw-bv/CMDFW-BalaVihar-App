@@ -1,4 +1,4 @@
-# ADR-0022: Active-role storage, switch mechanism & auto-activation placement
+# ADR-0023: Active-role storage, switch mechanism & auto-activation placement
 
 **Status:** Closed · **Date:** 2026-07-10 · **Deciders:** Project owner + architect
 **Governs:** System → `auth-hook-and-identity` (`.docs/specs/system/auth-hook-and-identity.md`). Implements ADR-0004's "active-role switch" concept with a concrete mechanism; does not change ADR-0004's decision to use a Postgres Custom Access Token Hook, which stands unchanged.

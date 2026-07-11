@@ -10,7 +10,7 @@ declare
 begin
   -- Ensure: if the caller holds >=1 grant and none is active, auto-activate
   -- one deterministically (narrowest scope first: class > session > center >
-  -- org; center has no role mapped today per ADR-0022 but is included so the
+  -- org; center has no role mapped today per ADR-0023 but is included so the
   -- CASE never falls through unhandled; tie-broken by created_at ascending).
   if not exists (select 1 from user_roles where user_id = v_user_id and is_active) then
     update user_roles
