@@ -27,13 +27,16 @@ for (const name of findTrackerPackageNames([...new Set(installedNames)])) {
 }
 
 // 3) Source text — tracker hostnames actually used (not just mentioned)
-// Exclude infrastructure directories (.claude/ contains hooks, scripts/__tests__ is test-only)
-// to focus scan on application code.
+// Exclude only the specific files that legitimately contain tracker-domain string
+// literals for non-tracking reasons: the denylist module itself (its TRACKER_DOMAINS
+// array quotes each hostname, which trips domainUsageRegex()), and any file under a
+// __tests__/ directory (test fixtures deliberately contain domain-in-URL literals to
+// exercise the detection regex). Every other hook/script file stays scanned.
 const sourceFiles = execFileSync("git", ["ls-files"], { encoding: "utf8" })
   .trim()
   .split("\n")
   .filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f))
-  .filter((f) => !f.startsWith(".claude/") && !f.startsWith("scripts/__tests__/"));
+  .filter((f) => !/__tests__\//.test(f) && f !== ".claude/hooks/_tracker-denylist.js");
 
 for (const file of sourceFiles) {
   let text;
