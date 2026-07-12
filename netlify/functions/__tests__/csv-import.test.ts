@@ -256,4 +256,55 @@ describe('csv-import handler', () => {
       errors: [],
     });
   });
+
+  it('still returns the normal success response when runAutoActivationSweep throws', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+    vi.mocked(dbOps.checkAdminRole).mockResolvedValue(true);
+    vi.mocked(dbOps.resolveSessionsAndClasses).mockResolvedValue({
+      sessionMap: new Map([['F3', 'ses1']]),
+      classMap: new Map([['F3:Gr5', 'cls1']]),
+      errors: [],
+    });
+    vi.mocked(dbOps.upsertFamily).mockResolvedValue('fam1');
+    vi.mocked(dbOps.upsertStudentWithExternalId).mockResolvedValue('stu1');
+    vi.mocked(dbOps.upsertEnrollment).mockResolvedValue('enr1');
+    vi.mocked(dbOps.linkGuardian).mockResolvedValue(undefined);
+    vi.mocked(roleSweep.runAutoActivationSweep).mockRejectedValue(
+      new Error('runAutoActivationSweep: existing-roles lookup failed: connection reset')
+    );
+
+    // Stub fetch for guardian auth provisioning (generateLink raw HTTP call)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'auth-u1', email: 'priya@example.test' }),
+    }));
+
+    const boundary = '----testbound';
+    const body =
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="test.csv"\r\n` +
+      `Content-Type: text/csv\r\n\r\n${VALID_CSV}\r\n--${boundary}--`;
+
+    const res = await handler(
+      makeEvent({
+        headers: { authorization: 'Bearer t', 'content-type': `multipart/form-data; boundary=${boundary}` },
+        body,
+      }),
+      {} as never
+    ) as HandlerResponse;
+    vi.unstubAllGlobals();
+
+    expect(roleSweep.runAutoActivationSweep).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(200);
+    const parsed = JSON.parse(res.body as string);
+    // A sweep failure must not turn an already-committed import into a 500.
+    expect(parsed).toEqual({
+      status: 'complete',
+      processed: 1,
+      skipped: 0,
+      db_committed: true,
+      auth_pending: [],
+      warnings: [],
+      errors: [],
+    });
+  });
 });

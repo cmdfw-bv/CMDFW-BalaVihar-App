@@ -239,7 +239,14 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     }
   }
 
-  await runAutoActivationSweep(client);
+  try {
+    await runAutoActivationSweep(client);
+  } catch (err) {
+    // The CSV import itself already committed (families/students/enrollments/guardians).
+    // A sweep failure here must not turn an already-successful import into a 500 — the
+    // sweep is independently re-triggerable via /api/user-role-sweep.
+    console.log(JSON.stringify({ event: 'role_sweep_failed_post_import', reason: err instanceof Error ? err.message : String(err) }));
+  }
 
   const status = auth_pending.length === 0 ? 'complete' : 'partial';
   const statusCode = auth_pending.length === 0 ? 200 : 207;
