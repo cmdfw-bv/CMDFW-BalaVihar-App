@@ -86,6 +86,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   let targetUserId: string;
   let resolvedRowId: string | null = null;
   let resolvedScopeId: string | null = null;
+  let resolvedRole: AppRole = targetRole;
+  let resolvedScopeType: AppScopeType = targetScopeType;
 
   if (action === 'grant') {
     targetUserId = target_user_id
@@ -100,6 +102,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     if (!row) return json(200, { status: 'noop' });
     resolvedRowId = row.id as string;
     resolvedScopeId = row.scope_id as string | null;
+    resolvedRole = row.role as AppRole;
+    resolvedScopeType = row.scope_type as AppScopeType;
     targetUserId = row.user_id as string;
   } else {
     const lookedUpId = target_user_id ?? (await getUserByEmail(supabaseUrl, serviceRoleKey, target_email!));
@@ -120,10 +124,10 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   }
 
   // ── Phase 3: Tiering + scope containment ──────────────────────────────────────
-  if (!isGrantAllowed(callerRole, callerTier, callerScopeId, targetRole, targetUserId, callerUserId)) {
+  if (!isGrantAllowed(callerRole, callerTier, callerScopeId, resolvedRole, targetUserId, callerUserId)) {
     return json(403, { reason: 'tiering violation' });
   }
-  if (callerRole === 'coordinator' && targetRole === 'teacher') {
+  if (callerRole === 'coordinator' && resolvedRole === 'teacher') {
     const containmentScopeId = action === 'grant' ? scope_id : resolvedScopeId;
     const { data: classRow } = await client.from('classes').select('session_id').eq('id', containmentScopeId!).maybeSingle();
     if (!classRow || classRow.session_id !== callerScopeId) {
@@ -161,6 +165,6 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   if (deleteError) return json(500, { reason: 'revoke failed' });
   if (!deleted || deleted.length === 0) return json(200, { status: 'noop' });
 
-  console.log(JSON.stringify({ event: 'role_revoked', user_roles_id: resolvedRowId, role: targetRole, scope_type: targetScopeType, actor_role: callerRole }));
+  console.log(JSON.stringify({ event: 'role_revoked', user_roles_id: resolvedRowId, role: resolvedRole, scope_type: resolvedScopeType, actor_role: callerRole }));
   return json(200, { status: 'revoked', user_roles_id: resolvedRowId });
 };

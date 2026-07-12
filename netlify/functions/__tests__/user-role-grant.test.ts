@@ -453,6 +453,64 @@ describe('user-role-grant handler', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body as string)).toEqual({ status: 'revoked', user_roles_id: 'row-1' });
     });
+
+    // ── revoke-by-user_roles_id must authorize against the RESOLVED row's actual
+    // role/scope_type, not the request body's role/scope_type — broader/more severe
+    // sibling of the resolvedScopeId fix above (see ADR-0024 addendum). A caller can
+    // supply ANY internally-valid role/scope_type pair in the body; Phase 3 must never
+    // trust it for tiering or containment when revoking by id.
+
+    it('coordinator revokes by user_roles_id with a decoy body role:student (tier 0), but the RESOLVED row is actually role:admin (tier 3) → 403 tiering violation (bypass closed)', async () => {
+      setupCaller('coordinator', SESSION_UUID);
+      // Phase 2: by-id lookup — the row actually being deleted is an admin row, tier 3,
+      // in a completely different scope. The body claims it's a mere "student" grant.
+      mockFrom.mockReturnValueOnce(
+        makeChain({
+          data: { id: 'row-1', user_id: TARGET_ID, role: 'admin', scope_type: 'org', scope_id: null },
+          error: null,
+        })
+      );
+
+      const res = (await handler(
+        makeEvent({
+          body: body({ action: 'revoke', role: 'student', scope_type: 'org', user_roles_id: 'row-1' }),
+        }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body as string)).toEqual({ reason: 'tiering violation' });
+      // Only the Phase 0 caller lookup + Phase 2 by-id lookup should have run — no delete.
+      expect(mockFrom).toHaveBeenCalledTimes(2);
+    });
+
+    it('coordinator revokes by user_roles_id with a decoy body role:student (skips the old targetRole===\'teacher\' containment gate entirely), but the RESOLVED row is actually role:teacher outside the coordinator\'s own session → 403 session containment (bypass closed)', async () => {
+      setupCaller('coordinator', SESSION_UUID);
+      // Tiering alone would NOT have blocked this: tierOf('teacher') === tierOf('student') === 0,
+      // so this test isolates the containment-specific bypass (the old code kept the containment
+      // gate closed for any body role other than 'teacher', regardless of what the row really was).
+      mockFrom.mockReturnValueOnce(
+        makeChain({
+          data: { id: 'row-1', user_id: TARGET_ID, role: 'teacher', scope_type: 'class', scope_id: OTHER_CLASS_UUID },
+          error: null,
+        })
+      );
+      // Phase 3: containment check on the resolved row's real scope_id (OTHER_CLASS_UUID) —
+      // maps to a session outside the caller's own.
+      mockFrom.mockReturnValueOnce(makeChain({ data: { session_id: OTHER_SESSION_UUID }, error: null }));
+
+      const res = (await handler(
+        makeEvent({
+          body: body({ action: 'revoke', role: 'student', scope_type: 'org', user_roles_id: 'row-1' }),
+        }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body as string)).toEqual({ reason: "target class is outside the coordinator's own active session" });
+      // Only the caller lookup + the two lookups above should have run — no delete.
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+    });
   });
 
   // ── Phase 4: execute — grant ─────────────────────────────────────────────────
@@ -568,6 +626,31 @@ describe('user-role-grant handler', () => {
       const logged = JSON.parse(vi.mocked(console.log).mock.calls[0][0] as string);
       expect(logged.event).toBe('role_revoked');
       expect(logged).not.toHaveProperty('email');
+    });
+
+    it('revoke by user_roles_id where the body role/scope_type (internally-valid but inaccurate) differ from the RESOLVED row\'s actual role/scope_type → 200 revoked, using the RESOLVED values for the delete AND the audit log (not the body\'s)', async () => {
+      setupCaller('admin');
+      // Body claims role:'teacher'/scope_type:'class' — internally valid and self-consistent,
+      // but NOT what the row being deleted actually is.
+      mockFrom.mockReturnValueOnce(
+        makeChain({ data: { id: 'row-1', user_id: TARGET_ID, role: 'parent', scope_type: 'org', scope_id: null }, error: null })
+      ); // by-id lookup — the row's real role is 'parent'/'org'
+      mockFrom.mockReturnValueOnce(makeChain({ data: [{ id: 'row-1' }], error: null })); // delete().eq().select()
+
+      const res = (await handler(
+        makeEvent({
+          body: body({ action: 'revoke', role: 'teacher', scope_type: 'class', scope_id: CLASS_UUID, user_roles_id: 'row-1' }),
+        }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body as string)).toEqual({ status: 'revoked', user_roles_id: 'row-1' });
+      expect(console.log).toHaveBeenCalledTimes(1);
+      const logged = JSON.parse(vi.mocked(console.log).mock.calls[0][0] as string);
+      expect(logged.event).toBe('role_revoked');
+      expect(logged.role).toBe('parent');
+      expect(logged.scope_type).toBe('org');
     });
   });
 
