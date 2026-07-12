@@ -22,9 +22,10 @@ function makeClient(overrides: Record<string, unknown> = {}): MockChain {
 }
 
 describe('checkAdminRole', () => {
-  it('returns true when a matching user_roles row exists', async () => {
+  it('returns true when a matching ACTIVE admin row exists', async () => {
     const single = vi.fn().mockResolvedValue({ data: { user_id: 'u1' }, error: null });
-    const eq2 = vi.fn().mockReturnValue({ single });
+    const eq3 = vi.fn().mockReturnValue({ single });
+    const eq2 = vi.fn().mockReturnValue({ eq: eq3 });
     const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
     const select = vi.fn().mockReturnValue({ eq: eq1 });
     const from = vi.fn().mockReturnValue({ select });
@@ -33,16 +34,36 @@ describe('checkAdminRole', () => {
     const result = await checkAdminRole(client as never, 'u1');
     expect(result).toBe(true);
     expect(from).toHaveBeenCalledWith('user_roles');
+    expect(eq1).toHaveBeenCalledWith('user_id', 'u1');
+    expect(eq2).toHaveBeenCalledWith('role', 'admin');
+    expect(eq3).toHaveBeenCalledWith('is_active', true);
   });
 
   it('returns false when user_roles query returns an error', async () => {
     const single = vi.fn().mockResolvedValue({ data: null, error: { message: 'no row' } });
-    const eq2 = vi.fn().mockReturnValue({ single });
+    const eq3 = vi.fn().mockReturnValue({ single });
+    const eq2 = vi.fn().mockReturnValue({ eq: eq3 });
     const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
     const select = vi.fn().mockReturnValue({ eq: eq1 });
     const from = vi.fn().mockReturnValue({ select });
 
     const result = await checkAdminRole(makeClient({ from }) as never, 'u2');
+    expect(result).toBe(false);
+  });
+
+  it('returns false when the user holds an admin row that is NOT active (stale/inactive role must not authorize)', async () => {
+    // The DB query itself filters on is_active=true, so an inactive-only admin row
+    // yields no matching row — same shape as "no row" above, but the point under
+    // test is that the query includes the is_active filter at all (see eq3 assertion
+    // in the "returns true" case, and no-remaining-admin-row scenario here).
+    const single = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116', message: 'no rows' } });
+    const eq3 = vi.fn().mockReturnValue({ single });
+    const eq2 = vi.fn().mockReturnValue({ eq: eq3 });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const select = vi.fn().mockReturnValue({ eq: eq1 });
+    const from = vi.fn().mockReturnValue({ select });
+
+    const result = await checkAdminRole(makeClient({ from }) as never, 'u3');
     expect(result).toBe(false);
   });
 });

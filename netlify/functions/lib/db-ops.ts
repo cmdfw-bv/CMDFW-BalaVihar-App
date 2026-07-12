@@ -32,6 +32,7 @@ export async function checkAdminRole(
     .select('user_id')
     .eq('user_id', userId)
     .eq('role', 'admin')
+    .eq('is_active', true)
     .single();
   return !error && data !== null;
 }
