@@ -22,6 +22,7 @@ create or replace function insert_user_role_grant(
 )
 returns uuid
 language plpgsql
+set search_path = public
 as $$
 declare
   v_id uuid;
