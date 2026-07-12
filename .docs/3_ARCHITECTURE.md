@@ -22,7 +22,7 @@ This doc does **not** re-decide the stack — it specifies the *runtime topology
 
 ## 2. Architecture at a glance
 
-A single Expo codebase talks **directly** to Supabase for all data, auth, and realtime — access enforced in the database by RLS, not in app code. A small set of US-region serverless functions handle the three jobs that need a trusted server (push-send, email-send, CSV import). Everything that touches PII lives in a US region; only the static PWA shell rides a global CDN.
+A single Expo codebase talks **directly** to Supabase for all data, auth, and realtime — access enforced in the database by RLS, not in app code. A small set of US-region serverless functions handle the jobs that need a trusted server (push-send, email-send, CSV import, and the two `user_roles` privileged write paths — auto-activation sweep + tiered manual grant/revoke, ADR-0024). Everything that touches PII lives in a US region; only the static PWA shell rides a global CDN.
 
 ```mermaid
 flowchart TB
@@ -36,7 +36,7 @@ flowchart TB
 
     subgraph us["US region — all PII stays here"]
         subgraph netlify["Netlify Functions (US-East / Ohio)"]
-            fn["push-send (web-push)<br/>email-send (SES)<br/>csv-import (enrollment)"]
+            fn["push-send (web-push)<br/>email-send (SES)<br/>csv-import (enrollment)<br/>user-role-sweep · user-role-grant (ADR-0024)"]
         end
         subgraph supa["Supabase (pinned US AWS region)"]
             auth["Auth — magic link<br/>+ Custom Access Token Hook (SQL)"]
@@ -113,7 +113,9 @@ cmdfw-balavihar/
 │   └── functions/            # US-region trusted-server jobs (TS)
 │       ├── push-send.ts      #   web-push (holds VAPID private key)
 │       ├── email-send.ts     #   AWS SES
-│       └── csv-import.ts     #   enrollment import (service role)
+│       ├── csv-import.ts     #   enrollment import (service role)
+│       ├── user-role-sweep.ts #  user_roles auto-activation sweep (service role, ADR-0024)
+│       └── user-role-grant.ts #  user_roles tiered manual grant/revoke (service role, ADR-0024)
 ├── supabase/
 │   ├── migrations/           # timestamped SQL — schema + RLS + auth hook (source of truth)
 │   ├── seed/                 # synthetic POC data (no real minors' data)
