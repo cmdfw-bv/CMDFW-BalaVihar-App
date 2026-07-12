@@ -12,15 +12,21 @@ interface ExistingRoleRow {
 }
 
 export async function runAutoActivationSweep(client: SupabaseClient): Promise<SweepResult> {
-  const { data: familyMembers } = await client
+  const { data: familyMembers, error: familyMembersError } = await client
     .from('family_members')
     .select('user_id')
     .not('user_id', 'is', null);
+  if (familyMembersError) {
+    console.log(JSON.stringify({ event: 'role_sweep_partial_failure', source: 'family_members', message: familyMembersError.message }));
+  }
 
-  const { data: hsStudents } = await client
+  const { data: hsStudents, error: hsStudentsError } = await client
     .from('students')
     .select('user_id')
     .not('user_id', 'is', null);
+  if (hsStudentsError) {
+    console.log(JSON.stringify({ event: 'role_sweep_partial_failure', source: 'students', message: hsStudentsError.message }));
+  }
 
   const parentSourceIds = [...new Set((familyMembers ?? []).map(r => r.user_id as string))];
   const studentSourceIds = [...new Set((hsStudents ?? []).map(r => r.user_id as string))];
