@@ -66,3 +66,6 @@ supabase/.temp
 
 # supabase edge-runtime local artifact (we use netlify functions, not edge fns)
 deno.lock
+
+# superpowers SDD scratch (task briefs, reports, review packages)
+.superpowers/

@@ -33,6 +33,7 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0023](0023-active-role-storage-and-switch.md) | Active-role storage (`is_active` + partial unique index), RPC-based switch, hook-only auto-activation | Closed | 2026-07-10 |
 | [ADR-0024](0024-cicd-github-actions-branch-protection.md) | CI/CD: GitHub Actions required status check as server-side enforcement layer (extends ADR-0008) | Closed | 2026-07-11 |
 | [ADR-0025](0025-cicd-residency-scan-and-codeowners.md) | CI residency/tracker-dependency scan + CODEOWNERS-required review (ADR-0024 addendum) | Closed | 2026-07-11 |
+| [ADR-0026](0026-user-role-approval-tiering-and-audit.md) | user-role-approval: tiered privilege-escalation guard on the first `user_roles` write path; grant/revoke audited via structured log, not `audit_log` | Closed | 2026-07-11 |
 
 ## How to read an ADR
 

@@ -15,6 +15,14 @@
   # US-East region (compliance perimeter §3/§7.2) — same as health.
   # Holds the service-role key; never add EXPO_PUBLIC_* secrets here.
 
+[functions.user-role-sweep]
+  # US-East region (compliance perimeter §3/§7.2) — same as health/csv-import.
+  # Holds the service-role key; never add EXPO_PUBLIC_* secrets here.
+
+[functions.user-role-grant]
+  # US-East region (compliance perimeter §3/§7.2) — same as health/csv-import.
+  # Holds the service-role key; never add EXPO_PUBLIC_* secrets here.
+
 [dev]
   framework = "#custom"
   command = "npx expo start --web"
