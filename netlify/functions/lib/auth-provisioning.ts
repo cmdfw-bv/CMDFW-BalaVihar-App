@@ -30,6 +30,11 @@ export async function getUserByEmail(
   serviceRoleKey: string,
   email: string
 ): Promise<string | null> {
+  // Locally, GoTrue ignores this ?email= param server-side and always returns
+  // an unfiltered, paginated (50/page) list — hence the client-side .find()
+  // below rather than trusting the response to already be filtered. A match
+  // past the first page would be missed; fine at POC scale, revisit if the
+  // admin user count grows.
   const resp = await fetch(`${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
     headers: {
       Authorization: `Bearer ${serviceRoleKey}`,
