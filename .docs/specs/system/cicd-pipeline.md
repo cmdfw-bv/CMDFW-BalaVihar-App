@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all (delivery pipeline — every persona UoW merges through this) · **scope:** CI/CD + migration-guard/promotion gates · **governing ADR:** [ADR-0024](../../adr/0024-cicd-github-actions-branch-protection.md) · **covers:** doc 3 §6.3 (migration workflow), §12.1 (GOVERN hooks), §12.3 (Promotion stage), §12.6 (convergence funnel)
 
-**Stage:** 1 — Design ✓ (this section). `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ (ADR-0025 addendum) → next is `/plan`.
+**Stage:** 1 — Design ✓ (this section). `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ (ADR-0025 addendum) → `/plan` ✓ ([cicd-pipeline.plan.md](cicd-pipeline.plan.md)) → Built. Next is `/test`.
 
 ---
 
