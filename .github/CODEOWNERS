@@ -1,0 +1,14 @@
+# Security-critical paths require review — no single person (including a maintainer)
+# can wave these through (ADR-0025). Enforced via branch protection's "Require review
+# from Code Owners" — a one-time human repo-admin step, see cicd-pipeline.plan.md Task 8.
+/supabase/migrations/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/supabase/tests/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/netlify/functions/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+
+# CI/scanner code itself — added per the cicd-pipeline final review recommendation
+# (issue #8): these are the files someone could edit to silently disable a required
+# check, so they get the same review gate as the code they protect.
+/.github/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/scripts/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.claude/hooks/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.gitleaks.toml @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
