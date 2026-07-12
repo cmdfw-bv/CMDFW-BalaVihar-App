@@ -10,9 +10,10 @@ create unique index if not exists user_roles_grant_identity_idx
 -- cannot target the coalesce(...) expression index above. This RPC is the mechanical
 -- translation of the design spec's literal `insert ... on conflict (...) do nothing
 -- returning id` (Phase 4) into something callable via supabase-js's .rpc(), since that SQL
--- can't be expressed through .upsert(). Called only by the manual grant path (user-role-grant.ts);
--- the sweep (role-sweep.ts) does its own select-then-insert, matching db-ops.ts's existing
--- pattern for the other partial-unique-index tables (families, students).
+-- can't be expressed through .upsert(). Called by both the manual grant path
+-- (user-role-grant.ts) and the sweep (role-sweep.ts, one call per candidate row) — the
+-- sweep used to do its own select-then-insert, but a batch insert races unsafely against
+-- this same index under concurrent sweeps/manual grants, so it now goes through this RPC too.
 create or replace function insert_user_role_grant(
   p_user_id uuid,
   p_role app_role,

@@ -76,23 +76,28 @@ async function insertSweepRole(
 ): Promise<number> {
   if (userIds.length === 0) return 0;
 
-  const rows = userIds.map(user_id => ({
-    user_id,
-    role,
-    scope_type: 'org' as const,
-    scope_id: null,
-    is_active: !hasAnyRole.has(user_id), // decision #9: active only if this is the user's first-ever row
-  }));
-  for (const row of rows) hasAnyRole.add(row.user_id); // matches the design SQL's per-statement snapshot sequencing
+  // Per-row via the atomic insert_user_role_grant RPC (on-conflict-do-nothing on the
+  // grant-identity index), not a batch .insert(): a batch insert can't safely target the
+  // coalesce(scope_id, ...) unique index (same PostgREST limitation documented on the RPC
+  // itself), so a race with a concurrent sweep/manual grant would throw a unique-violation
+  // and lose the *entire* batch, not just the colliding row.
+  let granted = 0;
+  for (const user_id of userIds) {
+    const is_active = !hasAnyRole.has(user_id); // decision #9: active only if this is the user's first-ever row
+    hasAnyRole.add(user_id); // matches the design SQL's per-statement snapshot sequencing
 
-  const { data, error } = await client
-    .from('user_roles')
-    .insert(rows)
-    .select('id, user_id, role, scope_type');
-  if (error) throw new Error(`runAutoActivationSweep: ${role} insert failed: ${error.message}`);
+    const { data: newId, error } = await client.rpc('insert_user_role_grant', {
+      p_user_id: user_id,
+      p_role: role,
+      p_scope_type: 'org',
+      p_scope_id: null,
+      p_is_active: is_active,
+    });
+    if (error) throw new Error(`runAutoActivationSweep: ${role} insert failed: ${error.message}`);
+    if (!newId) continue; // conflict: a concurrent sweep/manual grant already inserted this identity
 
-  for (const r of data ?? []) {
-    console.log(JSON.stringify({ event: 'role_swept', user_roles_id: r.id, role: r.role, scope_type: r.scope_type }));
+    granted += 1;
+    console.log(JSON.stringify({ event: 'role_swept', user_roles_id: newId, role, scope_type: 'org' }));
   }
-  return data?.length ?? 0;
+  return granted;
 }

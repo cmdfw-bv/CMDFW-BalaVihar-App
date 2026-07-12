@@ -314,7 +314,8 @@ Design decision #1's code (`isGrantAllowed`) and its prose disagreed on one edge
   - Within one sweep call, if the same `user_id` were newly granted by the parent batch, the student batch's `is_active` computation reflects that (sequencing test — construct a client stub where the same id appears in both `family_members` and `students` fixtures).
   - Returns `{ granted_parent: number, granted_student: number }` counting only newly-inserted rows (not skipped/idempotent ones).
   - Emits exactly one `console.log(JSON.stringify({ event: 'role_swept', user_roles_id, role, scope_type }))` per granted row (spy on `console.log`) — assert the logged object has **no** `email`/`name`/PII key (AC#8).
-  - Throws (propagates) when the `family_members`/`students`/`user_roles` select or the `user_roles` insert returns a Supabase `error` — mirror `db-ops.ts`'s `throw new Error(...)` pattern.
+  - Throws (propagates) when the `user_roles` existing-roles select or the `insert_user_role_grant` RPC call returns a Supabase `error` — mirror `db-ops.ts`'s `throw new Error(...)` pattern.
+  - **Superseded by decision #10:** a `family_members`/`students` select error does **not** throw — it degrades to "treat as zero source rows" for that table only (the other table's sweep proceeds normally), reported via `source_errors` in the return value. See decision #10 in `user-role-approval.md`.
   - Uses the same `makeClient`/chained-`vi.fn()` mocking style as `db-ops.test.ts`.
 
 - [x] **F6 — implementation** `netlify/functions/lib/role-sweep.ts`

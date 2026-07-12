@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Admin, Coordinator, BV Coordinator (each calls with their own scope argument) · **scope:** org (Admin, BV Coordinator) / session (Coordinator); privileged server-side writes to `user_roles` · **governing ADR:** [ADR-0024](../../adr/0024-user-role-approval-tiering-and-audit.md) · **covers:** doc 2 (Admin "user/role management (assign with session context, approve, reject)"; Coordinator "approve/reject users in own session"; BV Coordinator "cross-session approvals"); `core-schema-and-rls`'s deferred write path (line 164: `user_roles` ships with zero client write grants, this item is "the later function" that safely writes to it); `csv-enrollment-import`'s explicit exclusion of teacher/coordinator provisioning and of `user_roles` writes for CSV-provisioned guardians/HS students
 
-**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ → `/plan` ✓ ([plan](user-role-approval.plan.md)) → `/migration` ✓ → `/build` ✓ (154/154 unit + 130/130 pgTAP green; three real access-control bugs found and fixed during review — `user-role-grant.ts`'s revoke-by-id and coordinator-containment paths trusting request-body role/scope over the resolved row, and `checkAdminRole` keying off any held role instead of the caller's currently *active* role — all adversarially re-verified closed; live local-stack smoke pass done) → next is `/test` (full adversarial tiering matrix + duplicate-idempotency + revoke-noop pass against the real stack, per ADR-0024 Consequences).
+**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ → `/plan` ✓ ([plan](user-role-approval.plan.md)) → `/migration` ✓ → `/build` ✓ (154/154 unit + 141/141 pgTAP green; three real access-control bugs found and fixed during review — `user-role-grant.ts`'s revoke-by-id and coordinator-containment paths trusting request-body role/scope over the resolved row, and `checkAdminRole` keying off any held role instead of the caller's currently *active* role — all adversarially re-verified closed; live local-stack smoke pass done) → next is `/test` (full adversarial tiering matrix + duplicate-idempotency + revoke-noop pass against the real stack, per ADR-0024 Consequences).
 
 ---
 
@@ -126,6 +126,10 @@ returning id, user_id, role, scope_type;
 ```
 
 For each returned row: `console.log(JSON.stringify({ event: 'role_swept', user_roles_id: id, role, scope_type }))` (no PII — AC#8). Returns `{ granted_parent: number; granted_student: number }` to the caller.
+
+> **Decision #10 (recorded 2026-07-12, not ADR-worthy — see below).** The SQL above shows the intent as one batch `insert...select...returning` per role; the shipped TypeScript (`lib/role-sweep.ts`) instead calls the `insert_user_role_grant` RPC (decision #4's grant-identity `on conflict do nothing`) **once per candidate row**, not as a single batch insert. Reason: a batch insert can't safely use `on conflict` against the grant-identity index (PostgREST's `.insert()` has no conflict-target support at all, and even `.upsert(onConflict:)` can't target the `coalesce(scope_id, ...)` expression index — the same limitation that motivated the RPC's existence for the manual-grant path in the first place). Without this, two sweeps racing on the same candidate (e.g. the CSV-import-triggered sweep overlapping an Admin-triggered `POST /api/user-role-sweep`) would hit a unique-violation on the *batch* insert and lose every row in that batch, not just the one collision — violating AC#3's "idempotent, safe to re-run" requirement. Per-row RPC calls mean one colliding row is silently skipped (conflict → no new id, not counted, not logged) while every other candidate in the same run still succeeds.
+>
+> **Separately:** a `family_members`/`students` select error does **not** throw (superseding the plan's F5 literal wording) — it degrades to "treat as zero source rows" for that table only; the other table's sweep still runs, and the failure is surfaced via `source_errors` in the return value for the caller/monitoring to see and retry. Reason: throwing on one flaky/best-effort source read would block grants for the *other* table too, even though its own read succeeded — the sweep is cheap and idempotent to re-run, so isolating the failure to the affected table has a smaller blast radius than failing the whole run. Neither of these is an access-control decision (they don't touch who can grant/revoke what, or the tiering guard ADR-0024 governs) — so this is recorded here as a design decision, not a new ADR.
 
 #### `user-role-sweep.ts` (HTTP wrapper)
 
@@ -260,6 +264,8 @@ Response `200`: `{ granted_parent: number; granted_student: number }`
 | Target email belongs to an existing account with a different existing role | Grant adds an additional `user_roles` row (multi-role-per-user, existing supported shape); `is_active` stays `false` on the new row (decision #9) unless it's their first row ever |
 | First Admin account (system bootstrap) | Out of scope for this function (decision #2) — seeded directly via migration/SQL at `/deploy-staging` |
 | New auth account has zero prior roles | `is_active = true` on the sweep/grant-created row (decision #9) — same single-role auto-activation the hook itself would otherwise apply lazily, done explicitly and immediately here instead |
+| Two sweeps race on the same candidate row | One conflicts (no-op, not counted/logged), the other succeeds — no batch-wide failure (decision #10) |
+| `family_members` or `students` source read fails mid-sweep | That table's grants degrade to zero for this run only; the other table's sweep is unaffected; failure surfaced via `source_errors` (decision #10) |
 
 ---
 

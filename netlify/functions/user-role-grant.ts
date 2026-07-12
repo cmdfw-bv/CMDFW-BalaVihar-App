@@ -95,8 +95,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     } else {
       try {
         targetUserId = await getOrCreateAuthUser(supabaseUrl, serviceRoleKey, target_email!, '', '');
-      } catch (err) {
-        console.log(JSON.stringify({ event: 'auth_provisioning_failed', reason: err instanceof Error ? err.message : String(err) }));
+      } catch {
+        console.log(JSON.stringify({ event: 'auth_provisioning_failed', reason: 'auth provisioning failed' }));
         return json(500, { reason: 'auth provisioning failed' });
       }
     }
@@ -119,8 +119,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     } else {
       try {
         lookedUpId = await getUserByEmail(supabaseUrl, serviceRoleKey, target_email!);
-      } catch (err) {
-        console.log(JSON.stringify({ event: 'auth_lookup_failed', reason: err instanceof Error ? err.message : String(err) }));
+      } catch {
+        console.log(JSON.stringify({ event: 'auth_lookup_failed', reason: 'auth lookup failed' }));
         return json(500, { reason: 'auth lookup failed' });
       }
     }
