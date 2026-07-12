@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { parseCsv } from './lib/csv-parse';
 import { guardianEmailHash } from './lib/hash';
 import { getOrCreateAuthUser } from './lib/auth-provisioning';
+import { runAutoActivationSweep } from './lib/role-sweep';
 import {
   checkAdminRole,
   resolveSessionsAndClasses,
@@ -237,6 +238,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
       rowNum++;
     }
   }
+
+  await runAutoActivationSweep(client);
 
   const status = auth_pending.length === 0 ? 'complete' : 'partial';
   const statusCode = auth_pending.length === 0 ? 200 : 207;
