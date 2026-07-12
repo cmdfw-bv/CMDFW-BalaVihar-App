@@ -2,6 +2,7 @@ import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { parseCsv } from './lib/csv-parse';
 import { guardianEmailHash } from './lib/hash';
+import { getOrCreateAuthUser } from './lib/auth-provisioning';
 import {
   checkAdminRole,
   resolveSessionsAndClasses,
@@ -247,30 +248,3 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   const resp: ImportResponse = { status, processed, skipped, db_committed: true, auth_pending, warnings, errors: [] };
   return json(statusCode, resp);
 };
-
-async function getOrCreateAuthUser(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  email: string,
-  firstName: string,
-  lastName: string
-): Promise<string> {
-  // Use raw fetch — the Supabase JS admin client has auth-state bugs after getUser(token).
-  // The generated link is never sent; this is silent provisioning only.
-  const resp = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
-    },
-    body: JSON.stringify({
-      type: 'magiclink',
-      email,
-      options: { data: { first_name: firstName, last_name: lastName } },
-    }),
-  });
-  const body = await resp.json() as { id?: string; msg?: string; message?: string };
-  if (!resp.ok || !body.id) throw new Error(body.msg ?? body.message ?? 'generateLink failed');
-  return body.id;
-}
