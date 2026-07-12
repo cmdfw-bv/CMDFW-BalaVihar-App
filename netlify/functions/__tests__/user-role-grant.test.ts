@@ -39,6 +39,7 @@ const TARGET_ID = 'target-1';
 const SESSION_UUID = '11111111-1111-1111-1111-111111111111';
 const OTHER_SESSION_UUID = '99999999-9999-9999-9999-999999999999';
 const CLASS_UUID = '22222222-2222-2222-2222-222222222222';
+const OTHER_CLASS_UUID = '33333333-3333-3333-3333-333333333333';
 const TEST_EMAIL = 'grant-target@example.test';
 
 function makeEvent(overrides: Partial<HandlerEvent> = {}): HandlerEvent {
@@ -361,6 +362,96 @@ describe('user-role-grant handler', () => {
 
       expect(res.statusCode).toBe(200);
       expect(mockFrom).not.toHaveBeenCalledWith('classes');
+    });
+
+    // ── revoke-by-user_roles_id containment: must use the RESOLVED row's scope_id,
+    // not the request body's scope_id (security fix — see ADR-0024 addendum).
+    //
+    // The classes-lookup chain below branches on the ACTUAL id passed to `.eq('id', ...)`
+    // rather than returning a single canned response — this is deliberate: a canned
+    // makeChain() response can't distinguish "queried with the resolved row's scope_id"
+    // from "queried with the request body's scope_id", since both would just replay the
+    // same preset result. Branching on the real argument is what makes this test capable
+    // of failing against the pre-fix code (which passes the body's scope_id here).
+    function makeBranchingClassesChain(sessionByClassId: Record<string, string>) {
+      const chain: any = {};
+      let queriedId: string | undefined;
+      chain.select = vi.fn(() => chain);
+      chain.eq = vi.fn((_col: string, val: string) => {
+        queriedId = val;
+        return chain;
+      });
+      chain.maybeSingle = vi.fn(() =>
+        Promise.resolve({
+          data: queriedId && sessionByClassId[queriedId] ? { session_id: sessionByClassId[queriedId] } : null,
+          error: null,
+        })
+      );
+      return chain;
+    }
+
+    it('coordinator revokes role:teacher by user_roles_id where the RESOLVED row is outside their own session, but the body scope_id is a decoy class inside their own session → 403 (attack shape closed)', async () => {
+      setupCaller('coordinator', SESSION_UUID);
+      // Phase 2: by-id lookup — the row actually being deleted belongs to a class OUTSIDE the caller's session.
+      mockFrom.mockReturnValueOnce(
+        makeChain({
+          data: { id: 'row-1', user_id: TARGET_ID, role: 'teacher', scope_type: 'class', scope_id: OTHER_CLASS_UUID },
+          error: null,
+        })
+      );
+      // Phase 3: containment check — CLASS_UUID (decoy, in body) maps to the caller's own session;
+      // OTHER_CLASS_UUID (the row's real scope) maps to a different session. Only the fixed handler,
+      // which queries by resolvedScopeId, will see the "outside" mapping.
+      mockFrom.mockReturnValueOnce(
+        makeBranchingClassesChain({ [CLASS_UUID]: SESSION_UUID, [OTHER_CLASS_UUID]: OTHER_SESSION_UUID })
+      );
+
+      const res = (await handler(
+        makeEvent({
+          body: body({
+            action: 'revoke',
+            role: 'teacher',
+            scope_type: 'class',
+            scope_id: CLASS_UUID, // attacker-supplied decoy: a class INSIDE the caller's own session
+            user_roles_id: 'row-1', // but this row's real scope_id is OTHER_CLASS_UUID (outside)
+          }),
+        }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body as string)).toEqual({ reason: "target class is outside the coordinator's own active session" });
+    });
+
+    it('coordinator revokes role:teacher by user_roles_id where the RESOLVED row IS inside their own session → 200 revoked', async () => {
+      setupCaller('coordinator', SESSION_UUID);
+      // Phase 2: by-id lookup — the row being deleted belongs to a class inside the caller's own session.
+      mockFrom.mockReturnValueOnce(
+        makeChain({
+          data: { id: 'row-1', user_id: TARGET_ID, role: 'teacher', scope_type: 'class', scope_id: CLASS_UUID },
+          error: null,
+        })
+      );
+      // Phase 3: containment check on the resolved scope_id (CLASS_UUID) — matches caller's session.
+      mockFrom.mockReturnValueOnce(makeChain({ data: { session_id: SESSION_UUID }, error: null }));
+      // Phase 4: delete().eq().select()
+      mockFrom.mockReturnValueOnce(makeChain({ data: [{ id: 'row-1' }], error: null }));
+
+      const res = (await handler(
+        makeEvent({
+          body: body({
+            action: 'revoke',
+            role: 'teacher',
+            scope_type: 'class',
+            scope_id: CLASS_UUID,
+            user_roles_id: 'row-1',
+          }),
+        }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body as string)).toEqual({ status: 'revoked', user_roles_id: 'row-1' });
     });
   });
 

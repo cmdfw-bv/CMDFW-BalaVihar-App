@@ -85,6 +85,7 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   // ── Phase 2: Resolve target user + target row (no writes yet) ────────────────
   let targetUserId: string;
   let resolvedRowId: string | null = null;
+  let resolvedScopeId: string | null = null;
 
   if (action === 'grant') {
     targetUserId = target_user_id
@@ -98,6 +99,7 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
       .maybeSingle();
     if (!row) return json(200, { status: 'noop' });
     resolvedRowId = row.id as string;
+    resolvedScopeId = row.scope_id as string | null;
     targetUserId = row.user_id as string;
   } else {
     const lookedUpId = target_user_id ?? (await getUserByEmail(supabaseUrl, serviceRoleKey, target_email!));
@@ -114,6 +116,7 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     const { data: row } = await query.maybeSingle();
     if (!row) return json(200, { status: 'noop' });
     resolvedRowId = row.id as string;
+    resolvedScopeId = scope_id ?? null;
   }
 
   // ── Phase 3: Tiering + scope containment ──────────────────────────────────────
@@ -121,7 +124,8 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     return json(403, { reason: 'tiering violation' });
   }
   if (callerRole === 'coordinator' && targetRole === 'teacher') {
-    const { data: classRow } = await client.from('classes').select('session_id').eq('id', scope_id!).maybeSingle();
+    const containmentScopeId = action === 'grant' ? scope_id : resolvedScopeId;
+    const { data: classRow } = await client.from('classes').select('session_id').eq('id', containmentScopeId!).maybeSingle();
     if (!classRow || classRow.session_id !== callerScopeId) {
       return json(403, { reason: "target class is outside the coordinator's own active session" });
     }
