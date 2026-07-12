@@ -276,6 +276,22 @@ describe('user-role-grant handler', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body as string)).toEqual({ status: 'noop' });
     });
+
+    it('revoke by tuple where getUserByEmail throws → 500, no unhandled exception, no PII in the log line', async () => {
+      setupCaller('admin');
+      vi.mocked(authProvisioning.getUserByEmail).mockRejectedValue(new Error('admin users lookup failed (500)'));
+
+      const res = (await handler(
+        makeEvent({ body: body({ action: 'revoke', role: 'student', scope_type: 'org', target_email: TEST_EMAIL }) }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(500);
+      expect(JSON.parse(res.body as string)).toEqual({ reason: 'auth lookup failed' });
+      for (const call of vi.mocked(console.log).mock.calls) {
+        expect(call[0] as string).not.toContain(TEST_EMAIL);
+      }
+    });
   });
 
   // ── Phase 3: tiering + scope containment ────────────────────────────────────
@@ -529,6 +545,23 @@ describe('user-role-grant handler', () => {
       expect(authProvisioning.getOrCreateAuthUser).toHaveBeenCalledWith(expect.anything(), expect.anything(), TEST_EMAIL, '', '');
       expect(mockRpc).toHaveBeenCalledWith('insert_user_role_grant', expect.objectContaining({ p_user_id: 'new-auth-id' }));
       expect(res.statusCode).toBe(200);
+    });
+
+    it('grant where getOrCreateAuthUser throws → 500, no unhandled exception, no PII in the log line', async () => {
+      setupCaller('admin');
+      vi.mocked(authProvisioning.getOrCreateAuthUser).mockRejectedValue(new Error('generateLink failed'));
+
+      const res = (await handler(
+        makeEvent({ body: body({ action: 'grant', role: 'student', scope_type: 'org', target_email: TEST_EMAIL }) }),
+        {} as never
+      )) as HandlerResponse;
+
+      expect(res.statusCode).toBe(500);
+      expect(JSON.parse(res.body as string)).toEqual({ reason: 'auth provisioning failed' });
+      expect(mockRpc).not.toHaveBeenCalled();
+      for (const call of vi.mocked(console.log).mock.calls) {
+        expect(call[0] as string).not.toContain(TEST_EMAIL);
+      }
     });
 
     it('grant with target_user_id does NOT call getOrCreateAuthUser', async () => {

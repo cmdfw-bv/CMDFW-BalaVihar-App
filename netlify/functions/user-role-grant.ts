@@ -90,9 +90,16 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   let resolvedScopeType: AppScopeType = targetScopeType;
 
   if (action === 'grant') {
-    targetUserId = target_user_id
-      ? target_user_id
-      : await getOrCreateAuthUser(supabaseUrl, serviceRoleKey, target_email!, '', '');
+    if (target_user_id) {
+      targetUserId = target_user_id;
+    } else {
+      try {
+        targetUserId = await getOrCreateAuthUser(supabaseUrl, serviceRoleKey, target_email!, '', '');
+      } catch (err) {
+        console.log(JSON.stringify({ event: 'auth_provisioning_failed', reason: err instanceof Error ? err.message : String(err) }));
+        return json(500, { reason: 'auth provisioning failed' });
+      }
+    }
   } else if (user_roles_id) {
     const { data: row } = await client
       .from('user_roles')
@@ -106,7 +113,17 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     resolvedScopeType = row.scope_type as AppScopeType;
     targetUserId = row.user_id as string;
   } else {
-    const lookedUpId = target_user_id ?? (await getUserByEmail(supabaseUrl, serviceRoleKey, target_email!));
+    let lookedUpId: string | null;
+    if (target_user_id) {
+      lookedUpId = target_user_id;
+    } else {
+      try {
+        lookedUpId = await getUserByEmail(supabaseUrl, serviceRoleKey, target_email!);
+      } catch (err) {
+        console.log(JSON.stringify({ event: 'auth_lookup_failed', reason: err instanceof Error ? err.message : String(err) }));
+        return json(500, { reason: 'auth lookup failed' });
+      }
+    }
     if (!lookedUpId) return json(200, { status: 'noop' });
     targetUserId = lookedUpId;
 

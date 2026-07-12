@@ -3,6 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface SweepResult {
   granted_parent: number;
   granted_student: number;
+  // Present (non-empty) only when a source-table read failed; lets a caller distinguish
+  // "genuinely nothing pending" from "a read failed so this table wasn't actually checked".
+  source_errors?: string[];
 }
 
 interface ExistingRoleRow {
@@ -12,12 +15,15 @@ interface ExistingRoleRow {
 }
 
 export async function runAutoActivationSweep(client: SupabaseClient): Promise<SweepResult> {
+  const sourceErrors: string[] = [];
+
   const { data: familyMembers, error: familyMembersError } = await client
     .from('family_members')
     .select('user_id')
     .not('user_id', 'is', null);
   if (familyMembersError) {
     console.log(JSON.stringify({ event: 'role_sweep_partial_failure', source: 'family_members', message: familyMembersError.message }));
+    sourceErrors.push(`family_members: ${familyMembersError.message}`);
   }
 
   const { data: hsStudents, error: hsStudentsError } = await client
@@ -26,6 +32,7 @@ export async function runAutoActivationSweep(client: SupabaseClient): Promise<Sw
     .not('user_id', 'is', null);
   if (hsStudentsError) {
     console.log(JSON.stringify({ event: 'role_sweep_partial_failure', source: 'students', message: hsStudentsError.message }));
+    sourceErrors.push(`students: ${hsStudentsError.message}`);
   }
 
   const parentSourceIds = [...new Set((familyMembers ?? []).map(r => r.user_id as string))];
@@ -56,7 +63,9 @@ export async function runAutoActivationSweep(client: SupabaseClient): Promise<Sw
   const granted_parent = await insertSweepRole(client, parentGrants, 'parent', hasAnyRole);
   const granted_student = await insertSweepRole(client, studentGrants, 'student', hasAnyRole);
 
-  return { granted_parent, granted_student };
+  return sourceErrors.length > 0
+    ? { granted_parent, granted_student, source_errors: sourceErrors }
+    : { granted_parent, granted_student };
 }
 
 async function insertSweepRole(

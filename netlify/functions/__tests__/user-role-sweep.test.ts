@@ -76,4 +76,20 @@ describe('user-role-sweep handler', () => {
     const parsed = JSON.parse(res.body as string);
     expect(parsed).toEqual({ granted_parent: 2, granted_student: 1 });
   });
+
+  it('forwards source_errors in the 200 body when the sweep reports a partial source-read failure', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+    vi.mocked(dbOps.checkAdminRole).mockResolvedValue(true);
+    vi.mocked(roleSweep.runAutoActivationSweep).mockResolvedValue({
+      granted_parent: 0,
+      granted_student: 1,
+      source_errors: ['family_members: connection reset'],
+    });
+
+    const res = await handler(makeEvent(), {} as never) as HandlerResponse;
+
+    expect(res.statusCode).toBe(200);
+    const parsed = JSON.parse(res.body as string);
+    expect(parsed.source_errors).toEqual(['family_members: connection reset']);
+  });
 });

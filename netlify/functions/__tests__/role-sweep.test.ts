@@ -241,7 +241,7 @@ describe('runAutoActivationSweep', () => {
   // normally for the other table. This is a real behavior test, not a
   // literal reading of the F5 bullet (which says these should throw) — see
   // task-4-report.md Concerns for the flagged spec/implementation mismatch.
-  it('does not throw when the family_members select errors — degrades to zero parent grants, students sweep unaffected', async () => {
+  it('does not throw when the family_members select errors — degrades to zero parent grants, students sweep unaffected, and reports source_errors', async () => {
     const { client, userRolesChain } = makeClient({
       familyMembersError: { message: 'family_members boom' },
       students: [{ user_id: 's1' }],
@@ -250,8 +250,24 @@ describe('runAutoActivationSweep', () => {
 
     const result = await runAutoActivationSweep(client as never);
 
-    expect(result).toEqual({ granted_parent: 0, granted_student: 1 });
+    expect(result).toEqual({
+      granted_parent: 0,
+      granted_student: 1,
+      source_errors: ['family_members: family_members boom'],
+    });
     expect(userRolesChain.insert).toHaveBeenCalledTimes(1);
     expect(userRolesChain.insert).toHaveBeenCalledWith([expect.objectContaining({ user_id: 's1', role: 'student' })]);
+  });
+
+  it('omits source_errors entirely when both source reads succeed', async () => {
+    const { client } = makeClient({
+      familyMembers: [{ user_id: 'p1' }],
+      students: [],
+      existingRoles: [],
+    });
+
+    const result = await runAutoActivationSweep(client as never);
+
+    expect(result).not.toHaveProperty('source_errors');
   });
 });
