@@ -1,6 +1,6 @@
 # Plan — System: user-role-approval
 
-> Spec: [user-role-approval.md](user-role-approval.md) · ADR-0024 · stage: `/plan` ✓ → `/migration` ✓ → `/build` ✓ → next `/test`
+> Spec: [user-role-approval.md](user-role-approval.md) · ADR-0026 · stage: `/plan` ✓ → `/migration` ✓ → `/build` ✓ → next `/test`
 
 ## Shared seam
 
@@ -713,4 +713,4 @@ None. The self-target formula ambiguity (design decision #1's code vs. prose) wa
 
 `/migration` → M1–M4 (pgTAP RED → migrations → GREEN).
 `/build` → F1–F14 in the TDD order above (Stages 2–6 may be built in parallel once Stage 1 is signed off — all mocked, no DB dependency).
-`/test` → adversarial integration pass per ADR-0024 Consequences: every caller-tier × target-role combination including the self-target case (AC#6), Coordinator session containment (AC#7), duplicate-grant idempotency, and revoke-of-nonexistent-row no-op — against the real local stack, not mocks.
+`/test` → adversarial integration pass per ADR-0026 Consequences: every caller-tier × target-role combination including the self-target case (AC#6), Coordinator session containment (AC#7), duplicate-grant idempotency, and revoke-of-nonexistent-row no-op — against the real local stack, not mocks.

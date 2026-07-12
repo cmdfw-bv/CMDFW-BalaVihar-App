@@ -381,7 +381,7 @@ describe('user-role-grant handler', () => {
     });
 
     // ── revoke-by-user_roles_id containment: must use the RESOLVED row's scope_id,
-    // not the request body's scope_id (security fix — see ADR-0024 addendum).
+    // not the request body's scope_id (security fix — see ADR-0026 addendum).
     //
     // The classes-lookup chain below branches on the ACTUAL id passed to `.eq('id', ...)`
     // rather than returning a single canned response — this is deliberate: a canned
@@ -472,7 +472,7 @@ describe('user-role-grant handler', () => {
 
     // ── revoke-by-user_roles_id must authorize against the RESOLVED row's actual
     // role/scope_type, not the request body's role/scope_type — broader/more severe
-    // sibling of the resolvedScopeId fix above (see ADR-0024 addendum). A caller can
+    // sibling of the resolvedScopeId fix above (see ADR-0026 addendum). A caller can
     // supply ANY internally-valid role/scope_type pair in the body; Phase 3 must never
     // trust it for tiering or containment when revoking by id.
 

@@ -1,4 +1,4 @@
-# ADR-0024: user-role-approval — tiered privilege-escalation guard; grant/revoke audited via structured log, not `audit_log`
+# ADR-0026: user-role-approval — tiered privilege-escalation guard; grant/revoke audited via structured log, not `audit_log`
 
 **Status:** Closed · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
 **Governs:** System → `user-role-approval` (`.docs/specs/system/user-role-approval.md`). Resolves `core-schema-and-rls`'s deferred write path (line 164: `user_roles` shipped with zero client write grants, naming this item as "the later function" that safely writes to it) and the brief's explicitly flagged open question ("`audit_log` schema changes... an open question for `/architect`").

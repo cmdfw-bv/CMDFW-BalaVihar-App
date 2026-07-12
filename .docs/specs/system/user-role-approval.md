@@ -1,8 +1,8 @@
 # System — user role approval
 
-> **owner:** System · **consumers:** Admin, Coordinator, BV Coordinator (each calls with their own scope argument) · **scope:** org (Admin, BV Coordinator) / session (Coordinator); privileged server-side writes to `user_roles` · **governing ADR:** [ADR-0024](../../adr/0024-user-role-approval-tiering-and-audit.md) · **covers:** doc 2 (Admin "user/role management (assign with session context, approve, reject)"; Coordinator "approve/reject users in own session"; BV Coordinator "cross-session approvals"); `core-schema-and-rls`'s deferred write path (line 164: `user_roles` ships with zero client write grants, this item is "the later function" that safely writes to it); `csv-enrollment-import`'s explicit exclusion of teacher/coordinator provisioning and of `user_roles` writes for CSV-provisioned guardians/HS students
+> **owner:** System · **consumers:** Admin, Coordinator, BV Coordinator (each calls with their own scope argument) · **scope:** org (Admin, BV Coordinator) / session (Coordinator); privileged server-side writes to `user_roles` · **governing ADR:** [ADR-0026](../../adr/0026-user-role-approval-tiering-and-audit.md) · **covers:** doc 2 (Admin "user/role management (assign with session context, approve, reject)"; Coordinator "approve/reject users in own session"; BV Coordinator "cross-session approvals"); `core-schema-and-rls`'s deferred write path (line 164: `user_roles` ships with zero client write grants, this item is "the later function" that safely writes to it); `csv-enrollment-import`'s explicit exclusion of teacher/coordinator provisioning and of `user_roles` writes for CSV-provisioned guardians/HS students
 
-**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ → `/plan` ✓ ([plan](user-role-approval.plan.md)) → `/migration` ✓ → `/build` ✓ (154/154 unit + 141/141 pgTAP green; three real access-control bugs found and fixed during review — `user-role-grant.ts`'s revoke-by-id and coordinator-containment paths trusting request-body role/scope over the resolved row, and `checkAdminRole` keying off any held role instead of the caller's currently *active* role — all adversarially re-verified closed; live local-stack smoke pass done) → next is `/test` (full adversarial tiering matrix + duplicate-idempotency + revoke-noop pass against the real stack, per ADR-0024 Consequences).
+**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0026) → `/design` ✓ → `/plan` ✓ ([plan](user-role-approval.plan.md)) → `/migration` ✓ → `/build` ✓ (154/154 unit + 141/141 pgTAP green; three real access-control bugs found and fixed during review — `user-role-grant.ts`'s revoke-by-id and coordinator-containment paths trusting request-body role/scope over the resolved row, and `checkAdminRole` keying off any held role instead of the caller's currently *active* role — all adversarially re-verified closed; live local-stack smoke pass done) → next is `/test` (full adversarial tiering matrix + duplicate-idempotency + revoke-noop pass against the real stack, per ADR-0026 Consequences).
 
 ---
 
@@ -57,14 +57,14 @@ Per the tiering table above. Both functions run server-side with the service-rol
 ### Explicitly out of scope
 - Onboarding/invitation email to newly-provisioned teacher/coordinator accounts (silent provisioning only, matching `csv-enrollment-import`'s existing decision — a later notifications-infra concern).
 - Admin/Coordinator/BV Coordinator UI screens for triggering grants or viewing pending sweeps (persona UoW, not this backend item).
-- `audit_log` schema changes — resolved by [ADR-0024](../../adr/0024-user-role-approval-tiering-and-audit.md): `audit_log.action`'s `('read','denied')` CHECK constraint is unchanged; grant/revoke is audited via a structured, PII-free log line (AC#8), matching `csv-enrollment-import`'s identical precedent, not an `audit_log` extension.
+- `audit_log` schema changes — resolved by [ADR-0026](../../adr/0026-user-role-approval-tiering-and-audit.md): `audit_log.action`'s `('read','denied')` CHECK constraint is unchanged; grant/revoke is audited via a structured, PII-free log line (AC#8), matching `csv-enrollment-import`'s identical precedent, not an `audit_log` extension.
 - Extending `csv-enrollment-import`'s own Phase 3 (considered and explicitly rejected during refine — don't reopen an already-Test-✓ item).
 
 ---
 
 ## Design (detailed spec)
 
-> **Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0024) → `/design` ✓ → `/plan` ✓ → `/migration` ✓ → `/build` ✓ → next is `/test`.
+> **Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0026) → `/design` ✓ → `/plan` ✓ → `/migration` ✓ → `/build` ✓ → next is `/test`.
 > **Design decisions captured this pass:**
 > 1. **Self-escalation is strict for everyone, including Admin.** Whenever `target_user_id === caller.user_id`, the rule is always `target_role_tier < caller_tier` — no carve-out for Admin. Admin may grant/revoke `admin` freely for *other* users (per the grant-tiering table), but can never touch their own admin/bv_coordinator/coordinator-tier row through this function; only another privileged caller can. Only student/parent/teacher (tier 0) grants can ever be self-targeted. Matches the refined spec's edge-case note ("revoking your own row is blocked by AC#6 anyway") literally, with no exception carved out there.
 > 2. **Initial Admin bootstrap is explicitly out of scope.** Since no caller can ever self-grant a first admin/coordinator/bv_coordinator row (decision #1), and no such row exists yet at first deploy, the very first Admin `user_roles` row is seeded directly — a one-time migration seed or documented manual SQL/Studio step at `/deploy-staging` time — not through this function. No break-glass/zero-admins bypass is built into the highest-stakes function in the system for a one-time-ever situation.
@@ -97,7 +97,7 @@ lib/auth-provisioning.ts   getOrCreateAuthUser(...) — extracted from csv-impor
 
 #### `runAutoActivationSweep(client)` (Part A)
 
-For every `family_members` row and every HS `students.user_id` lacking a matching `user_roles` row (AC#3), insert one, `RETURNING` the created rows so each can be logged individually (ADR-0024 Consequences: "each auto-activation-sweep grant emits one structured log line"):
+For every `family_members` row and every HS `students.user_id` lacking a matching `user_roles` row (AC#3), insert one, `RETURNING` the created rows so each can be logged individually (ADR-0026 Consequences: "each auto-activation-sweep grant emits one structured log line"):
 
 ```sql
 -- Parents
@@ -129,7 +129,7 @@ For each returned row: `console.log(JSON.stringify({ event: 'role_swept', user_r
 
 > **Decision #10 (recorded 2026-07-12, not ADR-worthy — see below).** The SQL above shows the intent as one batch `insert...select...returning` per role; the shipped TypeScript (`lib/role-sweep.ts`) instead calls the `insert_user_role_grant` RPC (decision #4's grant-identity `on conflict do nothing`) **once per candidate row**, not as a single batch insert. Reason: a batch insert can't safely use `on conflict` against the grant-identity index (PostgREST's `.insert()` has no conflict-target support at all, and even `.upsert(onConflict:)` can't target the `coalesce(scope_id, ...)` expression index — the same limitation that motivated the RPC's existence for the manual-grant path in the first place). Without this, two sweeps racing on the same candidate (e.g. the CSV-import-triggered sweep overlapping an Admin-triggered `POST /api/user-role-sweep`) would hit a unique-violation on the *batch* insert and lose every row in that batch, not just the one collision — violating AC#3's "idempotent, safe to re-run" requirement. Per-row RPC calls mean one colliding row is silently skipped (conflict → no new id, not counted, not logged) while every other candidate in the same run still succeeds.
 >
-> **Separately:** a `family_members`/`students` select error does **not** throw (superseding the plan's F5 literal wording) — it degrades to "treat as zero source rows" for that table only; the other table's sweep still runs, and the failure is surfaced via `source_errors` in the return value for the caller/monitoring to see and retry. Reason: throwing on one flaky/best-effort source read would block grants for the *other* table too, even though its own read succeeded — the sweep is cheap and idempotent to re-run, so isolating the failure to the affected table has a smaller blast radius than failing the whole run. Neither of these is an access-control decision (they don't touch who can grant/revoke what, or the tiering guard ADR-0024 governs) — so this is recorded here as a design decision, not a new ADR.
+> **Separately:** a `family_members`/`students` select error does **not** throw (superseding the plan's F5 literal wording) — it degrades to "treat as zero source rows" for that table only; the other table's sweep still runs, and the failure is surfaced via `source_errors` in the return value for the caller/monitoring to see and retry. Reason: throwing on one flaky/best-effort source read would block grants for the *other* table too, even though its own read succeeded — the sweep is cheap and idempotent to re-run, so isolating the failure to the affected table has a smaller blast radius than failing the whole run. Neither of these is an access-control decision (they don't touch who can grant/revoke what, or the tiering guard ADR-0026 governs) — so this is recorded here as a design decision, not a new ADR.
 
 #### `user-role-sweep.ts` (HTTP wrapper)
 
@@ -211,7 +211,7 @@ Both functions hold the service-role key and bypass RLS for all writes — ident
 
 #### `audit_log`
 
-Not written by either function (ADR-0024, Option B). Structured, PII-free log lines (above) are the POC audit trail for grants, revokes, and sweep activity.
+Not written by either function (ADR-0026, Option B). Structured, PII-free log lines (above) are the POC audit trail for grants, revokes, and sweep activity.
 
 ---
 
@@ -278,7 +278,7 @@ Response `200`: `{ granted_parent: number; granted_student: number }`
 ### Out of scope (confirmed)
 - Onboarding/invitation email to newly-provisioned accounts (silent provisioning only — unchanged from refine).
 - Admin/Coordinator/BV Coordinator UI screens (persona UoW, not this backend item).
-- `audit_log` schema changes (ADR-0024, Option B — structured log lines instead).
+- `audit_log` schema changes (ADR-0026, Option B — structured log lines instead).
 - Extending `csv-enrollment-import`'s own Phase 3 (unchanged from refine).
 - **Initial Admin bootstrap** (decision #2) — seeded directly via migration/SQL, not built as a function code path.
 - Break-glass/emergency access-recovery paths (e.g. if every Admin account is somehow locked out) — not a POC-stage concern; would be its own ADR if ever needed.

@@ -262,7 +262,7 @@ describe('runAutoActivationSweep', () => {
   // "treat as zero source rows" for that table only, and the sweep proceeds
   // normally for the other table. This is a real behavior test, not a
   // literal reading of the F5 bullet (which says these should throw) — see
-  // ADR-0024 addendum (2026-07-12) for the recorded decision to keep this
+  // ADR-0026 addendum (2026-07-12) for the recorded decision to keep this
   // degrade-and-report behavior over a literal throw.
   it('does not throw when the family_members select errors — degrades to zero parent grants, students sweep unaffected, and reports source_errors', async () => {
     const { client, rpc } = makeClient({
