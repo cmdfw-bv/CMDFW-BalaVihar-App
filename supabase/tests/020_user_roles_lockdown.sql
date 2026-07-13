@@ -13,13 +13,16 @@ select tests.create_supabase_user('multirole-fixture@test.local') as v_user \gse
 insert into user_roles (user_id, role, scope_type, scope_id) values
   (:'v_user'::uuid, 'teacher', 'class', gen_random_uuid());
 
--- Negative: authenticated (any simulated role) gets zero rows, never an error.
+-- Negative: authenticated (any simulated role) gets only their own row, never another's,
+-- never an error. (user_roles_self_select, added by client-auth-session-and-nav, narrows the
+-- prior zero-client-read posture to one row's own grants — see 140_user_roles_self_select.sql
+-- for the dedicated cross-user isolation coverage.)
 select tests.authenticate_as(:'v_user'::uuid, 'teacher', 'class', gen_random_uuid());
-select is((select count(*) from user_roles)::int, 0, 'teacher gets zero rows from user_roles directly');
+select is((select count(*) from user_roles)::int, 1, 'teacher gets exactly their own row from user_roles directly, not zero');
 
 select tests.clear_authentication();
 select tests.authenticate_as(:'v_user'::uuid, 'admin', 'org', null);
-select is((select count(*) from user_roles)::int, 0, 'admin gets zero rows from user_roles directly (no client policy at all, per §5.5)');
+select is((select count(*) from user_roles)::int, 1, 'admin (active_role claim) still only sees their own row, keyed on user_id not active_role');
 
 -- Negative: no client role can write it.
 select throws_ok(
