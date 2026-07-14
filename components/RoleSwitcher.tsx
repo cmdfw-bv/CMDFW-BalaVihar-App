@@ -18,16 +18,25 @@ function roleColor(theme: typeof lightTheme, role: string | null) {
   return theme.colors.roles[role as RoleKey] ?? theme.colors.ink3;
 }
 
-export default function RoleSwitcher() {
+type RoleSwitcherProps = {
+  // Row (default): fits the wide, fixed-height phone/desktop top header — pills shrink +
+  // ellipsize rather than wrap, since a native header can't grow to fit a wrapped row.
+  // Column: fits DesktopSidebar's narrow-but-tall rail footer — pills stack instead of
+  // spilling past the rail's fixed width.
+  stacked?: boolean;
+};
+
+export default function RoleSwitcher({ stacked = false }: RoleSwitcherProps) {
   const { myRoles, switchRole, signOut, activeRole, scopeType, scopeId } = useSession();
   const { theme } = useUnistyles();
+  const containerStyle = [styles.container, stacked && styles.containerStacked];
 
   if (myRoles.length < 2) {
     // Static, non-interactive context chip — single-role accounts (AC#6).
     return (
-      <View style={styles.container}>
+      <View style={containerStyle}>
         <View style={[styles.badge, { backgroundColor: roleColor(theme, activeRole) }]}>
-          <Text style={styles.badgeText}>
+          <Text style={styles.badgeText} numberOfLines={1}>
             {activeRole} · {scopeType} · {scopeId ?? "—"}
           </Text>
         </View>
@@ -39,7 +48,7 @@ export default function RoleSwitcher() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={containerStyle}>
       {myRoles.map((r) => (
         <Pressable
           key={r.id}
@@ -51,7 +60,7 @@ export default function RoleSwitcher() {
           ]}
           onPress={() => switchRole(r.id)}
         >
-          <Text style={styles.badgeText}>
+          <Text style={styles.badgeText} numberOfLines={1}>
             {r.role} · {r.scope_type} · {r.scope_id ?? "—"}
           </Text>
         </Pressable>
@@ -70,8 +79,16 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.space.xs,
     paddingHorizontal: theme.space.sm,
     minHeight: theme.chrome.hitMin,
+    maxWidth: "100%",
+  },
+  containerStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    paddingHorizontal: 0,
   },
   badge: {
+    maxWidth: "100%",
+    flexShrink: 1,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: theme.space["1"],

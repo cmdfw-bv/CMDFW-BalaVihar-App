@@ -72,7 +72,7 @@ export default function DesktopSidebar({ state, navigation, visible }: SidebarPr
           })}
       </View>
       <View style={styles.foot}>
-        <RoleSwitcher />
+        <RoleSwitcher stacked />
       </View>
     </View>
   );

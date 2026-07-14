@@ -4,7 +4,6 @@ import { Image } from "expo-image";
 import { StyleSheet } from "react-native-unistyles";
 import { useSession } from "../lib/auth/SessionProvider";
 import { appHeaderSubtitle } from "./appHeaderSubtitle";
-import RoleSwitcher from "./RoleSwitcher";
 
 export default function AppHeader() {
   const { activeRole, scopeType } = useSession();
@@ -27,7 +26,6 @@ export default function AppHeader() {
           </Text>
         ) : null}
       </View>
-      <RoleSwitcher />
     </View>
   );
 }
