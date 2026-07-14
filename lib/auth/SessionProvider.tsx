@@ -11,10 +11,17 @@ interface RoleRow {
   scope_type: string;
   scope_id: string | null;
   is_active: boolean;
+  scope_label: string | null;
+}
+
+interface ScopeLabelRow {
+  user_roles_id: string;
+  scope_label: string | null;
 }
 
 interface SessionContextValue extends Omit<DerivedSession, "status"> {
   status: SessionStatus | "loading";
+  scopeLabel: string | null;
   session: Session | null;
   myRoles: RoleRow[];
   signOut: () => Promise<void>;
@@ -42,10 +49,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Refetched on every SIGNED_IN/TOKEN_REFRESHED, not cached across the session (Design
     // spec, "Role list (myRoles)") — a grant/revoke elsewhere is picked up on next refresh.
     if (nextSession) {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("id, role, scope_type, scope_id, is_active");
-      setMyRoles((data ?? []) as RoleRow[]);
+      const [{ data: roles }, { data: labels }] = await Promise.all([
+        supabase.from("user_roles").select("id, role, scope_type, scope_id, is_active"),
+        supabase.rpc("resolve_my_scope_labels"),
+      ]);
+      const labelById = new Map(
+        ((labels ?? []) as ScopeLabelRow[]).map((l) => [l.user_roles_id, l.scope_label])
+      );
+      setMyRoles(
+        ((roles ?? []) as Omit<RoleRow, "scope_label">[]).map((r) => ({
+          ...r,
+          scope_label: labelById.get(r.id) ?? null,
+        }))
+      );
     } else {
       setMyRoles([]);
     }
@@ -83,6 +99,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     activeRole: derived?.activeRole ?? null,
     scopeType: derived?.scopeType ?? null,
     scopeId: derived?.scopeId ?? null,
+    scopeLabel: myRoles.find((r) => r.is_active)?.scope_label ?? null,
     session,
     myRoles,
     async signOut() {
