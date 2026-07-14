@@ -910,10 +910,35 @@
 
 ---
 
+### Stage 12 — Desktop nav shell (responsive header + sidebar) [addendum, post-GREEN]
+
+Not in the original F0–F23 task list above; discovered as a gap during `/build` follow-up — the shipped nav (Stage 9/10) only renders the phone bottom-tab chrome. At `theme.breakpoints.lg` (1024px) and up, the Sankalp desktop mock (`design/sankalp/bv-connect/screens/desktop/dash.jsx`) uses a left rail + top header instead. Added here per SDD ("spec before build") rather than building ad hoc; no RLS/access-scope change, so no `/architect` bounce (matches this plan's existing "Architectural flags" reasoning).
+
+- [ ] **F24 — `lib/isDesktopWidth.ts`** (pure, TDD) — `(width: number) => boolean`, `width >= breakpoints.lg`. `lib/useIsDesktop.ts` is a thin wrapper over RN's `useWindowDimensions`, same untested-wiring seam as Stage 8's `useRoleGuard` over `navMap`'s pure check.
+- [ ] **F25 — `components/brand/Logo.tsx`** (TDD) — matches design mirror's `components/brand/Logo.jsx`; OM mark + wordmark, `title`/`tagline`/`size`/`wordmark` props.
+- [ ] **F26 — `components/icons/TabIcons.tsx`** (TDD) — `TabKey -> icon` selection logic tested as pure mapping; SVG paths lifted from the design mirror's `bv-connect` icon sets (`screens/phone/app.jsx` `ICON.*`, `screens/desktop/dash.jsx` `NAV`).
+- [ ] **F27 — `components/AppHeader.tsx`** (TDD) — role/scope label derivation extracted as a pure fn + tested; renders OM mark, title, role·scope subtitle, mounts `RoleSwitcher`. `chrome.hitMin` (44px) touch targets.
+- [ ] **F28 — `components/DesktopSidebar.tsx`** (TDD) — tab visibility/selection logic tested as pure fn (same `tabsForRole`-shaped input as Stage 3); renders the `lg`+ left rail nav matching the design mirror.
+- [ ] **F29 — wire into `app/(tabs)/_layout.tsx` + `app/(auth)/sign-in.tsx`** — `useIsDesktop()` switches between the existing phone `Tabs` chrome and `AppHeader`+`DesktopSidebar`; sign-in screen gets the same header treatment above `chrome.maxw`. Wiring only, no new unit test (Shared seam).
+- [ ] **F30 — unistyles-config-scan regression fix** — `sign-in.tsx`, `app/(tabs)/admin.tsx`, `app/(tabs)/approvals.tsx`, `app/no-role.tsx` are missing the direct `lib/unistyles` import that issue #29 requires (`scripts/check-unistyles-config.js`, tracked-file scan); currently failing PR #30's `app-tests` CI job. Every new Stage 12 file with a module-scope `StyleSheet.create()` needs the same direct import.
+
+Hand-off: same `/build` → `/test` flow as the rest of this plan; `/test` should re-run the AC#4/#5/#6 role×tab matrix at both a phone width and a `lg`+ desktop width once F24–F30 land.
+
+---
+
 ## Files created / modified
 
 | File | Action |
 |---|---|
+| `lib/isDesktopWidth.ts` + `__tests__/isDesktopWidth.test.ts` | **new** (Stage 12) |
+| `lib/useIsDesktop.ts` | **new** (Stage 12) — thin wrapper, no test |
+| `components/brand/Logo.tsx` + `__tests__` | **new** (Stage 12) |
+| `components/icons/TabIcons.tsx` + `__tests__` | **new** (Stage 12) |
+| `components/AppHeader.tsx` + `__tests__` | **new** (Stage 12) |
+| `components/DesktopSidebar.tsx` + `__tests__` | **new** (Stage 12) |
+| `app/(tabs)/_layout.tsx` | **modify** (Stage 12) — responsive phone/desktop chrome switch |
+| `app/(auth)/sign-in.tsx`, `app/(tabs)/admin.tsx`, `app/(tabs)/approvals.tsx`, `app/no-role.tsx` | **modify** (Stage 12) — add direct `lib/unistyles` import (F30) |
+| `package.json` | **modify** (Stage 12) — add `react-native-svg` |
 | `supabase/tests/140_user_roles_self_select.sql` | **new** — pgTAP: self-row select, cross-user isolation, zero-role 0-rows, insert/update/delete still denied |
 | `supabase/migrations/<ts>_user_roles_self_select.sql` | **new** — `user_roles_self_select` RLS policy |
 | `vitest.config.ts` | **modify** — add `lib/**/__tests__/**/*.test.ts` to `include` |
@@ -965,3 +990,5 @@ None. Design + Architect glance already signed off (spec's Sign-off section, 202
 - **Gate markers re-written:** `.claude/.rls-tests-passed` and `.claude/.tests-passed` recorded against the current migration/source-tree hashes (post font/maxWidth/RoleSwitcher fixes).
 
 **Verdict: GREEN, ready for `/deploy-staging`**, with one disclosed gap: AC#10's native app-kill/restart half (environment-caused, no simulator tooling here). The RoleSwitcher styling/header-overlap issue (#29) was root-caused and fixed in this branch — closed, not carried forward.
+
+**2026-07-13, post-verdict addendum:** Stage 12 (desktop nav shell, F24–F30) opened on this same branch/PR before promotion — PR #30's `app-tests` CI is currently failing on the unistyles-config-scan regression (F30) that predates Stage 12. Stage 12 is TDD, not yet built; this doc will be updated again once F24–F30 land and the full suite is re-verified green.

@@ -1,3 +1,4 @@
+import "../../lib/unistyles";
 import { View, Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useRoleGuard } from "../../lib/auth/useRoleGuard";

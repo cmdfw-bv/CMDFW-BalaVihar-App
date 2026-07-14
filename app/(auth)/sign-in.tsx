@@ -1,8 +1,10 @@
+import "../../lib/unistyles";
 import { useState } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import * as Linking from "expo-linking";
 import { supabase } from "../../lib/supabase";
+import Logo from "../../components/brand/Logo";
 
 type ScreenState = "form" | "loading" | "error" | "sent";
 
@@ -30,6 +32,9 @@ export default function SignIn() {
     return (
       <View style={styles.container}>
         <View style={styles.form}>
+          <View style={styles.logoRow}>
+            <Logo size={40} />
+          </View>
           <Text style={styles.bodyText}>Check your email for a sign-in link.</Text>
         </View>
       </View>
@@ -39,6 +44,9 @@ export default function SignIn() {
   return (
     <View style={styles.container}>
       <View style={styles.form}>
+        <View style={styles.logoRow}>
+          <Logo size={40} />
+        </View>
         <TextInput
           style={styles.input}
           value={email}
@@ -72,6 +80,10 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: theme.chrome.maxw,
     gap: theme.space.md,
+  },
+  logoRow: {
+    alignItems: "center",
+    marginBottom: theme.space.sm,
   },
   bodyText: {
     fontFamily: theme.fonts.body,
