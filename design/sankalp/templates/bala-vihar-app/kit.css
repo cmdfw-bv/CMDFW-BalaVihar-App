@@ -1,0 +1,91 @@
+/* Bala Vihar Connect — mobile app UI kit over DS tokens.
+   Phone-first attendance + announcements shell with a bottom tab bar. */
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #e9e0cf; font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+img { display: block; max-width: 100%; }
+button { font-family: inherit; }
+
+/* Center a phone-width app on larger screens; full-bleed on phones */
+.app { max-width: 440px; margin: 0 auto; min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; position: relative; box-shadow: 0 0 0 1px var(--line), var(--shadow-lg); }
+
+/* ===== TOP APP BAR with role switcher ===== */
+.bar { position: sticky; top: 0; z-index: 20; background: rgba(247,241,230,.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+.bar__om { width: 28px; height: auto; display: block; flex-shrink: 0; }
+.bar__title { font-family: var(--serif); font-weight: 400; font-size: 20px; letter-spacing: .005em; flex: 1; }
+.bar__title small { display: block; font-family: var(--sans); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-top: 1px; }
+.rolesw { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--rad-pill); background: var(--surface); border: 1px solid var(--line-2); cursor: pointer; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.rolesw .d { width: 9px; height: 9px; border-radius: 50%; }
+.rolesw svg { color: var(--ink-4); }
+
+/* Role sheet */
+.sheet { position: fixed; inset: 0; z-index: 40; background: rgba(28,20,16,.42); backdrop-filter: blur(4px); display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.sheet.is-on { opacity: 1; pointer-events: auto; }
+.sheet__panel { width: 100%; max-width: 440px; background: var(--bg); border-radius: 22px 22px 0 0; padding: 10px 16px 24px; transform: translateY(30px); transition: transform .28s var(--ease-standard); }
+.sheet.is-on .sheet__panel { transform: translateY(0); }
+.sheet__grab { width: 38px; height: 4px; border-radius: 999px; background: var(--line-2); margin: 4px auto 14px; }
+.sheet__lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0 0 12px; }
+.roleopt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 14px; border: 1px solid var(--line); border-radius: var(--rad); background: var(--surface); margin-bottom: 8px; cursor: pointer; text-align: left; }
+.roleopt.is-on { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(184,83,26,.12); }
+.roleopt .d { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.roleopt strong { font-size: 14px; color: var(--ink); display: block; }
+.roleopt span { font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
+
+/* ===== SCROLL BODY ===== */
+.body { flex: 1; overflow-y: auto; padding: 16px 16px 92px; }
+.screen-eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+.screen-title { font-family: var(--serif); font-weight: 400; font-size: 30px; letter-spacing: .005em; margin: 4px 0 2px; }
+.screen-sub { font-size: 13.5px; color: var(--ink-3); margin: 0 0 18px; }
+
+/* Card */
+.c { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rad-lg); box-shadow: var(--shadow-sm); }
+.c--pad { padding: 18px; }
+
+/* Stat grid */
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.statcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rad); padding: 14px 16px; }
+
+/* Compliance metric block */
+.metric__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.metric__label { font-family: var(--serif); font-size: 19px; font-weight: 400; letter-spacing: .005em; color: var(--ink); white-space: nowrap; }
+.metric__pct { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--success); font-variant-numeric: tabular-nums; }
+.bar-track { height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden; margin: 14px 0 0; }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--success); }
+.metric__note { font-size: 12.5px; color: var(--ink-3); margin: 12px 0 0; }
+
+/* Attendance roster */
+.roster { display: flex; flex-direction: column; }
+.student { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.student:last-child { border-bottom: 0; }
+.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 500; font-size: 16px; font-family: var(--serif); flex-shrink: 0; }
+.student__main { flex: 1; min-width: 0; }
+.student__name { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.student__meta { font-family: var(--mono); font-size: 11px; color: var(--ink-4); margin-top: 1px; }
+.mark { display: inline-flex; gap: 6px; }
+.markbtn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); display: grid; place-items: center; cursor: pointer; color: var(--ink-4); transition: all .12s; }
+.markbtn.present.is-on { background: var(--success-soft); border-color: var(--success-line); color: var(--success); }
+.markbtn.absent.is-on { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+
+/* Announcement */
+.ann { padding: 16px; border-bottom: 1px solid var(--line); }
+.ann:last-child { border-bottom: 0; }
+.ann__top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.ann__pin { margin-left: auto; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold-2); font-weight: 700; }
+.ann__title { font-family: var(--serif); font-weight: 400; font-size: 19px; letter-spacing: .005em; margin: 0 0 4px; }
+.ann__body { font-size: 13.5px; color: var(--ink-2); line-height: 1.55; margin: 0; }
+.ann__foot { display: flex; align-items: center; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--ink-3); }
+.ann__foot span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ann__foot svg { color: var(--ink-4); flex-shrink: 0; }
+
+/* The five states */
+.state { padding: 18px; border: 1px solid var(--line); border-radius: var(--rad); background: var(--surface); margin-bottom: 10px; }
+.state__lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 10px; }
+.state p { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin: 0 0 10px; }
+.sk { height: 11px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-alt) 25%, #e8ddc6 37%, var(--surface-alt) 63%); background-size: 400% 100%; animation: sh 1.4s linear infinite; margin: 8px 0; }
+@keyframes sh { to { background-position: -200% 0; } }
+
+/* ===== BOTTOM TAB BAR ===== */
+.tabbar { position: sticky; bottom: 0; z-index: 20; background: rgba(255,250,240,.94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; background: none; border: 0; cursor: pointer; color: var(--ink-4); font-size: 10.5px; font-weight: 600; letter-spacing: .02em; min-height: var(--hit-min); }
+.tab.is-on { color: var(--primary); }
+.tab svg { width: 22px; height: 22px; }

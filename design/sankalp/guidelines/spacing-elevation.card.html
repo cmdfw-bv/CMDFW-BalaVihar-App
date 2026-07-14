@@ -1,0 +1,23 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Elevation — warm-tinted shadows" subtitle="Never neutral gray; cards rest, posters float" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 30px 24px; }
+  .row { display: flex; gap: 30px; flex-wrap: wrap; }
+  .item { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .box { width: 150px; height: 80px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--rad-lg); }
+  .lbl { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); text-align: center; }
+  .lbl b { color: var(--ink); font-weight: 600; display: block; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-sm)"></div><div class="lbl"><b>--shadow-sm</b>cards at rest</div></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-lg)"></div><div class="lbl"><b>--shadow-lg</b>hover / sheets</div></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-poster); background:var(--indigo); border-color:var(--indigo-2)"></div><div class="lbl"><b>--shadow-poster</b>floating posters</div></div>
+  </div>
+</body>
+</html>

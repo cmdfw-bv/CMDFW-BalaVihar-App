@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Primary — Terracotta (the action color)" subtitle="The single CTA color and its tints" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 20px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sw { border-radius: var(--rad); overflow: hidden; border: 1px solid var(--line); }
+  .chip { height: 76px; }
+  .meta { background: var(--surface); padding: 9px 11px; }
+  .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .val { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--primary)"></div><div class="meta"><div class="name">Primary</div><div class="val">#b8531a · --primary</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--primary-2)"></div><div class="meta"><div class="name">Primary-2 · hover</div><div class="val">#8e3d10 · --primary-2</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--primary-soft)"></div><div class="meta"><div class="name">Primary-soft</div><div class="val">#f3d9b8 · --primary-soft</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--primary); display:flex; align-items:center; justify-content:center; color:#fbf3df; font-weight:600; font-size:13px;">Register →</div><div class="meta"><div class="name">On-action text</div><div class="val">#fbf3df · --on-action</div></div></div>
+  </div>
+</body>
+</html>

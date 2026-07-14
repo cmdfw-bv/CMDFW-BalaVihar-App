@@ -1,0 +1,18 @@
+/* ───────────────────────────────────────────────────────────────
+ * tokens/fonts.css — Webfont loading for the Chinmaya Mission DFW system
+ *
+ * Three families — a modern, clean, sacred-feeling pairing chosen for this
+ * system. All are free Google Fonts, loaded via @import so any artifact that
+ * links styles.css gets them automatically.
+ *
+ *   Marcellus      — display face (identity, headings, sacred moments).
+ *                    Single weight (400); hierarchy comes from size & color.
+ *   Mukta          — UI / body sans AND native Devanagari (by Indian Type
+ *                    Foundry) — one family covers Latin labels + Sanskrit / ॐ.
+ *   JetBrains Mono — tabular numerics, IDs, scopes, timestamps.
+ *
+ * All three are free Google Fonts that ship .ttf binaries, so they bundle
+ * cleanly into a React Native / Unistyles 3 app (see readme → "React Native").
+ * ─────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Marcellus&family=Mukta:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");

@@ -1,0 +1,47 @@
+<!-- @dsCard group="BV · Privacy" viewport="440x520" name="Privacy" subtitle="ConsentCapture (timestamped) + AuditEntry log" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../../app.css" />
+<style>
+  body { margin: 0; background: var(--app-canvas); font-family: var(--sans); padding: 18px; }
+  .wrap { max-width: 404px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--app-surface); border: 1px solid var(--line); border-radius: var(--app-rad-card); box-shadow: var(--app-shadow-card); overflow: hidden; }
+  .panel h4 { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; padding: 12px 12px 4px; }
+</style>
+</head>
+<body>
+<div id="root" class="wrap"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../../_ds_bundle.js"></script>
+<script type="text/babel">
+  const { ConsentCapture, AuditEntry } = window.ChinmayaMissionDesignSystem_52eae1;
+  function Demo() {
+    const [vals, setVals] = React.useState({ parental: true });
+    const ts = { parental: "2026-06-14 09:02" };
+    return (
+      <>
+        <ConsentCapture
+          items={[
+            { id: "parental", required: true, label: "Parental consent", help: "I am the parent/guardian and consent to my child's enrollment." },
+            { id: "media", label: "Media consent", help: "Photos taken during class may appear in family updates." },
+          ]}
+          values={vals} timestamps={ts}
+          onToggle={(id) => setVals((v) => ({ ...v, [id]: !v[id] }))} />
+        <div className="panel">
+          <h4>Audit log · minor access</h4>
+          <AuditEntry time="2026-06-14 09:05" actor="admin" action="export" target="JR·A roster (CSV)" />
+          <AuditEntry time="2026-06-14 09:02" actor="teacher:JR·A" action="view" target="student #3 record" />
+          <AuditEntry time="2026-06-14 09:00" actor="coordinator" action="view" target="session rollup" />
+        </div>
+      </>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>
+</body>
+</html>

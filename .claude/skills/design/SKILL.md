@@ -13,7 +13,7 @@ Authoritative: `.docs/3_ARCHITECTURE.md` §12.3, §12.11–§12.12. Uses `superp
 3. Write `.docs/specs/<persona>/<functionality>.md` with the mandatory header:
    `owner · consumers · scope · governing ADR · covers`
    then sections: Behavior, Data & RLS impact, UI, Edge cases, Out of scope.
-4. **Design (Open Design):** confirm/generate the Sankalp **prototype** for the screen(s) and reference it in the spec's UI section; apply the design Definition-of-Done (see `design-system` skill). *(Sankalp import is pending the team's design refinement — until then, spec to the DoD behaviors, don't hardcode visual values.)*
+4. **Design (Open Design):** before writing the UI section, pull the matching reference from the design mirror — `design/sankalp/bv-connect/components/<domain>/<Component>.jsx` (+ `.prompt.md`) or `design/sankalp/bv-connect/screens/{desktop,phone}` for full screens. If it's missing or looks stale, refresh it from the **Chinmaya Mission Design System** project via `DesignSync` (`get_file`) and commit it to the mirror. Reference the exact file(s) used in the spec's UI section; apply the design Definition-of-Done (see `design-system` skill).
 5. Cross-reference (don't duplicate) any consumer personas (§12.12).
 6. Get human sign-off on the spec → hand to `/plan`.
 

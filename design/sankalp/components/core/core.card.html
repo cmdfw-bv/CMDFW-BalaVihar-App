@@ -1,0 +1,116 @@
+<!-- @dsCard group="Components" viewport="700x520" name="Core — Actions, Forms & Status" subtitle="Button, Field, Stepper, SegmentedTabs, StatTile, StatusChip" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); padding: 28px; }
+  .wrap { display: flex; flex-direction: column; gap: 26px; max-width: 760px; }
+  .grp { display: flex; flex-direction: column; gap: 12px; }
+  .lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 560px; align-items: stretch; }
+  .statcell { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rad); padding: 14px 16px; display: flex; }
+  .statcell > div { width: 100%; height: 100%; justify-content: space-between; }
+  .grp__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; max-width: 620px; }
+  @media (max-width: 560px) { .fields, .stats { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div id="root" class="wrap"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+
+<script type="text/babel">
+  const { Button, Field, Stepper, SegmentedTabs, StatTile, StatusChip } = window.ChinmayaMissionDesignSystem_52eae1;
+  const Arrow = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>;
+
+  function Demo() {
+    const [tab, setTab] = React.useState("upcoming");
+    const [n, setN] = React.useState(2);
+    const [statStyle, setStatStyle] = React.useState("mono");
+    const stats = [
+      { label: "Attendance", value: "94.2%", accent: true },
+      { label: "Marked / enrolled", value: "47/50" },
+      { label: "Updates posted", value: "5/6" },
+      { label: "Member families", value: "2,400+", accent: true },
+    ];
+    return (
+      <>
+        <div className="grp">
+          <span className="lbl">Buttons — one primary per view</span>
+          <div className="row">
+            <Button variant="primary" iconRight={<Arrow/>}>Register</Button>
+            <Button variant="secondary">Save draft</Button>
+            <Button variant="ghost">Cancel</Button>
+            <Button variant="gold">Sponsor</Button>
+            <Button variant="danger">Report absence</Button>
+            <Button variant="dark">Complete</Button>
+            <Button variant="primary" disabled>Disabled</Button>
+          </div>
+          <div className="row">
+            <Button size="sm" variant="primary">Small</Button>
+            <Button size="md" variant="secondary">Medium</Button>
+            <Button size="lg" variant="secondary">Large</Button>
+            <Button size="xl" variant="primary" iconRight={<Arrow/>}>Extra large</Button>
+          </div>
+        </div>
+
+        <div className="grp">
+          <span className="lbl">Status chips</span>
+          <div className="row">
+            <StatusChip status="open">Registration open</StatusChip>
+            <StatusChip status="soon">Opens soon</StatusChip>
+            <StatusChip status="past">Completed</StatusChip>
+            <StatusChip status="featured">Featured</StatusChip>
+            <StatusChip status="present">Present</StatusChip>
+            <StatusChip status="absent">Absent</StatusChip>
+            <StatusChip status="excused">Excused</StatusChip>
+            <StatusChip status="info">Info</StatusChip>
+          </div>
+        </div>
+
+        <div className="grp">
+          <span className="lbl">Fields — inline validation is a state</span>
+          <div className="fields">
+            <Field label="Full name" required placeholder="Your full name" hint="As it should appear on the register." />
+            <Field label="Absence reason" required error="A reason is required when marking a student absent." />
+          </div>
+        </div>
+
+        <div className="grp">
+          <span className="lbl">Tabs + Stepper</span>
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <SegmentedTabs value={tab} onChange={setTab}
+              tabs={[{id:"upcoming",label:"Upcoming",count:2},{id:"past",label:"Past",count:1},{id:"all",label:"All",count:3}]} />
+            <div style={{minWidth:240}}><Stepper label="Parents" hint="BV-enrolled" value={n} onChange={setN} /></div>
+          </div>
+        </div>
+
+        <div className="grp">
+          <div className="grp__head">
+            <span className="lbl">Stat tiles</span>
+            <SegmentedTabs value={statStyle} onChange={setStatStyle}
+              tabs={[{id:"mono",label:"Mono"},{id:"display",label:"Display"}]} />
+          </div>
+          <div className="stats">
+            {stats.map((s) => (
+              <div className="statcell" key={s.label}>
+                <StatTile label={s.label} value={s.value} accent={s.accent} display={statStyle === "display"} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Radius scale" subtitle="Capsule pills, 18px cards, the signature radius" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 22px 24px; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .item { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .box { width: 92px; height: 64px; background: var(--surface); border: 1px solid var(--line-2); }
+  .lbl { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); text-align: center; }
+  .lbl b { color: var(--ink); font-weight: 600; display: block; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="item"><div class="box" style="border-radius:var(--rad-sm)"></div><div class="lbl"><b>--rad-sm</b>6px</div></div>
+    <div class="item"><div class="box" style="border-radius:var(--rad)"></div><div class="lbl"><b>--rad</b>10px · inputs</div></div>
+    <div class="item"><div class="box" style="border-radius:var(--rad-lg)"></div><div class="lbl"><b>--rad-lg</b>18px · cards</div></div>
+    <div class="item"><div class="box" style="border-radius:var(--rad-pill); width:120px"></div><div class="lbl"><b>--rad-pill</b>999px · pills</div></div>
+  </div>
+</body>
+</html>

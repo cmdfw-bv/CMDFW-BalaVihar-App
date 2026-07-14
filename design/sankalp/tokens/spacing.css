@@ -1,0 +1,46 @@
+/* ───────────────────────────────────────────────────────────────
+ * tokens/spacing.css — Chinmaya Mission spacing, radius, motion, layout
+ *
+ * 4px base step. Compose padding and gaps from the scale; no magic
+ * numbers. Pills are fully capsule (999px); cards/sheets use the large
+ * 18px radius the live product ships.
+ * ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* — Spacing scale (base 4) — */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* — Border radius — */
+  --rad-sm:  6px;    /* chips inside dense UI, small controls */
+  --rad:     10px;   /* inputs, buttons-as-block, small cards */
+  --rad-lg:  18px;   /* cards, sheets, posters (the signature radius) */
+  --rad-pill: 999px; /* buttons, chips, badges, status pills */
+
+  /* — Touch + hit targets (mobile-first) — */
+  --hit-min: 44px;
+
+  /* — Layout — */
+  --container-max:    1240px;
+  --gutter-phone:     18px;
+  --gutter-tablet:    24px;
+  --gutter-desktop:   32px;
+  --section-y-phone:  56px;
+  --section-y-tablet: 72px;
+  --section-y-desktop:96px;
+
+  /* — Motion — */
+  --ease-standard: cubic-bezier(.2,.7,.2,1); /* @kind other */
+  --motion-fast:   150ms; /* @kind other */
+  --motion-base:   250ms; /* @kind other */
+}
