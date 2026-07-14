@@ -44,7 +44,7 @@ export default function DesktopSidebar({ state, navigation, visible }: SidebarPr
   return (
     <View style={styles.rail}>
       <View style={styles.logoRow}>
-        <Logo size={28} tagline="" />
+        <Logo size={28} title="Bala Vihar App" tagline="CMDFW" />
       </View>
       <View style={styles.nav}>
         {state.routes

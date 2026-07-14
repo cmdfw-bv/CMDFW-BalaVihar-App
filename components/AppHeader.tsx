@@ -4,8 +4,17 @@ import { Image } from "expo-image";
 import { StyleSheet } from "react-native-unistyles";
 import { useSession } from "../lib/auth/SessionProvider";
 import { appHeaderSubtitle } from "./appHeaderSubtitle";
+import RoleSwitcher from "./RoleSwitcher";
 
-export default function AppHeader() {
+type AppHeaderProps = {
+  // Desktop mounts the switcher in DesktopSidebar's footer instead (matches the design
+  // mirror's dash.jsx side__foot) — passing true here would duplicate it (issue #31). Phone/
+  // tablet widths have no sidebar, so the design mirror's own phone header (bv-connect/
+  // screens/phone/app.jsx .hdr) puts the switcher directly in this header instead.
+  showSwitcher?: boolean;
+};
+
+export default function AppHeader({ showSwitcher = false }: AppHeaderProps) {
   const { activeRole, scopeType } = useSession();
   const subtitle = appHeaderSubtitle(activeRole, scopeType);
 
@@ -26,6 +35,7 @@ export default function AppHeader() {
           </Text>
         ) : null}
       </View>
+      {showSwitcher ? <RoleSwitcher /> : null}
     </View>
   );
 }

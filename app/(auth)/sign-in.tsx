@@ -33,7 +33,7 @@ export default function SignIn() {
       <View style={styles.container}>
         <View style={styles.form}>
           <View style={styles.logoRow}>
-            <Logo size={40} />
+            <Logo size={44} title="Bala Vihar App" tagline="CMDFW · Dallas–Fort Worth" />
           </View>
           <Text style={styles.bodyText}>Check your email for a sign-in link.</Text>
         </View>
@@ -45,7 +45,7 @@ export default function SignIn() {
     <View style={styles.container}>
       <View style={styles.form}>
         <View style={styles.logoRow}>
-          <Logo size={40} />
+          <Logo size={44} title="Bala Vihar App" tagline="CMDFW · Dallas–Fort Worth" />
         </View>
         <TextInput
           style={styles.input}
