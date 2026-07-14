@@ -7,9 +7,13 @@ const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
 };
 
-export function appHeaderSubtitle(activeRole: string | null, scopeType: string | null): string {
+export function appHeaderSubtitle(
+  activeRole: string | null,
+  scopeType: string | null,
+  scopeLabel?: string | null
+): string {
   if (!activeRole) return "";
   const roleLabel = ROLE_LABEL[activeRole] ?? activeRole;
-  const scopeLabel = scopeType ? scopeType.charAt(0).toUpperCase() + scopeType.slice(1) : "";
-  return scopeLabel ? `${roleLabel} · ${scopeLabel}` : roleLabel;
+  const resolvedScope = scopeLabel ?? (scopeType ? scopeType.charAt(0).toUpperCase() + scopeType.slice(1) : "");
+  return resolvedScope ? `${roleLabel} · ${resolvedScope}` : roleLabel;
 }

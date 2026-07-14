@@ -11,4 +11,12 @@ describe('appHeaderSubtitle', () => {
   it('no role (zero-role transitional state): empty string', () => expect(appHeaderSubtitle(null, null)).toBe(''));
   it('unrecognized role string: falls back to the raw string', () =>
     expect(appHeaderSubtitle('not-a-real-role', null)).toBe('not-a-real-role'));
+  it('resolved scope label overrides the capitalized scope_type: "Teacher · Frisco · F3 · Shishu Vihaar Class"', () =>
+    expect(appHeaderSubtitle('teacher', 'class', 'Frisco · F3 · Shishu Vihaar Class')).toBe(
+      'Teacher · Frisco · F3 · Shishu Vihaar Class'
+    ));
+  it('null resolved label (org-scoped role, nothing to resolve) falls back to capitalized scope_type: "Admin · Org"', () =>
+    expect(appHeaderSubtitle('admin', 'org', null)).toBe('Admin · Org'));
+  it('resolved label is ignored when there is no active role: empty string', () =>
+    expect(appHeaderSubtitle(null, null, 'Frisco · F3')).toBe(''));
 });
