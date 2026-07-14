@@ -1044,8 +1044,6 @@ A follow-up, higher-fidelity design review of the running app against the **Chin
 
 Closed the scoped follow-up left open by the design-parity re-validation pass above. Added `resolve_my_scope_labels()`, a `SECURITY DEFINER` RPC keyed on `auth.uid()` (not the JWT's `active_role`/scope claims) that resolves every `user_roles` row the caller owns to a friendly `Center · Session · Class` (teacher) or `Center · Session` (coordinator) label — the JWT-claim-keyed approach the existing `classes`/`sessions`/`centers` RLS policies use couldn't cover this, since `RoleSwitcher`'s bottom sheet lists every held role, not just the active one. `bv_coordinator`/`admin`/`parent`/`student` (`scope_type='org'`) are unaffected — they keep the existing "Org" fallback, since there's no `scope_id` to resolve for them.
 
-- **Automated suite:** `npm run test` → 231 passing (up from 228, +3 for `appHeaderSubtitle`'s resolved-label cases). `npm run typecheck` → zero errors. `npx supabase db reset` + `npx supabase test db` → 152 tests passing (up from 148, +4; new file `150_scope_label_resolution_rpc.sql` covers the RPC; pre-existing flakiness in `090_multi_role_isolation.sql` unrelated to issue #35).
+- **Automated suite:** `npm run test` → 231 passing (up from 228, +3 for `appHeaderSubtitle`'s resolved-label cases). `npm run typecheck` → zero errors. `npx supabase db reset` + `npx supabase test db` → 156/156 pgTAP passing (up from 148/18 files, +8 assertions/1 file for the new `150_scope_label_resolution_rpc.sql`; full suite green, no regressions).
 
 _(Live verification and RLS-adversarial check pending — see Task 6.)_
-
-**Verdict: GREEN.** Issue #35 closed.
