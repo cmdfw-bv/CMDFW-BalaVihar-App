@@ -31,11 +31,11 @@ type RoleSwitcherProps = {
 };
 
 export default function RoleSwitcher({ stacked = false }: RoleSwitcherProps) {
-  const { myRoles, switchRole, signOut, activeRole, scopeType } = useSession();
+  const { myRoles, switchRole, signOut, activeRole, scopeType, scopeLabel } = useSession();
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
   const containerStyle = [styles.container, stacked && styles.containerStacked];
-  const activeLabel = appHeaderSubtitle(activeRole, scopeType);
+  const activeLabel = appHeaderSubtitle(activeRole, scopeType, scopeLabel);
 
   if (myRoles.length < 2) {
     // Static, non-interactive context chip — single-role accounts (AC#6).
@@ -97,7 +97,7 @@ export default function RoleSwitcher({ stacked = false }: RoleSwitcherProps) {
                 >
                   <View style={[styles.dot, styles.rowDot, { backgroundColor: roleColor(theme, r.role) }]} />
                   <Text style={styles.rowLabel} numberOfLines={1}>
-                    {appHeaderSubtitle(r.role, r.scope_type)}
+                    {appHeaderSubtitle(r.role, r.scope_type, r.scope_label)}
                   </Text>
                   {isActive ? (
                     <Svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke={theme.colors.accent} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">

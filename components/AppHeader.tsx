@@ -15,8 +15,8 @@ type AppHeaderProps = {
 };
 
 export default function AppHeader({ showSwitcher = false }: AppHeaderProps) {
-  const { activeRole, scopeType } = useSession();
-  const subtitle = appHeaderSubtitle(activeRole, scopeType);
+  const { activeRole, scopeType, scopeLabel } = useSession();
+  const subtitle = appHeaderSubtitle(activeRole, scopeType, scopeLabel);
 
   return (
     <View style={styles.header}>
