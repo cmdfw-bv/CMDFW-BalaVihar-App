@@ -6,6 +6,7 @@ import { useSession } from "../../lib/auth/SessionProvider";
 import { ALL_TABS, tabsForRole } from "../../lib/auth/navMap";
 import AppHeader from "../../components/AppHeader";
 import DesktopSidebar from "../../components/DesktopSidebar";
+import { TabIcon } from "../../components/icons/TabIcons";
 import { useIsDesktop } from "../../lib/useIsDesktop";
 
 const TAB_TITLES: Record<string, string> = {
@@ -40,7 +41,11 @@ export default function TabsLayout() {
         <Tabs.Screen
           key={tab}
           name={tab}
-          options={{ title: TAB_TITLES[tab], href: visible.has(tab) ? undefined : null }}
+          options={{
+            title: TAB_TITLES[tab],
+            href: visible.has(tab) ? undefined : null,
+            tabBarIcon: ({ color, size }) => <TabIcon tab={tab} color={color} size={size} />,
+          }}
         />
       ))}
     </Tabs>
