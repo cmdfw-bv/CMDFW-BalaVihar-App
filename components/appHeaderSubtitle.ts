@@ -14,6 +14,12 @@ export function appHeaderSubtitle(
 ): string {
   if (!activeRole) return "";
   const roleLabel = ROLE_LABEL[activeRole] ?? activeRole;
-  const resolvedScope = scopeLabel ?? (scopeType ? scopeType.charAt(0).toUpperCase() + scopeType.slice(1) : "");
+  const fallbackScope =
+    activeRole === "parent"
+      ? "My Children"
+      : scopeType
+        ? scopeType.charAt(0).toUpperCase() + scopeType.slice(1)
+        : "";
+  const resolvedScope = scopeLabel ?? fallbackScope;
   return resolvedScope ? `${roleLabel} · ${resolvedScope}` : roleLabel;
 }
