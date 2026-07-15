@@ -1049,3 +1049,24 @@ Closed the scoped follow-up left open by the design-parity re-validation pass ab
 - **Live verification (`playwright-cli`, real local Supabase + Inbucket magic-link sign-in):** signed in as `multirole@bv-seed.test.local` (parent/teacher/coordinator/bv_coordinator). Header and switcher trigger showed `Teacher · Frisco · F3 · Shishu Vihaar Class` on load. Opened the switcher sheet — all four rows resolved simultaneously, including the three *not* currently active: `Parent · Org`, `Coordinator · Frisco · F3`, `BV Coordinator · Org`, `Teacher · Frisco · F3 · Shishu Vihaar Class` (active, checkmarked) — confirming the RPC resolves independent of the JWT's active-role claim. Switched active role to Coordinator via the sheet: header/trigger updated live to `Coordinator · Frisco · F3`, tab bar re-scoped to the coordinator set (Feed/Classes/Chat/Dashboard/Approvals), zero console errors. Signed out, signed back in as `parent1a@bv-seed.test.local` (single role): static, non-interactive `Parent · Org` chip unchanged — no regression to the single-role path.
 
 **Verdict: GREEN.** Issue #35 closed.
+
+## 2026-07-15 — /test design-parity pass: 5 fixes
+
+Found during a `/test` run's mandatory design-parity gate (step 3b) against `bv-connect/**`,
+after the desktop nav shell + scope-label work landed:
+
+1. Mobile bottom-tab bar was showing React Navigation's default placeholder icon, not the app's
+   real icon set (`TabIcon` was only ever wired into `DesktopSidebar`) — fixed.
+2. Sign-in screen was missing most of `MagicLinkLogin.jsx`'s copy/states (heading, description,
+   placeholder, sent-state icon/resend/footer) — fixed.
+3. Header title truncated on multi-role accounts at ≤768px (`RoleSwitcher`'s header-inline
+   container had no `flexShrink`, so 100% of compression landed on the app title) — fixed.
+4. Desktop widths (≥1024px) duplicated the brand/role bar — once in the sidebar, once in a
+   redundant top `AppHeader` — fixed by hiding the top header entirely on desktop.
+5/6. Parent role's scope label read "Parent · Org", reading as org-wide access a parent never
+   has — resolved via `family_members`/`students`, with a "My Children" client fallback for the
+   zero-children edge case. **This one reopened a decision from the 2026-07-14 scope-labels plan
+   that had explicitly left parent as unchanged/"Org" — re-confirmed with the human before
+   implementing.**
+
+See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task-by-task plan.
