@@ -34,7 +34,7 @@ export default function RoleSwitcher({ stacked = false }: RoleSwitcherProps) {
   const { myRoles, switchRole, signOut, activeRole, scopeType, scopeLabel } = useSession();
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
-  const containerStyle = [styles.container, stacked && styles.containerStacked];
+  const containerStyle = [styles.container, stacked ? styles.containerStacked : styles.containerHeader];
   const activeLabel = appHeaderSubtitle(activeRole, scopeType, scopeLabel);
 
   if (myRoles.length < 2) {
@@ -128,6 +128,10 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "flex-start",
     gap: theme.space["1"],
     paddingHorizontal: 0,
+  },
+  containerHeader: {
+    flexShrink: 1,
+    maxWidth: "58%",
   },
   chip: {
     maxWidth: "100%",
