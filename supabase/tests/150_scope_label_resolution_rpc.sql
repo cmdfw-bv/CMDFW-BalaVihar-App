@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(10);
 
 -- Fixture: Center Brampton -> Session Sunday AM -> Class Junior A.
 select gen_random_uuid() as v_center \gset
@@ -81,6 +81,44 @@ select set_config('role', 'authenticated', true);
 select is(
   (select count(*) from resolve_my_scope_labels())::int, 0,
   'case 4: a sub-less authenticated session resolves zero rows (auth.uid() is null, matches nothing)'
+);
+select tests.clear_authentication();
+
+-- Fixture: a family with two children, and a parent user whose user_roles row is seeded the
+-- same way seed.sql seeds every parent (scope_type='org', scope_id=null) -- resolution must
+-- come from family_members/students, not scope_type/scope_id.
+select gen_random_uuid() as v_family \gset
+insert into families (id, label) values (:'v_family'::uuid, 'Rao Family');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  (gen_random_uuid(), :'v_family'::uuid, 'Aanya', 'Rao', 'Gr3'),
+  (gen_random_uuid(), :'v_family'::uuid, 'Kiran', 'Rao', 'Gr6');
+select tests.create_supabase_user('scope-labels-parent@test.local') as v_parent \gset
+insert into family_members (family_id, user_id, relationship) values (:'v_family'::uuid, :'v_parent'::uuid, 'guardian');
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-00000000000e', :'v_parent'::uuid, 'parent', 'org', null, true);
+
+-- Case 5: parent resolves to their children's names, not null/"Org".
+select tests.authenticate_as(:'v_parent'::uuid, 'parent', 'org', null);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-00000000000e'),
+  'Aanya, Kiran',
+  'case 5: parent (org scope, no scope_id) resolves to comma-joined children''s first names'
+);
+select tests.clear_authentication();
+
+-- Case 6: a parent with zero children on file still resolves cleanly to null (not an error) --
+-- appHeaderSubtitle's client-side fallback (Task 6) is what turns this into "My Children".
+select gen_random_uuid() as v_childless_family \gset
+insert into families (id, label) values (:'v_childless_family'::uuid, 'Childless Family');
+select tests.create_supabase_user('scope-labels-childless-parent@test.local') as v_childless_parent \gset
+insert into family_members (family_id, user_id, relationship) values (:'v_childless_family'::uuid, :'v_childless_parent'::uuid, 'guardian');
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-00000000000f', :'v_childless_parent'::uuid, 'parent', 'org', null, true);
+select tests.authenticate_as(:'v_childless_parent'::uuid, 'parent', 'org', null);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-00000000000f'),
+  null,
+  'case 6: a parent with no students on file resolves to null, not an error'
 );
 select tests.clear_authentication();
 
