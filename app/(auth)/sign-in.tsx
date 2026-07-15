@@ -46,7 +46,7 @@ export default function SignIn() {
           <Text style={styles.bodyText}>
             We sent a sign-in link to <Text style={styles.bodyTextStrong}>{email || "your inbox"}</Text>. It expires in 15 minutes.
           </Text>
-          <Pressable onPress={submit} hitSlop={8}>
+          <Pressable style={styles.resendButton} onPress={submit}>
             <Text style={styles.resendText}>Resend link</Text>
           </Pressable>
         </View>
@@ -165,8 +165,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  resendButton: {
+    minHeight: theme.chrome.hitMin,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   resendText: {
-    alignSelf: "center",
     fontFamily: theme.fonts.semibold,
     fontSize: theme.type.scale.xs,
     color: theme.colors.accent,
