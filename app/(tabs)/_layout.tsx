@@ -24,17 +24,19 @@ export default function TabsLayout() {
   const isDesktop = useIsDesktop();
   const visible = new Set(tabsForRole(activeRole));
 
-  // AppHeader renders at every width now (Design parity fix — the design mirror's phone
-  // header, bv-connect/screens/phone/app.jsx .hdr, always shows the OM mark + app name +
-  // role/scope, not just the bare route title Expo Router's default header would show).
-  // showSwitcher is only true off-desktop: the desktop rail already mounts RoleSwitcher in
-  // its own footer (DesktopSidebar), matching dash.jsx's side__foot (issue #31).
+  // AppHeader renders off-desktop (the design mirror's phone header, bv-connect/screens/
+  // phone/app.jsx .hdr, always shows the OM mark + app name + role/scope, not just the bare
+  // route title Expo Router's default header would show). On desktop the sidebar rail already
+  // shows brand + role/scope (its own logoRow + stacked RoleSwitcher footer, issue #31) — an
+  // AppHeader top bar there would duplicate both, diverging from the design mirror's
+  // screens/desktop/dash.jsx (brand shown once, top bar reserved for page-specific content).
   const tabs = (
     <Tabs
       tabBar={isDesktop ? (props) => <DesktopSidebar {...props} visible={visible} /> : undefined}
       screenOptions={{
-        header: () => <AppHeader showSwitcher={!isDesktop} />,
-        ...(isDesktop ? { tabBarPosition: "left" as const } : {}),
+        ...(isDesktop
+          ? { headerShown: false, tabBarPosition: "left" as const }
+          : { header: () => <AppHeader showSwitcher /> }),
       }}
     >
       {ALL_TABS.map((tab) => (
