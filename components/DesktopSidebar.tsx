@@ -5,7 +5,16 @@ import { TabIcon } from "./icons/TabIcons";
 import Logo from "./brand/Logo";
 import RoleSwitcher from "./RoleSwitcher";
 import { activeSidebarTab } from "./activeSidebarTab";
+import { lightTheme } from "../lib/theme";
 import type { TabKey } from "../lib/auth/navMap";
+
+// Exported so app/(tabs)/_layout.tsx can size the desktop content pane's max-width against
+// the sidebar's own width without a second, driftable copy of the same number (issue: wide
+// monitors were centering the whole sidebar+content shell instead of pinning the sidebar to
+// the true left edge, 2026-07-16). Derived from lightTheme directly (not the useUnistyles()
+// runtime hook) since this app has a single theme and the constant must be usable at module
+// scope, outside any component.
+export const SIDEBAR_WIDTH = lightTheme.space["16"] * 4;
 
 const TAB_TITLES: Record<TabKey, string> = {
   feed: "Feed",
@@ -80,7 +89,7 @@ export default function DesktopSidebar({ state, navigation, visible }: SidebarPr
 
 const styles = StyleSheet.create((theme) => ({
   rail: {
-    width: theme.space["16"] * 4,
+    width: SIDEBAR_WIDTH,
     minHeight: "100%",
     backgroundColor: theme.colors.surface,
     borderRightWidth: 1,

@@ -26,3 +26,12 @@ paths: ["app/**", "features/**", "components/**"]
   (React reference impl) + the matching `.card.html` preview, or `bv-connect/screens/{desktop,phone}` for
   full-screen layouts. Pull the file with `DesignSync` (`get_file`) before implementing — don't guess the shape.
 - Media (images/video/audio/YouTube) is orthogonal — use `expo-image` / `expo-video` / `expo-audio` / `react-native-youtube-iframe`; style only their containers.
+
+## Known deviations from the design mirror
+- **Desktop shell: sidebar is pinned to the true left edge, not centered with the content pane.**
+  `bv-connect/screens/desktop/dash.css`'s `.shell { max-width: var(--app-deskw); margin: 0 auto }` caps
+  sidebar+content *together* and centers the whole thing — on wide monitors (>1180px) that strands the nav
+  rail away from the true edge with an empty gutter beside it (reported 2026-07-16, `app/(tabs)/_layout.tsx`).
+  This app instead pins the sidebar flush left always, and caps+centers only the content pane (`deskw` minus
+  `DesktopSidebar`'s `SIDEBAR_WIDTH`) within the remaining row space. Deliberate, human-approved deviation —
+  don't "fix" this back toward the mirror's literal `.shell` centering.
