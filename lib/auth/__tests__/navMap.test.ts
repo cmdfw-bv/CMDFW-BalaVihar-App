@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ROLE_TABS, ALL_TABS, tabsForRole, isRouteInScope } from '../navMap';
+import { ROLE_TABS, ALL_TABS, TAB_TITLES, tabsForRole, isRouteInScope } from '../navMap';
 
 describe('ROLE_TABS — matches the Requirements nav-mapping table exactly', () => {
   it('student', () => expect(ROLE_TABS.student).toEqual(['feed', 'classes', 'attendance', 'chat']));
@@ -12,6 +12,13 @@ describe('ROLE_TABS — matches the Requirements nav-mapping table exactly', () 
 
 it('ALL_TABS lists all 7 tab keys (decision #2 — every Tabs.Screen always registered)', () => {
   expect(ALL_TABS).toEqual(['feed', 'classes', 'attendance', 'chat', 'dashboard', 'approvals', 'admin']);
+});
+
+it('TAB_TITLES has one display title for every ALL_TABS key (single source for phone tab bar + desktop sidebar)', () => {
+  for (const tab of ALL_TABS) {
+    expect(TAB_TITLES[tab], `missing title for "${tab}"`).toBeTypeOf('string');
+    expect(TAB_TITLES[tab].length).toBeGreaterThan(0);
+  }
 });
 
 describe('tabsForRole', () => {

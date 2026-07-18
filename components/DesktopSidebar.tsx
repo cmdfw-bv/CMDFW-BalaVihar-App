@@ -6,6 +6,7 @@ import Logo from "./brand/Logo";
 import RoleSwitcher from "./RoleSwitcher";
 import { activeSidebarTab } from "./activeSidebarTab";
 import { lightTheme } from "../lib/theme";
+import { TAB_TITLES } from "../lib/auth/navMap";
 import type { TabKey } from "../lib/auth/navMap";
 
 // Exported so app/(tabs)/_layout.tsx can size the desktop content pane's max-width against
@@ -15,16 +16,6 @@ import type { TabKey } from "../lib/auth/navMap";
 // runtime hook) since this app has a single theme and the constant must be usable at module
 // scope, outside any component.
 export const SIDEBAR_WIDTH = lightTheme.space["16"] * 4;
-
-const TAB_TITLES: Record<TabKey, string> = {
-  feed: "Feed",
-  classes: "Classes",
-  attendance: "Attendance",
-  chat: "Chat",
-  dashboard: "Dashboard",
-  approvals: "Approvals",
-  admin: "Admin",
-};
 
 // Narrow local slice of React Navigation's BottomTabBarProps (avoids importing the type from
 // expo-router's internal build path, which isn't part of its public surface) — just the shape

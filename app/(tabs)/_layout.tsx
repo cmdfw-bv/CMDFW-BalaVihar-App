@@ -3,21 +3,11 @@ import { View } from "react-native";
 import { Tabs } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSession } from "../../lib/auth/SessionProvider";
-import { ALL_TABS, tabsForRole } from "../../lib/auth/navMap";
+import { ALL_TABS, TAB_TITLES, tabsForRole } from "../../lib/auth/navMap";
 import AppHeader from "../../components/AppHeader";
 import DesktopSidebar, { SIDEBAR_WIDTH } from "../../components/DesktopSidebar";
-import { TabIcon } from "../../components/icons/TabIcons";
+import MobileTabBar from "../../components/MobileTabBar";
 import { useIsDesktop } from "../../lib/useIsDesktop";
-
-const TAB_TITLES: Record<string, string> = {
-  feed: "Feed",
-  classes: "Classes",
-  attendance: "Attendance",
-  chat: "Chat",
-  dashboard: "Dashboard",
-  approvals: "Approvals",
-  admin: "Admin",
-};
 
 export default function TabsLayout() {
   const { activeRole } = useSession();
@@ -46,7 +36,13 @@ export default function TabsLayout() {
   // screens/desktop/dash.jsx (brand shown once, top bar reserved for page-specific content).
   const tabs = (
     <Tabs
-      tabBar={isDesktop ? (props) => <DesktopSidebar {...props} visible={visible} /> : undefined}
+      tabBar={(props) =>
+        isDesktop ? (
+          <DesktopSidebar {...props} visible={visible} />
+        ) : (
+          <MobileTabBar {...props} visible={visible} />
+        )
+      }
       screenOptions={{
         ...(isDesktop
           ? {
@@ -73,7 +69,6 @@ export default function TabsLayout() {
           options={{
             title: TAB_TITLES[tab],
             href: visible.has(tab) ? undefined : null,
-            tabBarIcon: ({ color, size }) => <TabIcon tab={tab} color={color} size={size} />,
           }}
         />
       ))}

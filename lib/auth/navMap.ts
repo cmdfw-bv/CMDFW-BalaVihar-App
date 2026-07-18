@@ -5,6 +5,18 @@ export type TabKey = 'feed' | 'classes' | 'attendance' | 'chat' | 'dashboard' | 
 // registration, ROLE_TABS drives which ones get href:null (hidden-but-routable) per role.
 export const ALL_TABS: TabKey[] = ['feed', 'classes', 'attendance', 'chat', 'dashboard', 'approvals', 'admin'];
 
+// Single source for display titles — shared by the phone tab bar and the desktop sidebar so
+// the two never drift (previously each kept its own copy).
+export const TAB_TITLES: Record<TabKey, string> = {
+  feed: 'Feed',
+  classes: 'Classes',
+  attendance: 'Attendance',
+  chat: 'Chat',
+  dashboard: 'Dashboard',
+  approvals: 'Approvals',
+  admin: 'Admin',
+};
+
 // Sourced directly from the Requirements nav-mapping table.
 export const ROLE_TABS: Record<Role, TabKey[]> = {
   student: ['feed', 'classes', 'attendance', 'chat'],
