@@ -1,0 +1,58 @@
+/* CMDFW Bala Vihar App — phone slice shell (composes bv-connect components). */
+* { box-sizing: border-box; }
+body { margin: 0; background: #e7ddca; font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+button { font-family: inherit; }
+img { display: block; max-width: 100%; }
+
+.phone { max-width: var(--app-maxw); margin: 0 auto; min-height: 100vh; background: var(--app-canvas); display: flex; flex-direction: column; position: relative; box-shadow: 0 0 0 1px var(--line); }
+
+/* login */
+.login { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+
+/* header */
+.hdr { position: sticky; top: 0; z-index: var(--z-header); min-height: var(--app-header-h); background: rgba(244,238,225,.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; padding: 9px 14px; }
+.hdr__om { width: 26px; height: auto; flex-shrink: 0; }
+.hdr__title { flex: 1; min-width: 0; }
+.hdr__title b { font-family: var(--serif); font-weight: 400; font-size: 18px; letter-spacing: .005em; display: block; line-height: 1.1; }
+.hdr__title small { font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.hdr__bell { position: relative; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--app-surface); display: grid; place-items: center; color: var(--ink-2); cursor: pointer; flex-shrink: 0; }
+.hdr__bell .dot { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
+
+/* body */
+.body { flex: 1; overflow-y: auto; padding: 14px 14px 88px; }
+.body--flush { padding: 0 0 88px; }
+.eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+.scrTitle { font-family: var(--serif); font-weight: 400; font-size: 26px; letter-spacing: .005em; margin: 3px 0 14px; }
+
+/* tabbar */
+.tabbar { position: sticky; bottom: 0; z-index: var(--z-tabbar); background: rgba(255,253,248,.94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; background: none; border: 0; cursor: pointer; color: var(--ink-4); font-size: 10px; font-weight: 600; min-height: 44px; position: relative; }
+.tab.is-on { color: var(--primary); }
+.tab .badge { position: absolute; top: 2px; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+
+/* generic panel + roster */
+.panel { background: var(--app-surface); border: 1px solid var(--line); border-radius: var(--app-rad-card); box-shadow: var(--app-shadow-card); overflow: hidden; }
+.student { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.student:last-child { border-bottom: 0; }
+.av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-family: var(--serif); font-size: 15px; flex-shrink: 0; }
+.student b { flex: 1; font-size: 14.5px; font-weight: 600; }
+.mk { display: flex; gap: 6px; }
+.mkb { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--app-surface); display: grid; place-items: center; color: var(--ink-4); cursor: pointer; }
+.mkb.p.on { background: var(--success-soft); border-color: var(--success-line); color: var(--success); }
+.mkb.a.on { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+
+/* chat thread view */
+.chat { display: flex; flex-direction: column; height: calc(100vh - var(--app-header-h)); }
+.chat__head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--app-surface); }
+.chat__back { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--app-surface); display: grid; place-items: center; cursor: pointer; color: var(--ink-2); }
+.chat__scroll { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--app-canvas); }
+
+/* bottom sheet (feed detail) */
+.sheet { position: fixed; inset: 0; z-index: var(--z-sheet); background: var(--app-overlay); display: flex; align-items: flex-end; justify-content: center; }
+.sheet__panel { width: 100%; max-width: var(--app-maxw); max-height: 90vh; overflow-y: auto; background: var(--app-canvas); border-radius: 20px 20px 0 0; }
+.sheet__grab { width: 38px; height: 4px; border-radius: 999px; background: var(--line-2); margin: 10px auto 6px; }
+.sheet__body { padding: 8px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--ink); color: var(--on-dark); padding: 11px 18px; border-radius: 999px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; box-shadow: var(--app-shadow-pop); z-index: var(--z-toast); }
+.toast svg { color: var(--gold-light); }

@@ -1,0 +1,64 @@
+/* ───────────────────────────────────────────────────────────────
+ * bv-connect/tokens/app.css — POC app-layer tokens
+ *
+ * The "CMDFW Bala Vihar App" is a native-first PWA. It INHERITS the
+ * Chinmaya Mission DFW brand (warm paper, terracotta, indigo, gold,
+ * Marcellus + Mukta) and adds an app-native layer on top: denser
+ * spacing, tighter radii, lighter elevation, chat/feed semantics, and
+ * fixed chrome heights. Light-only for now (semantic aliases are named
+ * so a dark theme can be slotted in later without touching components).
+ *
+ * Components in this folder reference these via var(--app-*). Cards link
+ * ../app.css (brand tokens + this file). When this folder is lifted into
+ * a standalone project, rename app.css → styles.css at the new root.
+ * ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* — App canvas & surfaces (cleaner / cooler than the editorial site) — */
+  --app-canvas:    #f4eee1;   /* app background behind cards */
+  --app-surface:   #fffdf8;   /* cards, rows, sheets, bubbles */
+  --app-surface-2: #f7f0e2;   /* insets, pressed rows, composer wells */
+  --app-overlay:   rgba(28,20,16,.46);  /* scrim behind sheets/modals */
+
+  /* — Fixed chrome — */
+  --app-header-h: 56px;
+  --app-tabbar-h: 64px;
+  --app-gutter:   16px;
+  --app-maxw:     440px;   /* phone column */
+  --app-deskw:    1180px;  /* desktop dashboard max */
+
+  /* — App radii (tighter than the editorial 18px) — */
+  --app-rad-card:    14px;
+  --app-rad-control: 10px;
+  --app-rad-bubble:  18px;
+  --app-rad-pill:    999px;
+
+  /* — Elevation (lighter, app-flat) — */
+  --app-shadow-row:  0 1px 2px rgba(28,20,16,.05);
+  --app-shadow-card: 0 1px 2px rgba(28,20,16,.05), 0 6px 16px rgba(28,20,16,.05);
+  --app-shadow-pop:  0 14px 32px -10px rgba(28,20,16,.30);
+
+  /* — Feed scope coding — */
+  --scope-org:    var(--info);      /* org-wide announcements */
+  --scope-center: var(--gold-2);    /* center / session scope */
+  --scope-class:  var(--role-teacher); /* single-class update */
+
+  /* — Chat — */
+  --chat-out:      var(--primary);   /* outgoing bubble fill */
+  --chat-out-ink:  #fff6ea;
+  --chat-in:       var(--app-surface);
+  --chat-in-ink:   var(--ink);
+  --chat-in-line:  var(--line);
+  --chat-unread:   var(--primary);
+
+  /* — Privacy emphasis — */
+  --private:       #6d4bb0;          /* private comment / DM accent */
+  --private-soft:  #efeafa;
+  --private-line:  #ddd2f3;
+
+  /* — Z-index — */
+  --z-header: 30;
+  --z-tabbar: 30;
+  --z-sheet:  60;
+  --z-toast:  70;
+}

@@ -1,0 +1,19 @@
+/* ───────────────────────────────────────────────────────────────
+ * bv-connect/app.css — entry point for the CMDFW Bala Vihar App POC
+ *
+ * Brand foundations (shared, single source of truth) + the app-layer
+ * tokens. Cards and screens in this folder link THIS file.
+ *
+ * When lifting bv-connect/ into its own project: move it to the root,
+ * rename to styles.css, and repoint the two ../tokens + ../<brand>
+ * imports at the copied brand token files.
+ * ─────────────────────────────────────────────────────────────── */
+
+/* shared brand foundations */
+@import "../tokens/fonts.css";
+@import "../tokens/colors.css";
+@import "../tokens/typography.css";
+@import "../tokens/spacing.css";
+
+/* POC app-layer */
+@import "tokens/app.css";

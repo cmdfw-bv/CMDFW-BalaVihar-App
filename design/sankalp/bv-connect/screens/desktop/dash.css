@@ -1,0 +1,42 @@
+/* CMDFW Bala Vihar App — desktop/tablet compliance dashboard. */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--app-canvas); font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+button { font-family: inherit; }
+img { display: block; max-width: 100%; }
+
+.shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; max-width: var(--app-deskw); margin: 0 auto; background: var(--app-canvas); }
+
+/* sidebar */
+.side { background: var(--app-surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 20px 16px; position: sticky; top: 0; height: 100vh; }
+.side__logo { display: flex; align-items: center; gap: 10px; padding: 4px 6px 22px; }
+.side__logo img { width: 32px; height: auto; }
+.side__logo b { font-family: var(--serif); font-weight: 400; font-size: 18px; line-height: 1.1; }
+.side__logo small { display: block; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-top: 2px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--app-rad-control); font-size: 14px; font-weight: 500; color: var(--ink-2); cursor: pointer; text-decoration: none; }
+.nav a.on { background: var(--primary-soft); color: var(--primary-2); font-weight: 600; }
+.nav a:not(.on):hover { background: var(--app-surface-2); }
+.nav a svg { color: currentColor; flex-shrink: 0; }
+.side__foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+
+/* main */
+.main { padding: 26px 30px 40px; min-width: 0; }
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.top h1 { font-family: var(--serif); font-weight: 400; font-size: 32px; letter-spacing: .005em; margin: 4px 0 2px; }
+.top .eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+.top p { font-size: 13.5px; color: var(--ink-3); margin: 2px 0 0; }
+
+.statrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+.statcell { background: var(--app-surface); border: 1px solid var(--line); border-radius: var(--app-rad-card); padding: 18px; box-shadow: var(--app-shadow-row); }
+
+.grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .statrow { grid-template-columns: 1fr 1fr; } }
+
+.card { background: var(--app-surface); border: 1px solid var(--line); border-radius: var(--app-rad-card); box-shadow: var(--app-shadow-card); overflow: hidden; }
+.card__h { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.card__h h2 { font-family: var(--serif); font-weight: 400; font-size: 19px; margin: 0; }
+.card__h .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .1em; }
+.card__pad { padding: 18px; display: flex; flex-direction: column; gap: 20px; }
+.colstack { display: flex; flex-direction: column; gap: 18px; }
+.auditwrap { max-height: 230px; overflow-y: auto; }
+.auditwrap h4 { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; padding: 13px 16px 2px; }

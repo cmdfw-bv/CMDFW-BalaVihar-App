@@ -1,0 +1,26 @@
+<!-- @dsCard group="Brand" viewport="700x220" name="Poster placeholder — when art is missing" subtitle="Indigo-to-terracotta field with a faint OM, never stock photos" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 22px 24px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .poster { position: relative; aspect-ratio: 4/5; border-radius: var(--rad-lg); overflow: hidden; box-shadow: var(--shadow-poster); }
+  .p-default { background: radial-gradient(ellipse at 30% 25%, rgba(246,201,138,.5), transparent 55%), radial-gradient(ellipse at 70% 70%, rgba(184,83,26,.5), transparent 60%), linear-gradient(135deg, #2d2056 0%, #1a1238 60%, #3b1c0f 100%); }
+  .p-hanuman { background: linear-gradient(135deg, #4a1f0a 0%, #2a0f04 50%, #b8531a 110%); }
+  .p-father { background: linear-gradient(135deg, #1f2d4a 0%, #0a1226 50%, #3a5a8a 110%); }
+  .om { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .22; }
+  .om img { width: 38%; filter: brightness(0) invert(1) sepia(.6) saturate(4) hue-rotate(-10deg); }
+  .tag { position: absolute; left: 12px; bottom: 12px; background: rgba(28,20,16,.7); backdrop-filter: blur(6px); color: var(--gold-light); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; font-weight: 600; padding: 5px 10px; border-radius: var(--rad-pill); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="poster p-default"><div class="om"><img src="../assets/chinmaya-om.png" alt="" /></div><span class="tag">Default</span></div>
+    <div class="poster p-hanuman"><div class="om"><img src="../assets/chinmaya-om.png" alt="" /></div><span class="tag">Havan</span></div>
+    <div class="poster p-father"><div class="om"><img src="../assets/chinmaya-om.png" alt="" /></div><span class="tag">Satsang</span></div>
+  </div>
+</body>
+</html>

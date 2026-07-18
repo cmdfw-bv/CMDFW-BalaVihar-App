@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x140" name="Role hues — six personas" subtitle="Scope/data-coding only — never page or action colors" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 20px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--rad-pill); background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .d { width: 11px; height: 11px; border-radius: 50%; }
+  .val { font-family: var(--mono); font-size: 10px; color: var(--ink-4); margin-left: 4px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="badge"><span class="d" style="background:var(--role-student)"></span>Student<span class="val">#3f6db0</span></span>
+    <span class="badge"><span class="d" style="background:var(--role-parent)"></span>Parent<span class="val">#4a8a5c</span></span>
+    <span class="badge"><span class="d" style="background:var(--role-teacher)"></span>Teacher<span class="val">#7a5ba8</span></span>
+    <span class="badge"><span class="d" style="background:var(--role-coordinator)"></span>Coordinator<span class="val">#c08a3e</span></span>
+    <span class="badge"><span class="d" style="background:var(--role-bv)"></span>BV Coordinator<span class="val">#a4508a</span></span>
+    <span class="badge"><span class="d" style="background:var(--role-admin)"></span>Admin<span class="val">#5a5566</span></span>
+  </div>
+</body>
+</html>

@@ -1,0 +1,320 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "bv-connect/components/admin/**",
+              "bv-connect/components/auth/**",
+              "bv-connect/components/chat/**",
+              "bv-connect/components/comments/**",
+              "bv-connect/components/dashboard/**",
+              "bv-connect/components/feed/**",
+              "bv-connect/components/navigation/**",
+              "bv-connect/components/notifications/**",
+              "bv-connect/components/privacy/**",
+              "bv-connect/screens/desktop/**",
+              "bv-connect/screens/phone/**",
+              "components/brand/**",
+              "components/core/**",
+              "ui_kits/events-site/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Marcellus|Mukta|JetBrains Mono))/i]",
+        "message": "Font not provided by the design system. Available: Marcellus, Mukta, JetBrains Mono."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='AuditEntry'] > JSXAttribute > JSXIdentifier[name!=/^(?:time|actor|action|target|style|key|ref|className|style|children)$/]",
+        "message": "<AuditEntry> doesn't accept that prop. Declared props: time, actor, action, target, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='AuditEntry'] > JSXAttribute[name.name='action'] > Literal[value!=/^(?:view|edit|export|approve|delete)$/]",
+        "message": "<AuditEntry> action must be one of 'view' | 'edit' | 'export' | 'approve' | 'delete'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:variant|size|type|href|icon|iconRight|disabled|fullWidth|onClick|children|style|key|ref|className|style|children)$/]",
+        "message": "<Button> doesn't accept that prop. Declared props: variant, size, type, href, icon, iconRight, disabled, fullWidth, onClick, children, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:primary|secondary|ghost|outline|gold|danger|dark)$/]",
+        "message": "<Button> variant must be one of 'primary' | 'secondary' | 'ghost' | 'outline' | 'gold' | 'danger' | 'dark'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='size'] > Literal[value!=/^(?:sm|md|lg|xl)$/]",
+        "message": "<Button> size must be one of 'sm' | 'md' | 'lg' | 'xl'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='type'] > Literal[value!=/^(?:button|submit|reset)$/]",
+        "message": "<Button> type must be one of 'button' | 'submit' | 'reset'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|interactive|as|padding|children|style|key|ref|className|style|children)$/]",
+        "message": "<Card> doesn't accept that prop. Declared props: tone, interactive, as, padding, children, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:surface|cream|indigo)$/]",
+        "message": "<Card> tone must be one of 'surface' | 'cream' | 'indigo'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CenterRollupRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:name|region|attendance|marked|enrolled|placeholder|onClick|style|key|ref|className|style|children)$/]",
+        "message": "<CenterRollupRow> doesn't accept that prop. Declared props: name, region, attendance, marked, enrolled, placeholder, onClick, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ChatBubble'] > JSXAttribute > JSXIdentifier[name!=/^(?:own|author|time|read|showName|children|style|key|ref|className|style|children)$/]",
+        "message": "<ChatBubble> doesn't accept that prop. Declared props: own, author, time, read, showName, children, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CommentAuthor'] > JSXAttribute > JSXIdentifier[name!=/^(?:name|role|key|ref|className|style|children)$/]",
+        "message": "<CommentAuthor> doesn't accept that prop. Declared props: name, role."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CommentAuthor'] > JSXAttribute[name.name='role'] > Literal[value!=/^(?:student|parent|teacher|coordinator|bv|admin)$/]",
+        "message": "<CommentAuthor> role must be one of 'student' | 'parent' | 'teacher' | 'coordinator' | 'bv' | 'admin'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CommentComposer'] > JSXAttribute > JSXIdentifier[name!=/^(?:canPrivate|placeholder|onSend|style|key|ref|className|style|children)$/]",
+        "message": "<CommentComposer> doesn't accept that prop. Declared props: canPrivate, placeholder, onSend, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CommentThread'] > JSXAttribute > JSXIdentifier[name!=/^(?:count|comments|children|style|key|ref|className|style|children)$/]",
+        "message": "<CommentThread> doesn't accept that prop. Declared props: count, comments, children, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ComplianceBar'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|value|suffix|display|note|status|style|key|ref|className|style|children)$/]",
+        "message": "<ComplianceBar> doesn't accept that prop. Declared props: label, value, suffix, display, note, status, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ComplianceBar'] > JSXAttribute[name.name='status'] > Literal[value!=/^(?:success|warning|danger|info)$/]",
+        "message": "<ComplianceBar> status must be one of 'success' | 'warning' | 'danger' | 'info'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ConsentItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|help|required|key|ref|className|style|children)$/]",
+        "message": "<ConsentItem> doesn't accept that prop. Declared props: id, label, help, required."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ConversationRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:name|preview|time|unread|kind|role|scope|active|onClick|style|key|ref|className|style|children)$/]",
+        "message": "<ConversationRow> doesn't accept that prop. Declared props: name, preview, time, unread, kind, role, scope, active, onClick, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ConversationRow'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:group|dm)$/]",
+        "message": "<ConversationRow> kind must be one of 'group' | 'dm'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ConversationRow'] > JSXAttribute[name.name='role'] > Literal[value!=/^(?:student|parent|teacher|coordinator|bv|admin)$/]",
+        "message": "<ConversationRow> role must be one of 'student' | 'parent' | 'teacher' | 'coordinator' | 'bv' | 'admin'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='CsvImport'] > JSXAttribute > JSXIdentifier[name!=/^(?:fileName|total|ready|flagged|onChoose|onConfirm|style|key|ref|className|style|children)$/]",
+        "message": "<CsvImport> doesn't accept that prop. Declared props: fileName, total, ready, flagged, onChoose, onConfirm, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='EventDateBlock'] > JSXAttribute > JSXIdentifier[name!=/^(?:day|month|year|size|style|key|ref|className|style|children)$/]",
+        "message": "<EventDateBlock> doesn't accept that prop. Declared props: day, month, year, size, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='EventDateBlock'] > JSXAttribute[name.name='size'] > Literal[value!=/^(?:sm|md|lg)$/]",
+        "message": "<EventDateBlock> size must be one of 'sm' | 'md' | 'lg'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='FeedAuthor'] > JSXAttribute > JSXIdentifier[name!=/^(?:name|role|scope|key|ref|className|style|children)$/]",
+        "message": "<FeedAuthor> doesn't accept that prop. Declared props: name, role, scope."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='FeedAuthor'] > JSXAttribute[name.name='role'] > Literal[value!=/^(?:student|parent|teacher|coordinator|bv|admin)$/]",
+        "message": "<FeedAuthor> role must be one of 'student' | 'parent' | 'teacher' | 'coordinator' | 'bv' | 'admin'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Field'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|hint|required|error|as|id|uppercase|type|placeholder|value|onChange|children|style|inputStyle|key|ref|className|style|children)$/]",
+        "message": "<Field> doesn't accept that prop. Declared props: label, hint, required, error, as, id, uppercase, type, placeholder, value, onChange, children, style, inputStyle."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Field'] > JSXAttribute[name.name='as'] > Literal[value!=/^(?:input|textarea|select)$/]",
+        "message": "<Field> as must be one of 'input' | 'textarea' | 'select'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Logo'] > JSXAttribute > JSXIdentifier[name!=/^(?:src|size|wordmark|title|tagline|onDark|style|key|ref|className|style|children)$/]",
+        "message": "<Logo> doesn't accept that prop. Declared props: src, size, wordmark, title, tagline, onDark, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='MagicLinkLogin'] > JSXAttribute > JSXIdentifier[name!=/^(?:logoSrc|appName|sent|email|onSend|style|key|ref|className|style|children)$/]",
+        "message": "<MagicLinkLogin> doesn't accept that prop. Declared props: logoSrc, appName, sent, email, onSend, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='MessageComposer'] > JSXAttribute > JSXIdentifier[name!=/^(?:placeholder|onSend|allowAttach|style|key|ref|className|style|children)$/]",
+        "message": "<MessageComposer> doesn't accept that prop. Declared props: placeholder, onSend, allowAttach, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='NotificationItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:type|title|body|time|unread|onClick|style|key|ref|className|style|children)$/]",
+        "message": "<NotificationItem> doesn't accept that prop. Declared props: type, title, body, time, unread, onClick, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='NotificationItem'] > JSXAttribute[name.name='type'] > Literal[value!=/^(?:update|announce|absence|approval|chat)$/]",
+        "message": "<NotificationItem> type must be one of 'update' | 'announce' | 'absence' | 'approval' | 'chat'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Persona'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|name|role|scope|key|ref|className|style|children)$/]",
+        "message": "<Persona> doesn't accept that prop. Declared props: id, name, role, scope."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Persona'] > JSXAttribute[name.name='role'] > Literal[value!=/^(?:student|parent|teacher|coordinator|bv|admin)$/]",
+        "message": "<Persona> role must be one of 'student' | 'parent' | 'teacher' | 'coordinator' | 'bv' | 'admin'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='PushPermissionPrompt'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|body|onEnable|onDismiss|style|key|ref|className|style|children)$/]",
+        "message": "<PushPermissionPrompt> doesn't accept that prop. Declared props: title, body, onEnable, onDismiss, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='RoleBadge'] > JSXAttribute > JSXIdentifier[name!=/^(?:role|label|scope|style|key|ref|className|style|children)$/]",
+        "message": "<RoleBadge> doesn't accept that prop. Declared props: role, label, scope, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='RoleBadge'] > JSXAttribute[name.name='role'] > Literal[value!=/^(?:student|parent|teacher|coordinator|bv|admin)$/]",
+        "message": "<RoleBadge> role must be one of 'student' | 'parent' | 'teacher' | 'coordinator' | 'bv' | 'admin'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='TabItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|count|key|ref|className|style|children)$/]",
+        "message": "<TabItem> doesn't accept that prop. Declared props: id, label, count."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatTile'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|value|display|accent|style|key|ref|className|style|children)$/]",
+        "message": "<StatTile> doesn't accept that prop. Declared props: label, value, display, accent, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatusChip'] > JSXAttribute > JSXIdentifier[name!=/^(?:status|dot|children|style|key|ref|className|style|children)$/]",
+        "message": "<StatusChip> doesn't accept that prop. Declared props: status, dot, children, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatusChip'] > JSXAttribute[name.name='status'] > Literal[value!=/^(?:open|soon|past|featured|present|absent|excused|info|neutral)$/]",
+        "message": "<StatusChip> status must be one of 'open' | 'soon' | 'past' | 'featured' | 'present' | 'absent' | 'excused' | 'info' | 'neutral'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Stepper'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|hint|value|onChange|min|max|style|key|ref|className|style|children)$/]",
+        "message": "<Stepper> doesn't accept that prop. Declared props: label, hint, value, onChange, min, max, style."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='UserRoleAssignment'] > JSXAttribute > JSXIdentifier[name!=/^(?:role|scope|key|ref|className|style|children)$/]",
+        "message": "<UserRoleAssignment> doesn't accept that prop. Declared props: role, scope."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "AuditEntry": { "replaces": [] },
+      "Button": { "replaces": [] },
+      "Card": { "replaces": [] },
+      "CenterRollupRow": { "replaces": [] },
+      "ChatBubble": { "replaces": [] },
+      "CommentAuthor": { "replaces": [] },
+      "CommentComposer": { "replaces": [] },
+      "CommentThread": { "replaces": [] },
+      "ComplianceBar": { "replaces": [] },
+      "ConsentItem": { "replaces": [] },
+      "ConversationRow": { "replaces": [] },
+      "CsvImport": { "replaces": [] },
+      "EventDateBlock": { "replaces": [] },
+      "FeedAuthor": { "replaces": [] },
+      "Field": { "replaces": [] },
+      "Logo": { "replaces": [] },
+      "MagicLinkLogin": { "replaces": [] },
+      "MessageComposer": { "replaces": [] },
+      "NotificationItem": { "replaces": [] },
+      "Persona": { "replaces": [] },
+      "PushPermissionPrompt": { "replaces": [] },
+      "RoleBadge": { "replaces": [] },
+      "TabItem": { "replaces": [] },
+      "StatTile": { "replaces": [] },
+      "StatusChip": { "replaces": [] },
+      "Stepper": { "replaces": [] },
+      "UserRoleAssignment": { "replaces": [] }
+    },
+    "tokens": [
+      "--action", "--action-hover", "--bg", "--bg-cream", "--border-control", "--border-hairline",
+      "--container-max", "--danger", "--danger-line", "--danger-soft", "--deva", "--ease-standard",
+      "--focus-ring", "--gold", "--gold-2", "--gold-light", "--gutter-desktop", "--gutter-phone",
+      "--gutter-tablet", "--hit-min", "--indigo", "--indigo-2", "--info", "--info-line", "--info-soft",
+      "--ink", "--ink-2", "--ink-3", "--ink-4", "--leading-body", "--leading-snug", "--leading-tight",
+      "--line", "--line-2", "--mono", "--motion-base", "--motion-fast", "--on-action", "--on-dark",
+      "--primary", "--primary-2", "--primary-soft", "--rad", "--rad-lg", "--rad-pill", "--rad-sm",
+      "--role-admin", "--role-bv", "--role-coordinator", "--role-parent", "--role-student",
+      "--role-teacher", "--sans", "--section-y-desktop", "--section-y-phone", "--section-y-tablet",
+      "--serif", "--shadow-lg", "--shadow-poster", "--shadow-sm", "--space-1", "--space-10",
+      "--space-12", "--space-16", "--space-2", "--space-20", "--space-24", "--space-3", "--space-4",
+      "--space-5", "--space-6", "--space-8", "--success", "--success-2", "--success-line",
+      "--success-soft", "--surface", "--surface-alt", "--surface-card", "--surface-page",
+      "--text-body", "--text-body-sz", "--text-display", "--text-eyebrow", "--text-faint",
+      "--text-h1", "--text-h2", "--text-h3", "--text-lead", "--text-muted", "--text-sm",
+      "--text-strong", "--text-xs", "--tracking-display", "--tracking-eyebrow", "--tracking-mono",
+      "--warning", "--warning-line", "--warning-soft", "--weight-bold", "--weight-medium",
+      "--weight-regular", "--weight-semibold"
+    ],
+    "tokenKinds": {
+      "--bg": "color", "--bg-cream": "color", "--surface": "color", "--surface-alt": "color",
+      "--ink": "color", "--ink-2": "color", "--ink-3": "color", "--ink-4": "color",
+      "--line": "color", "--line-2": "color", "--primary": "color", "--primary-2": "color",
+      "--primary-soft": "color", "--indigo": "color", "--indigo-2": "color", "--gold": "color",
+      "--gold-2": "color", "--gold-light": "color", "--success": "color", "--success-2": "color",
+      "--success-soft": "color", "--success-line": "color", "--warning": "color",
+      "--warning-soft": "color", "--warning-line": "color", "--info": "color", "--info-soft": "color",
+      "--info-line": "color", "--danger": "color", "--danger-soft": "color", "--danger-line": "color",
+      "--role-student": "color", "--role-parent": "color", "--role-teacher": "color",
+      "--role-coordinator": "color", "--role-bv": "color", "--role-admin": "color",
+      "--text-strong": "font", "--text-body": "font", "--text-muted": "font", "--text-faint": "font",
+      "--surface-page": "color", "--surface-card": "color", "--border-hairline": "color",
+      "--border-control": "color", "--action": "color", "--action-hover": "color",
+      "--on-action": "color", "--on-dark": "color", "--shadow-sm": "shadow", "--shadow-lg": "shadow",
+      "--shadow-poster": "shadow", "--focus-ring": "shadow", "--serif": "font", "--sans": "font",
+      "--mono": "font", "--deva": "font", "--text-display": "font", "--text-h1": "font",
+      "--text-h2": "font", "--text-h3": "font", "--text-lead": "font", "--text-body-sz": "font",
+      "--text-sm": "font", "--text-xs": "font", "--text-eyebrow": "font", "--leading-tight": "font",
+      "--leading-snug": "font", "--leading-body": "font", "--tracking-display": "font",
+      "--tracking-eyebrow": "font", "--tracking-mono": "font", "--weight-regular": "font",
+      "--weight-medium": "font", "--weight-semibold": "font", "--weight-bold": "font",
+      "--space-1": "spacing", "--space-2": "spacing", "--space-3": "spacing", "--space-4": "spacing",
+      "--space-5": "spacing", "--space-6": "spacing", "--space-8": "spacing", "--space-10": "spacing",
+      "--space-12": "spacing", "--space-16": "spacing", "--space-20": "spacing", "--space-24": "spacing",
+      "--rad-sm": "spacing", "--rad": "spacing", "--rad-lg": "spacing", "--rad-pill": "spacing",
+      "--hit-min": "spacing", "--container-max": "spacing", "--gutter-phone": "spacing",
+      "--gutter-tablet": "spacing", "--gutter-desktop": "spacing", "--section-y-phone": "spacing",
+      "--section-y-tablet": "spacing", "--section-y-desktop": "spacing", "--ease-standard": "other",
+      "--motion-fast": "other", "--motion-base": "other"
+    },
+    "fontFamilies": ["JetBrains Mono", "Marcellus", "Mukta"]
+  }
+}

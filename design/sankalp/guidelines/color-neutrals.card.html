@@ -1,0 +1,27 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutrals — Ink ramp & paper surfaces" subtitle="Text ink, paper canvas, lines" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 20px; }
+  .row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .sw { border-radius: var(--rad); overflow: hidden; border: 1px solid var(--line); }
+  .chip { height: 72px; }
+  .meta { background: var(--surface); padding: 8px 10px; }
+  .name { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+  .val { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="meta"><div class="name">Ink</div><div class="val">#1c1410</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink-2)"></div><div class="meta"><div class="name">Ink-2</div><div class="val">#3d2e22</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink-3)"></div><div class="meta"><div class="name">Ink-3</div><div class="val">#6b574a</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink-4)"></div><div class="meta"><div class="name">Ink-4</div><div class="val">#9c8773</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--line-2)"></div><div class="meta"><div class="name">Line-2</div><div class="val">#d6c4a3</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--line)"></div><div class="meta"><div class="name">Line</div><div class="val">#e6d8bf</div></div></div>
+  </div>
+</body>
+</html>

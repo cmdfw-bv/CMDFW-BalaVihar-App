@@ -1,0 +1,43 @@
+<!-- @dsCard group="BV · Feed" viewport="440x560" name="Feed" subtitle="FeedCard — announcements + class updates" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../../app.css" />
+<style>
+  body { margin: 0; background: var(--app-canvas); font-family: var(--sans); padding: 18px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; max-width: 404px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="root" class="stack"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../../_ds_bundle.js"></script>
+<script type="text/babel">
+  const { FeedCard } = window.ChinmayaMissionDesignSystem_52eae1;
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <>
+      <FeedCard kind="announcement" scope="org" pinned tag="Announcement"
+        author={{ role: "bv", name: "BV Coordinator" }}
+        title="Hanuman Chalisa Havan — 14 Jun"
+        body="Registration is open for the Sunday havan. Families, please RSVP so we can honour seating and fire-code limits."
+        time="2h ago" reach="240 families" comments={4} />
+      <FeedCard kind="update" scope="class" tag="Homework"
+        author={{ role: "teacher", scope: "JR·A" }}
+        title="This week in Junior A"
+        body="We learned the meaning of the first two verses of the Chalisa."
+        homework="Help your child revise chant #1 at home."
+        time="Yesterday" comments={4} />
+      <FeedCard kind="update" scope="center"
+        author={{ role: "coordinator", name: "Coordinator" }}
+        title="Teacher sync moved to 6pm"
+        body="Note the time change for this week's session sync."
+        time="2 days ago" reach="12 teachers" />
+    </>
+  );
+</script>
+</body>
+</html>

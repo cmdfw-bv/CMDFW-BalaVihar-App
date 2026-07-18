@@ -1,0 +1,76 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Brand & Data — Logo, Date, Roles, Card" subtitle="Logo, EventDateBlock, RoleBadge, Card" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); padding: 28px; }
+  .wrap { display: flex; flex-direction: column; gap: 24px; max-width: 760px; }
+  .grp { display: flex; flex-direction: column; gap: 12px; }
+  .lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="root" class="wrap"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+
+<script type="text/babel">
+  const { Logo, EventDateBlock, RoleBadge, Card } = window.ChinmayaMissionDesignSystem_52eae1;
+
+  function Demo() {
+    return (
+      <>
+        <div className="grp">
+          <span className="lbl">Logo lockup</span>
+          <div className="row">
+            <Logo src="../../assets/chinmaya-om.png" size={44} />
+          </div>
+        </div>
+
+        <div className="grp">
+          <span className="lbl">Role badges + scope</span>
+          <div className="row">
+            <RoleBadge role="student" scope="JR·A" />
+            <RoleBadge role="parent" />
+            <RoleBadge role="teacher" scope="SR·B" />
+            <RoleBadge role="coordinator" />
+            <RoleBadge role="bv" scope="BRAMPTON" />
+            <RoleBadge role="admin" />
+          </div>
+        </div>
+
+        <div className="grp">
+          <span className="lbl">Cards — surface tones + date block</span>
+          <div className="cards">
+            <Card tone="surface" interactive>
+              <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+                <EventDateBlock day="14" month="Jun" year="2026" size="md" />
+                <div>
+                  <h3 style={{fontFamily:"var(--serif)",fontWeight:500,fontSize:22,margin:"0 0 4px"}}>Hanuman Chalisa Havan</h3>
+                  <p style={{fontFamily:"var(--serif)",fontStyle:"italic",color:"var(--ink-3)",margin:0}}>108 recitations · sacred fire</p>
+                </div>
+              </div>
+            </Card>
+            <Card tone="indigo">
+              <span style={{fontSize:11,letterSpacing:".22em",textTransform:"uppercase",color:"var(--gold-light)",fontWeight:600}}>Featured event</span>
+              <h3 style={{fontFamily:"var(--serif)",fontWeight:500,fontSize:24,margin:"8px 0 4px",color:"var(--on-dark)"}}>Father's Day <em style={{color:"var(--gold-light)"}}>Satsang</em></h3>
+              <p style={{fontFamily:"var(--serif)",fontStyle:"italic",color:"rgba(251,243,223,.8)",margin:0}}>Sun · 21 Jun · 10:00 AM</p>
+            </Card>
+          </div>
+        </div>
+      </>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script>
+</body>
+</html>

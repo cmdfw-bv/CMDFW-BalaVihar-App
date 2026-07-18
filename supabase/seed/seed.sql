@@ -47,11 +47,16 @@ begin
 
     v_parent_user_id := tests.create_supabase_user('parent' || i || 'a@bv-seed.test.local');
     insert into family_members (family_id, user_id, relationship) values (v_family_id, v_parent_user_id, 'guardian');
+    insert into user_roles (user_id, role, scope_type, scope_id) values (v_parent_user_id, 'parent', 'org', null);
 
     if i <= 6 then
       -- multi-guardian household
-      insert into family_members (family_id, user_id, relationship)
-      values (v_family_id, tests.create_supabase_user('parent' || i || 'b@bv-seed.test.local'), 'guardian');
+      declare
+        v_parent_b_user_id uuid := tests.create_supabase_user('parent' || i || 'b@bv-seed.test.local');
+      begin
+        insert into family_members (family_id, user_id, relationship) values (v_family_id, v_parent_b_user_id, 'guardian');
+        insert into user_roles (user_id, role, scope_type, scope_id) values (v_parent_b_user_id, 'parent', 'org', null);
+      end;
     end if;
 
     -- 1 or 2 students per family (multi-child for the first 10 families).

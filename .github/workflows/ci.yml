@@ -23,6 +23,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: node scripts/check-unistyles-config.js
 
   db-and-rls:
     runs-on: ubuntu-latest

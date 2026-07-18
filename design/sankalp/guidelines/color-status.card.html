@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Functional status ramp" subtitle="Open/present, soon, excused, info, absent — one meaning each" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 20px; }
+  .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .cell { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rad); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--rad-pill); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; width: fit-content; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .val { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="cell"><span class="pill" style="background:var(--success-soft); color:var(--success); border:1px solid var(--success-line)"><span class="dot"></span>Open</span><span class="val">--success<br>#2f6a3a</span></div>
+    <div class="cell"><span class="pill" style="background:var(--primary-soft); color:var(--primary-2); border:1px solid #e8c597">Soon</span><span class="val">--primary-soft</span></div>
+    <div class="cell"><span class="pill" style="background:var(--warning-soft); color:var(--warning); border:1px solid var(--warning-line)">Excused</span><span class="val">--warning<br>#8a6320</span></div>
+    <div class="cell"><span class="pill" style="background:var(--info-soft); color:var(--info); border:1px solid var(--info-line)">Info</span><span class="val">--info<br>#2c4a7a</span></div>
+    <div class="cell"><span class="pill" style="background:var(--danger-soft); color:var(--danger); border:1px solid var(--danger-line)">Absent</span><span class="val">--danger<br>#b3402e</span></div>
+  </div>
+</body>
+</html>

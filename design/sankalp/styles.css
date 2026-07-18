@@ -1,0 +1,12 @@
+/* ───────────────────────────────────────────────────────────────
+ * styles.css — Chinmaya Mission design system entry point
+ *
+ * The ONE file consumers link. Import-only: every token, font, and
+ * foundation lives in a file reached from here. Reference everything
+ * through var(--name); never hard-code a value a token already covers.
+ * ─────────────────────────────────────────────────────────────── */
+
+@import "tokens/fonts.css";
+@import "tokens/colors.css";
+@import "tokens/typography.css";
+@import "tokens/spacing.css";

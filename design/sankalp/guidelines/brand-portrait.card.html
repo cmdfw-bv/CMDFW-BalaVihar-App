@@ -1,0 +1,28 @@
+<!-- @dsCard group="Brand" viewport="700x240" name="Gurudev portrait — reverent treatment" subtitle="Multiply blend on a warm radial halo; never hard-cropped" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--bg); font-family: var(--sans); padding: 22px 24px; }
+  .row { display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; }
+  .halo { position: relative; width: 180px; height: 200px; display: flex; align-items: flex-end; justify-content: center; }
+  .halo::before { content: ""; position: absolute; inset: 6% 10%; border-radius: 50%; background: radial-gradient(ellipse at 50% 40%, rgba(246,201,138,.4) 0%, rgba(246,201,138,.14) 38%, transparent 70%); }
+  .halo img { position: relative; max-height: 200px; width: auto; object-fit: contain; mix-blend-mode: multiply; }
+  .note { max-width: 38ch; }
+  .greet { font-family: var(--serif); font-style: italic; font-size: 24px; color: var(--primary); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .greet img { width: 26px; height: auto; }
+  .note p { font-size: 14px; line-height: 1.6; color: var(--ink-3); margin: 0; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="halo"><img src="../assets/gurudev.jpg" alt="Pujya Gurudev Swami Chinmayananda" /></div>
+    <div class="note">
+      <p class="greet"><img src="../assets/chinmaya-om.png" alt="" />Hari Om!</p>
+      <p>Portraits of Pujya Gurudev sit on a soft warm halo with a multiply blend so the paper shows through — never a hard rectangular crop or drop shadow. Pair with a serif italic greeting.</p>
+    </div>
+  </div>
+</body>
+</html>

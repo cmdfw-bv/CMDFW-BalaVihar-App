@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 -- Fixture users, one per role tier, plus a victim to attack.
 select tests.create_supabase_user('adv-parent@test.local') as v_parent \gset
@@ -17,9 +17,15 @@ insert into user_roles (user_id, role, scope_type, scope_id, is_active) values
   (:'v_admin'::uuid, 'admin', 'org', null, true),
   (:'v_victim'::uuid, 'parent', 'org', null, true);
 
--- Attack 1: parent tries to directly SELECT other users' user_roles rows.
+-- Attack 1: parent tries to directly SELECT other users' user_roles rows. user_roles_self_select
+-- (client-auth-session-and-nav) now allows a caller to read their own row, so the real attack
+-- surface here is whether they can see anyone else's — not whether the count is zero.
 select tests.authenticate_as(:'v_parent'::uuid, 'parent', 'org', null);
-select is((select count(*) from user_roles)::int, 0, 'ATTACK: parent gets zero rows selecting user_roles directly (RLS default-deny)');
+select is((select count(*) from user_roles)::int, 1, 'ATTACK: parent gets only their own row selecting user_roles directly, not zero, not more');
+select ok(
+  not exists (select 1 from user_roles where user_id <> :'v_parent'::uuid),
+  'ATTACK: parent cannot see any other user''s user_roles row (RLS default-deny beyond self)'
+);
 
 -- Attack 2: parent tries direct INSERT to self-grant admin.
 select throws_ok(
@@ -90,14 +96,14 @@ select throws_ok(
 );
 reset role;
 
--- Attack 9: bv_coordinator direct SELECT on user_roles still denied — no client policy at any tier.
+-- Attack 9: bv_coordinator direct SELECT on user_roles is limited to their own row only.
 select tests.authenticate_as(:'v_bvc'::uuid, 'bv_coordinator', 'org', null);
-select is((select count(*) from user_roles)::int, 0, 'ATTACK: bv_coordinator gets zero rows selecting user_roles directly (no client policy at any tier)');
+select is((select count(*) from user_roles)::int, 1, 'ATTACK: bv_coordinator gets only their own row selecting user_roles directly (self-select only, no other tier)');
 select tests.clear_authentication();
 
--- Attack 10: admin direct SELECT on user_roles still denied (client role, not service_role).
+-- Attack 10: admin direct SELECT on user_roles is limited to their own row only (client role, not service_role).
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
-select is((select count(*) from user_roles)::int, 0, 'ATTACK: admin (client role, not service_role) gets zero rows selecting user_roles directly');
+select is((select count(*) from user_roles)::int, 1, 'ATTACK: admin (client role, not service_role) gets only their own row selecting user_roles directly');
 select tests.clear_authentication();
 
 -- Attack 11: active-role switch — user holds teacher(active) + parent(inactive); after

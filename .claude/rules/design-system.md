@@ -5,8 +5,9 @@ paths: ["app/**", "features/**", "components/**"]
 # Design-system rules (3_ARCHITECTURE §12.13; ADR-0011)
 
 > Styling is **Unistyles 3** driven by a generated `lib/theme.ts` (from `design/sankalp/design-tokens.json`).
-> The Sankalp artifacts + `theme.ts` land after the broader team finishes refining the design — until then, build to the
-> behaviors below (they are stable regardless of token values) and don't hardcode visual values.
+> The Sankalp artifacts + `theme.ts` landed in commit `db453e8` — they are the live visual contract, not a future
+> import. The **Chinmaya Mission Design System** project on claude.ai/design (`bv-connect/**`) is the canonical
+> source; pull it with the `DesignSync` tool. Match its components/screens, don't hardcode visual values.
 
 ## Definition of Done (the merge gate — from Sankalp USAGE.md)
 - **Compose from `theme` tokens, never hex.** No raw color/spacing literals; reach for a token (or `color-mix` from one, pre-resolved in the bridge).
@@ -21,5 +22,16 @@ paths: ["app/**", "features/**", "components/**"]
 
 ## How
 - Style via Unistyles using `theme` tokens; never import design values from anywhere but `lib/theme.ts`.
-- Match the Open Design **prototype** for the screen (`design/sankalp/prototypes/<screen>.html`) when present.
+- Match the design project's reference for the screen/component: `bv-connect/components/<domain>/<Component>.jsx`
+  (React reference impl) + the matching `.card.html` preview, or `bv-connect/screens/{desktop,phone}` for
+  full-screen layouts. Pull the file with `DesignSync` (`get_file`) before implementing — don't guess the shape.
 - Media (images/video/audio/YouTube) is orthogonal — use `expo-image` / `expo-video` / `expo-audio` / `react-native-youtube-iframe`; style only their containers.
+
+## Known deviations from the design mirror
+- **Desktop shell: sidebar is pinned to the true left edge, not centered with the content pane.**
+  `bv-connect/screens/desktop/dash.css`'s `.shell { max-width: var(--app-deskw); margin: 0 auto }` caps
+  sidebar+content *together* and centers the whole thing — on wide monitors (>1180px) that strands the nav
+  rail away from the true edge with an empty gutter beside it (reported 2026-07-16, `app/(tabs)/_layout.tsx`).
+  This app instead pins the sidebar flush left always, and caps+centers only the content pane (`deskw` minus
+  `DesktopSidebar`'s `SIDEBAR_WIDTH`) within the remaining row space. Deliberate, human-approved deviation —
+  don't "fix" this back toward the mirror's literal `.shell` centering.

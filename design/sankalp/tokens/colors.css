@@ -1,0 +1,92 @@
+/* ───────────────────────────────────────────────────────────────
+ * tokens/colors.css — Chinmaya Mission color system
+ *
+ * Derived verbatim from the live Chinmaya Mission DFW product palette, with a
+ * functional status ramp and a six-hue role system folded in from the
+ * Sankalp (Bala Vihar Connect) app spec.
+ *
+ * Two identity accents are intentional and NOT interchangeable:
+ *   --primary (terracotta)  → the single primary ACTION color (CTAs).
+ *   --gold / --indigo       → identity & atmosphere, never competing CTAs.
+ *
+ * Compose one-offs with color-mix() from a token; never invent a hex
+ * a token already covers.
+ * ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* — Warm-paper foundation — */
+  --bg:           #f7f1e6;   /* page canvas (warm paper) */
+  --bg-cream:     #fbf6eb;   /* raised cream wells / banners */
+  --surface:      #fffaf0;   /* cards, sheets, inputs */
+  --surface-alt:  #f1e8d4;   /* insets, disabled fills */
+
+  /* — Ink / neutral text ramp — */
+  --ink:          #1c1410;   /* primary text */
+  --ink-2:        #3d2e22;   /* secondary text / body */
+  --ink-3:        #6b574a;   /* muted captions */
+  --ink-4:        #9c8773;   /* faint eyebrow / meta */
+  --line:         #e6d8bf;   /* hairline border */
+  --line-2:       #d6c4a3;   /* control / stronger border */
+
+  /* — Primary action — terracotta (the one CTA color) — */
+  --primary:      #b8531a;
+  --primary-2:    #8e3d10;   /* hover / pressed / accent text */
+  --primary-soft: #f3d9b8;   /* tinted fills, selected wells */
+
+  /* — Identity atmosphere — indigo (deep, devotional grounds) — */
+  --indigo:       #2d2056;
+  --indigo-2:     #1a1238;
+
+  /* — Identity accent — gold / marigold (highlights, festival) — */
+  --gold:         #b8893f;
+  --gold-2:       #8a6320;
+  --gold-light:   #f6c98a;   /* gold-on-dark text */
+
+  /* — Functional status ramp (registration + app surfaces) — */
+  --success:      #2f6a3a;   /* open / present / confirmed */
+  --success-2:    #4a9255;
+  --success-soft: #e7f1e8;
+  --success-line: #c4dec9;
+
+  --warning:      #8a6320;   /* opens-soon / excused / pending */
+  --warning-soft: #fff4e0;
+  --warning-line: #f1d59a;
+
+  --info:         #2c4a7a;   /* informational callouts */
+  --info-soft:    #f0f4fc;
+  --info-line:    #d6e0f4;
+
+  --danger:       #b3402e;   /* absent / destructive / error */
+  --danger-soft:  #f7e3df;
+  --danger-line:  #e6c3bb;
+
+  /* — Role hues (multi-persona / scope coding only — never page/action) — */
+  --role-student:     #3f6db0;
+  --role-parent:      #4a8a5c;
+  --role-teacher:     #7a5ba8;
+  --role-coordinator: #c08a3e;
+  --role-bv:          #a4508a;
+  --role-admin:       #5a5566;
+
+  /* — Semantic aliases (prefer these in product code) — */
+  --text-strong:     var(--ink);
+  --text-body:       var(--ink-2);
+  --text-muted:      var(--ink-3);
+  --text-faint:      var(--ink-4);
+  --surface-page:    var(--bg);
+  --surface-card:    var(--surface);
+  --border-hairline: var(--line);
+  --border-control:  var(--line-2);
+  --action:          var(--primary);
+  --action-hover:    var(--primary-2);
+  --on-action:       #fbf3df;   /* warm cream text on dark/action fills */
+  --on-dark:         #fbf3df;
+
+  /* — Elevation (warm-tinted, never neutral-gray) — */
+  --shadow-sm: 0 1px 2px rgba(28,20,16,.04), 0 8px 24px rgba(28,20,16,.06);
+  --shadow-lg: 0 4px 12px rgba(28,20,16,.06), 0 24px 48px rgba(28,20,16,.10);
+  --shadow-poster: 0 30px 60px -20px rgba(45,32,86,.45), 0 16px 32px -16px rgba(28,20,16,.25);
+
+  /* — Focus ring — */
+  --focus-ring: 0 0 0 3px rgba(184,83,26,.18);
+}
