@@ -34,6 +34,7 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0024](0024-cicd-github-actions-branch-protection.md) | CI/CD: GitHub Actions required status check as server-side enforcement layer (extends ADR-0008) | Closed | 2026-07-11 |
 | [ADR-0025](0025-cicd-residency-scan-and-codeowners.md) | CI residency/tracker-dependency scan + CODEOWNERS-required review (ADR-0024 addendum) | Closed | 2026-07-11 |
 | [ADR-0026](0026-user-role-approval-tiering-and-audit.md) | user-role-approval: tiered privilege-escalation guard on the first `user_roles` write path; grant/revoke audited via structured log, not `audit_log` | Closed | 2026-07-11 |
+| [ADR-0027](0027-role-switcher-label-active-role-agnostic-self-scope-read.md) | Role-switcher labels are an active-role-agnostic self-scope read (ADR-0019 addendum): extends the unaudited exemption to SECURITY DEFINER reads proven identity-scoped by adversarial test | Closed | 2026-07-17 |
 
 ## How to read an ADR
 

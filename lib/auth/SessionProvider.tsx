@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Linking from "expo-linking";
+import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../supabase";
 import { decodeClaims } from "./claims";
@@ -74,7 +75,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       refresh(nextSession);
     });
 
-    // Deep-link completion (Design spec) — cold start + warm start, one code path.
+    // Deep-link completion (Design spec) — cold start + warm start, one code path. Native only:
+    // web's Supabase client has detectSessionInUrl: true (lib/supabase.ts) and already consumes
+    // the ?code= itself, so running exchangeCodeForSession here too would race it for the same
+    // one-time-use PKCE code.
+    if (Platform.OS === "web") {
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
+
     Linking.getInitialURL().then((initialUrl) => {
       if (initialUrl) void handleDeepLink(initialUrl);
     });

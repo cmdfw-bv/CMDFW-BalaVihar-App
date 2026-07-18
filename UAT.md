@@ -53,7 +53,7 @@ npm run dev           # starts the app at http://localhost:8888
 - A "check your email" confirmation appears after submit — the form doesn't just sit blank.
 - Clicking the emailed link signs you in and lands on the Teacher tab set (Feed, Classes, Attendance, Chat).
 
-- [x] Pass  - [ ] Fail (notes: verified via playwright-cli 2026-07-15; loading state also confirmed by code read of app/(auth)/sign-in.tsx)
+- [x] Pass  - [ ] Fail (notes: verified via playwright-cli 2026-07-15; loading state also confirmed by code read of app/(auth)/sign-in.tsx. Re-walked live via playwright-cli 2026-07-17 against the `SessionProvider.tsx` native-only deep-link guard (code review finding: web's `detectSessionInUrl: true` and the `Linking`-based `handleDeepLink` could both try to exchange the same one-time-use PKCE `?code=`) — signed in as `parent1a` on web at 390px: followed the emailed magic link, landed on `/feed` with 0 console errors/warnings and the correct scope label (`Parent · Student1_1, Student1_2`). Repeated as `multirole`: 0 console errors, landed on `/feed` with the Teacher tab set.)
 
 ---
 
@@ -85,7 +85,7 @@ npm run dev           # starts the app at http://localhost:8888
 - Only the tabs a Parent should see appear: Feed, Attendance, Chat.
 - No Classes, Dashboard, Approvals, or Admin tab is visible.
 
-- [x] Pass  - [ ] Fail (notes: confirmed during design-parity gate screenshots at 360/768/1024/1440)
+- [x] Pass  - [ ] Fail (notes: re-walked live via playwright-cli 2026-07-16 against the new `MobileTabBar` component at 390px and 768px viewports — signed in as `parent1a`, tab bar shows exactly Feed/Attendance/Chat with icon+label per tab, no Classes/Dashboard/Approvals/Admin. Prior 2026-07-15 pass confirmed the same via design-parity gate screenshots at 360/768/1024/1440.)
 
 ---
 
@@ -118,7 +118,7 @@ npm run dev           # starts the app at http://localhost:8888
 - If you were on a screen not valid for the new role, you're silently moved to Feed — never a permission-denied or blank screen.
 - No visible errors during the switch.
 
-- [x] Pass  - [ ] Fail (notes: on /classes as Teacher, switched to BV Coordinator — tab bar updated to Feed/Chat/Dashboard/Approvals and silently redirected to /feed)
+- [x] Pass  - [ ] Fail (notes: on /classes as Teacher, switched to BV Coordinator — tab bar updated to Feed/Chat/Dashboard/Approvals and silently redirected to /feed. Re-walked live via playwright-cli 2026-07-16 at 390px against the new `MobileTabBar`: signed in as `multirole` (starting role Coordinator — Feed/Classes/Chat/Dashboard/Approvals), opened the role switcher, selected Teacher — tab bar updated in place to Feed/Classes/Attendance/Chat with no reload and no error, stayed on /feed. Re-walked again 2026-07-17 at 1024px desktop against the `SessionProvider.tsx` deep-link fix: signed in as `multirole` (starting role Teacher), opened the switcher — every held role resolved a real label including `Parent · Student7_1, Student7_2` while Teacher was active (the exact active-role-agnostic scope-label read ADR-0027 addresses), selected BV Coordinator — `DesktopSidebar` updated in place to Feed/Chat/Dashboard/Approvals, 0 console errors, stayed on /feed.)
 
 ---
 
@@ -183,3 +183,5 @@ npm run dev           # starts the app at http://localhost:8888
 | Date | Tester | Result |
 |---|---|---|
 | 2026-07-15 | Claude Code (`/test` gate, issue #17 design-parity pass) | 9/9 Pass |
+| 2026-07-16 | Claude Code (`/test` gate, issue #17 MobileTabBar componentization + shared `TAB_TITLES`) | 9/9 Pass (UAT-3, -5 — the two scenarios that exercise the tab bar — re-walked live via playwright-cli against `parent1a`/`multirole` at 390px/768px, confirming the new `MobileTabBar` renders correctly and updates on role switch, see notes above; UAT-1, -2, -4, -6, -7, -8, -9 unaffected by this diff — carried forward from 2026-07-15) |
+| 2026-07-17 | Claude Code (`/test` gate, issue #17 code-review follow-ups: `SessionProvider.tsx` native-only deep-link guard + ADR-0027 minors'-PII audit-exemption addendum) | 9/9 Pass. Full suite re-run: vitest 233/233, pgTAP 19 files/169 assertions (incl. `150_scope_label_resolution_rpc.sql`, unaffected by the comment-only migration changes). UAT-1 re-walked live (web sign-in via `parent1a` and `multirole`, 0 console errors — the exact regression the code-review comment flagged is confirmed absent) and UAT-5 re-walked live (multirole role switch at 1024px desktop, including live confirmation of the ADR-0027 scope — the switcher resolved `Parent · Student7_1, Student7_2` while Teacher was the active role). Design parity re-checked at 390/768/1024/1440 for `app/(tabs)/_layout.tsx`/`DesktopSidebar.tsx`/`MobileTabBar.tsx` (untouched by today's diff, confirmed no regression — screenshots at all four breakpoints match the 2026-07-15/-16 passes). UAT-2, -3, -4, -6, -7, -8, -9 unaffected by this diff — carried forward. |

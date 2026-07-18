@@ -7,6 +7,13 @@
 -- switch_active_role precedent (core_operational_rls_policies.sql,
 -- switch_active_role_rpc.sql) for this exact "bypass RLS, but only for the caller's own
 -- rows" shape.
+--
+-- The parent branch added below reads minors' PII (children's first names) through this same
+-- active-role-agnostic SECURITY DEFINER path. That's covered by ADR-0027 (ADR-0019 addendum):
+-- the unaudited self/parent exemption extends here because the read is provably auth.uid()-scoped
+-- to the caller's own children regardless of active_role, proven by the adversarial suite in
+-- supabase/tests/150_scope_label_resolution_rpc.sql. Do not widen this function's scope beyond
+-- "the caller's own rows" without re-checking ADR-0027's proof obligation.
 create or replace function public.resolve_my_scope_labels()
 returns table (user_roles_id uuid, scope_label text)
 language sql

@@ -5,6 +5,12 @@
 -- that resolution. A parent has NO org-wide access (RLS scopes them to their own children via
 -- family_members); showing "Org" in the header/switcher read as org-wide access, which is
 -- actively misleading.
+--
+-- This branch reads a minor's PII (first_name) unaudited, via the same active-role-agnostic
+-- SECURITY DEFINER mechanism as the rest of the function -- see ADR-0027 (ADR-0019 addendum)
+-- for why that stays within the self/parent audit exemption, and the adversarial proof
+-- obligation (supabase/tests/150_scope_label_resolution_rpc.sql cases 7-14) any future change
+-- here must keep satisfying.
 create or replace function public.resolve_my_scope_labels()
 returns table (user_roles_id uuid, scope_label text)
 language sql
