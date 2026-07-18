@@ -58,7 +58,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.space["4"],
-    paddingVertical: theme.space["4"] + 2, // 18px
+    // Deliberate literal — 18px sits exactly between space.4=16 and space.5=20, neither is a
+    // closer fit, so this is disclosed rather than silently rounded (see stage-1-report.md).
+    paddingVertical: 18,
   },
   labelCol: {
     flexDirection: "column",
@@ -66,7 +68,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   label: {
     fontFamily: theme.fonts.display,
-    fontSize: 19,
+    fontSize: theme.type.scale.lead, // 18 — nearest scale token to the reference's 19px
     color: theme.colors.ink,
   },
   hint: {
@@ -92,13 +94,22 @@ const styles = StyleSheet.create((theme) => ({
   }),
   btnGlyph: {
     fontFamily: theme.fonts.semibold,
+    // Deliberate literal — 20px sits exactly between scale.lead=18 and scale.h3=22, neither is
+    // a closer fit for the +/- glyph, so this is disclosed rather than silently rounded.
     fontSize: 20,
     lineHeight: 20,
     color: theme.colors.ink2,
   },
   value: {
-    fontFamily: theme.fonts.display,
+    // Mono, not display — Task 1.7's "mono tabular-nums value display" requirement; serif
+    // display is showcase/identity-only, never functional/body content (design-system rule).
+    fontFamily: theme.fonts.mono,
+    // Deliberate literal — no theme.type.scale entry is close to this hero-value size (nearest
+    // is h3=22, 4px off); kept as a literal matching the visual reference, same treatment as
+    // StatTile.tsx's 44/28 literals.
     fontSize: 26,
+    // Deliberate literal — incidental layout math (keeps 1-2 digit values from reflowing the
+    // row), not a design-scale value.
     minWidth: 36,
     textAlign: "center",
     color: theme.colors.ink,

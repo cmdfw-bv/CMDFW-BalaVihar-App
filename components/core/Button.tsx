@@ -3,6 +3,7 @@ import * as React from "react";
 import { Pressable, Text, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { BUTTON_VARIANTS, BUTTON_SIZES, resolveButtonMode, type ButtonVariant, type ButtonSize } from "./Button.logic";
+import { colorAtPath } from "./tokenPath";
 
 // react-native-web's Pressable forwards unrecognized props straight to the underlying View,
 // which *does* support `href`/`hrefAttrs` (renders a real anchor) — `@types/react-native`'s
@@ -63,10 +64,6 @@ export default function Button({
 }
 
 const styles = StyleSheet.create((theme) => {
-  const colorAt = (path: string): string => {
-    if (path === "transparent") return "transparent";
-    return path.split(".").reduce<any>((node, key) => node?.[key], theme.colors) ?? theme.colors.ink;
-  };
   const fontForScale = (scale: "xs" | "sm" | "body") => theme.type.scale[scale];
 
   return {
@@ -80,8 +77,8 @@ const styles = StyleSheet.create((theme) => {
         gap: theme.space["2"],
         borderRadius: theme.radius.pill,
         borderWidth: 1,
-        borderColor: colorAt(v.border),
-        backgroundColor: colorAt(v.bg),
+        borderColor: colorAtPath(theme.colors, v.border),
+        backgroundColor: colorAtPath(theme.colors, v.bg),
         paddingHorizontal: s.paddingX,
         paddingVertical: s.paddingY,
         minHeight: theme.chrome.hitMin,
@@ -99,7 +96,7 @@ const styles = StyleSheet.create((theme) => {
         fontFamily: theme.fonts.semibold,
         fontSize: fontForScale(s.fontSize),
         letterSpacing: 0.01,
-        color: colorAt(v.fg),
+        color: colorAtPath(theme.colors, v.fg),
       };
     },
   };

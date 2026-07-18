@@ -47,8 +47,12 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row" as const,
     alignItems: "center" as const,
     minHeight: theme.chrome.hitMin,
-    paddingHorizontal: theme.space["4"] + 2, // 18px
-    paddingVertical: theme.space["2"] + 2, // 10px
+    // Deliberate literal — 18px sits exactly between space.4=16 and space.5=20, neither is a
+    // closer fit, so this is disclosed rather than silently rounded.
+    paddingHorizontal: 18,
+    // Deliberate literal — 10px sits exactly between space.2=8 and space.3=12, neither is a
+    // closer fit, so this is disclosed rather than silently rounded.
+    paddingVertical: 10,
     borderRadius: theme.radius.pill,
     backgroundColor: on ? theme.colors.ink : "transparent",
   }),
@@ -59,7 +63,9 @@ const styles = StyleSheet.create((theme) => ({
     color: on ? theme.colors.onDark : theme.colors.ink3,
   }),
   count: (on: boolean) => ({
-    marginLeft: theme.space["1"] + 2, // 6px
+    // Deliberate literal — 6px sits exactly between space.1=4 and space.2=8, neither is a
+    // closer fit, so this is disclosed rather than silently rounded.
+    marginLeft: 6,
     fontSize: theme.type.scale.eyebrow,
     fontFamily: theme.fonts.mono,
     opacity: 0.65,

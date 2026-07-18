@@ -37,9 +37,9 @@ const styles = StyleSheet.create((theme) => ({
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.space["1"] + 3, // 7px
-    paddingHorizontal: theme.space["2"] + 3, // 11px
-    paddingVertical: theme.space["1"] + 1, // 5px
+    gap: theme.space["2"], // 8px — nearest token to the reference's 7px
+    paddingHorizontal: theme.space["3"], // 12px — nearest token to the reference's 11px
+    paddingVertical: theme.space["1"], // 4px — nearest token to the reference's 5px
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
@@ -57,14 +57,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.ink2,
   },
   scopeWrap: {
-    paddingLeft: theme.space["2"] - 2, // 6px
+    // Deliberate literal — 6px sits exactly between space.1=4 and space.2=8, neither is a
+    // closer fit, so this is disclosed rather than silently rounded.
+    paddingLeft: 6,
     marginLeft: 2,
     borderLeftWidth: 1,
     borderLeftColor: theme.colors.line,
   },
   scope: {
     fontFamily: theme.fonts.mono,
-    fontSize: theme.type.scale.eyebrow - 0.5,
+    fontSize: theme.type.scale.eyebrow, // 11 — nearest token to the reference's 10.5px
     letterSpacing: theme.type.tracking.mono,
     color: theme.colors.ink4,
   },

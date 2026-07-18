@@ -3,6 +3,7 @@ import * as React from "react";
 import { Pressable, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { cardToneStyle, type CardTone } from "./Card.logic";
+import { colorAtPath } from "./tokenPath";
 
 // Matches design/sankalp/components/core/Card.jsx — warm-paper surface container.
 // Divergence from the reference (Task 1.2): RN has no polymorphic `as` tag the way the web
@@ -35,17 +36,14 @@ export default function Card({ tone = "surface", interactive = false, padding = 
 }
 
 const styles = StyleSheet.create((theme) => {
-  const colorAt = (path: string): string =>
-    path.split(".").reduce<any>((node, key) => node?.[key], theme.colors) ?? theme.colors.ink;
-
   return {
     base: (tone: CardTone, padding: number) => {
       const t = cardToneStyle(tone);
       return {
         borderRadius: theme.radius.lg,
         borderWidth: 1,
-        borderColor: colorAt(t.border),
-        backgroundColor: colorAt(t.bg),
+        borderColor: colorAtPath(theme.colors, t.border),
+        backgroundColor: colorAtPath(theme.colors, t.bg),
         // Note: `t.fg` (text color) isn't applied here — CSS color inheritance from a
         // container onto child <Text> has no RN equivalent; consumers must color their own
         // Text children (e.g. via `cardToneStyle(tone).fg` + `colorAtPath`) for indigo tone.

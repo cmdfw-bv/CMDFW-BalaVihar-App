@@ -30,8 +30,13 @@ const styles = StyleSheet.create((theme) => ({
   chip: (c: { bg: string; fg: string; border: string }) => ({
     flexDirection: "row" as const,
     alignItems: "center" as const,
-    gap: theme.space["1"] + 2, // 6px — matches StatusChip.jsx's gap: 6
-    paddingHorizontal: theme.space["2"] + 2, // 10px
+    // Deliberate literal — 6px (matches StatusChip.jsx's gap: 6) sits exactly between
+    // space.1=4 and space.2=8, neither is a closer fit, so this is disclosed rather than
+    // silently rounded.
+    gap: 6,
+    // Deliberate literal — 10px sits exactly between space.2=8 and space.3=12, neither is a
+    // closer fit, so this is disclosed rather than silently rounded.
+    paddingHorizontal: 10,
     paddingVertical: theme.space["1"], // 4px
     borderRadius: theme.radius.pill,
     backgroundColor: colorAtPath(theme.colors, c.bg),

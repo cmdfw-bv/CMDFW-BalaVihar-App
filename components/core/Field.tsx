@@ -3,6 +3,7 @@ import * as React from "react";
 import { View, Text, TextInput, type StyleProp, type ViewStyle, type TextStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { fieldControlMeta, type FieldAs } from "./Field.logic";
+import { colorAtPath } from "./tokenPath";
 
 // Matches design/sankalp/components/core/Field.jsx — label + input with a reserved validation slot.
 // Divergence from the reference (Task 1.3): `as="select"` has no native RN equivalent to an HTML
@@ -55,7 +56,7 @@ export default function Field({
 
       {as === "select" ? (
         // Read-only-styled well — see divergence note above.
-        <View style={[styles.control(meta, focused, invalid), inputStyle as StyleProp<ViewStyle>]}>{children}</View>
+        <View style={[styles.control(meta, focused), inputStyle as StyleProp<ViewStyle>]}>{children}</View>
       ) : (
         <TextInput
           value={value}
@@ -64,7 +65,7 @@ export default function Field({
           onChangeText={onChangeText}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          style={[styles.control(meta, focused, invalid), styles.controlText, inputStyle]}
+          style={[styles.control(meta, focused), styles.controlText, inputStyle]}
         />
       )}
 
@@ -89,20 +90,21 @@ const styles = StyleSheet.create((theme) => ({
   required: {
     color: theme.colors.primary,
   },
-  control: (meta: { minHeight: number; borderTokenKey: string }, focused: boolean, invalid: boolean) => ({
+  control: (meta: ReturnType<typeof fieldControlMeta>, focused: boolean) => ({
     width: "100%" as const,
     backgroundColor: theme.colors.surface,
+    // Base/error border color flows from `meta.borderTokenKey` (the tested derived-value
+    // contract from `fieldControlMeta`); `focused` layers on top rather than duplicating the
+    // error-vs-default branch inline.
+    borderColor: focused ? theme.colors.primary : colorAtPath(theme.colors, meta.borderTokenKey),
     borderWidth: 1,
-    borderColor: invalid
-      ? theme.colors.status.absent
-      : focused
-        ? theme.colors.primary
-        : theme.colors.line2,
     borderRadius: theme.radius.control,
     paddingHorizontal: theme.space["4"],
     paddingVertical: theme.space["3"],
-    minHeight: meta.minHeight,
-    textAlignVertical: meta.minHeight === 96 ? ("top" as const) : ("center" as const),
+    // `meta.minHeight` is a test fixture pinning the documented value (see Field.logic.ts) —
+    // read the live token here so this stays in sync if `theme.chrome.hitMin` ever changes.
+    minHeight: meta.multiline ? 96 : theme.chrome.hitMin,
+    textAlignVertical: meta.multiline ? ("top" as const) : ("center" as const),
   }),
   controlText: {
     fontFamily: theme.fonts.body,

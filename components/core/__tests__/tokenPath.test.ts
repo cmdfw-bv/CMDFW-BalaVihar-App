@@ -12,4 +12,7 @@ describe('colorAtPath', () => {
   it('falls back to ink for an unknown path instead of throwing', () => {
     expect(colorAtPath(lightTheme.colors, 'nope.nope')).toBe(lightTheme.colors.ink);
   });
+  it('short-circuits the literal token key "transparent" instead of walking colors', () => {
+    expect(colorAtPath(lightTheme.colors, 'transparent')).toBe('transparent');
+  });
 });
