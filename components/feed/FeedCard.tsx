@@ -313,5 +313,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center" as const,
     gap: theme.space["1"], // nearest token to the reference's 5px
     minHeight: theme.chrome.hitMin, // >=44px touch target — global constraint
+    minWidth: theme.chrome.hitMin, // >=44px touch target width — icon+gap+digits alone is well under 44px (ConversationRow.tsx/UserRoleRow.tsx squared-target precedent)
   },
 }));
