@@ -13,12 +13,21 @@ import { feedScopeMeta, feedCardMeta, feedTagToneTokenKeys, type FeedScope } fro
 // an announcement or a class update, built on top of core/Card. Divergence from the reference
 // (Card.tsx precedent): the web version puts a single onClick on the whole <article>, which the
 // footer's time/reach text inherits by bubbling for free. RN has no bubbling-onClick equivalent
-// via Card (CardProps has no onPress — Task-1.2 divergence), so this wraps Card in its own outer
-// Pressable to be "the card body" tap target, and gives the comment count its own nested
-// Pressable per the Stage 10 brief ("only the card body and the comment count are tap targets,
-// both firing onOpen") — footer time/reach stay inert, matching intent rather than literal DOM
-// bubbling. `...rest` (arbitrary DOM attribute passthrough) is dropped — same divergence as
-// Card.tsx's dropped `as` prop; RN has no equivalent spread-onto-host-element concept.
+// via Card (CardProps has no onPress — Task-1.2 divergence), so this gives the card body its own
+// Pressable and the comment count its own Pressable per the Stage 10 brief ("only the card body
+// and the comment count are tap targets, both firing onOpen") — footer time/reach stay inert,
+// matching intent rather than literal DOM bubbling. `...rest` (arbitrary DOM attribute
+// passthrough) is dropped — same divergence as Card.tsx's dropped `as` prop; RN has no
+// equivalent spread-onto-host-element concept.
+//
+// RN-Web-specific structural note (post-Stage-10 fix): the two Pressables above must be DOM
+// *siblings*, never nested — a Pressable with accessibilityRole="button" renders as a real HTML
+// <button> on RN Web, and a <button> cannot legally contain a nested <button> (hydration-validity
+// error). The reference's single <article onClick> + nested <button> is valid HTML because an
+// <article> isn't a button; RN's Pressable-as-<button> behavior forces this divergence. So the
+// outermost element here is a plain View (not Pressable), the "main card body" (header, title,
+// body, homework) is wrapped in one Pressable that fires onOpen, and the comment-count action is
+// its own separate, sibling Pressable in the footer — not a descendant of the body Pressable.
 export interface FeedAuthor {
   name?: string;
   role?: RoleKey;
@@ -116,40 +125,42 @@ export default function FeedCard({
   const tagTone = feedTagToneTokenKeys(kind);
 
   return (
-    <Pressable onPress={onOpen} accessibilityRole={onOpen ? "button" : undefined} style={style}>
+    <View style={style}>
       <Card padding={theme.space["4"]}>
-        <View style={styles.headerRow}>
-          <RoleBadge role={author.role} label={author.name || undefined} scope={author.scope || undefined} />
-          <View style={styles.scopePill}>
-            <View style={styles.scopeDot(scopeColor)} />
-            <Text style={styles.scopeLabel}>{sc.label}</Text>
+        <Pressable onPress={onOpen} accessibilityRole={onOpen ? "button" : undefined}>
+          <View style={styles.headerRow}>
+            <RoleBadge role={author.role} label={author.name || undefined} scope={author.scope || undefined} />
+            <View style={styles.scopePill}>
+              <View style={styles.scopeDot(scopeColor)} />
+              <Text style={styles.scopeLabel}>{sc.label}</Text>
+            </View>
+            {tag ? (
+              <View style={styles.tagPill(tagTone)}>
+                <Text style={styles.tagLabel(tagTone)}>{tag}</Text>
+              </View>
+            ) : null}
+            {meta.showPin ? (
+              <View style={styles.pinnedRow}>
+                <PinIcon color={theme.colors.gold2} size={13} />
+                <Text style={styles.pinnedLabel}>Pinned</Text>
+              </View>
+            ) : null}
           </View>
-          {tag ? (
-            <View style={styles.tagPill(tagTone)}>
-              <Text style={styles.tagLabel(tagTone)}>{tag}</Text>
+
+          {title ? (
+            <Text style={meta.titleFont === "display" ? styles.titleDisplay : styles.titleBody}>{title}</Text>
+          ) : null}
+          {body ? <Text style={styles.body}>{body}</Text> : null}
+
+          {homework ? (
+            <View style={styles.homework}>
+              <HomeworkIcon color={theme.colors.status.present} size={15} />
+              <Text style={styles.homeworkText}>
+                <Text style={styles.homeworkStrong}>Homework:</Text> {homework}
+              </Text>
             </View>
           ) : null}
-          {meta.showPin ? (
-            <View style={styles.pinnedRow}>
-              <PinIcon color={theme.colors.gold2} size={13} />
-              <Text style={styles.pinnedLabel}>Pinned</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {title ? (
-          <Text style={meta.titleFont === "display" ? styles.titleDisplay : styles.titleBody}>{title}</Text>
-        ) : null}
-        {body ? <Text style={styles.body}>{body}</Text> : null}
-
-        {homework ? (
-          <View style={styles.homework}>
-            <HomeworkIcon color={theme.colors.status.present} size={15} />
-            <Text style={styles.homeworkText}>
-              <Text style={styles.homeworkStrong}>Homework:</Text> {homework}
-            </Text>
-          </View>
-        ) : null}
+        </Pressable>
 
         <View style={styles.footer}>
           {time ? (
@@ -172,7 +183,7 @@ export default function FeedCard({
           ) : null}
         </View>
       </Card>
-    </Pressable>
+    </View>
   );
 }
 
