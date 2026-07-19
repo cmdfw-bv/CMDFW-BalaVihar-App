@@ -140,6 +140,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.space["4"],
   },
   iconWell: {
+    // Deliberate literal — reference's 56px well is 8px off the nearest tokens (space.10=40,
+    // space.12=48 both off), so this is disclosed rather than silently rounded (StatTile.tsx/PushPermissionPrompt.tsx precedent).
     width: 56,
     height: 56,
     borderRadius: theme.radius.pill,
