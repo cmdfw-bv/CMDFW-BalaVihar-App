@@ -38,11 +38,11 @@ export default function EventDateBlock({
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "column",
-    lineHeight: 1,
   },
   day: {
     fontFamily: theme.fonts.display,
-    letterSpacing: -0.02,
+    letterSpacing: -0.02, // no matching token — tight tracking to match the design reference
+    lineHeight: 1,
     color: theme.colors.primary,
     fontVariant: ["tabular-nums"] as const,
   },
@@ -51,15 +51,17 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.type.scale.eyebrow,
     fontWeight: "600",
     letterSpacing: theme.type.tracking.eyebrow,
+    lineHeight: 1,
     textTransform: "uppercase" as const,
     color: theme.colors.ink3,
     marginTop: theme.space["1"],
   },
   year: {
     fontFamily: theme.fonts.body,
-    fontSize: 11,
-    letterSpacing: 0.14,
+    fontSize: theme.type.scale.eyebrow,
+    letterSpacing: 0.14, // no matching token — tight tracking to match the design reference
+    lineHeight: 1,
     color: theme.colors.ink4,
-    marginTop: 3,
+    marginTop: 3, // no matching token — deliberate spacing value
   },
 }));
