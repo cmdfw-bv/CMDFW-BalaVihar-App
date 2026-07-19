@@ -18,9 +18,11 @@ export default function EventDateBlock({
   year,
   size = "lg",
 }: EventDateBlockProps) {
+  const dayFontSize = eventDateFontSize(size);
+
   return (
     <View style={styles.container}>
-      <Text style={[styles.day, { fontSize: eventDateFontSize(size) }]}>
+      <Text style={[styles.day, { fontSize: dayFontSize, lineHeight: dayFontSize * 1.05 }]}>
         {day}
       </Text>
       <Text style={styles.month}>
@@ -42,7 +44,6 @@ const styles = StyleSheet.create((theme) => ({
   day: {
     fontFamily: theme.fonts.display,
     letterSpacing: -0.02, // no matching token — tight tracking to match the design reference
-    lineHeight: 1,
     color: theme.colors.primary,
     fontVariant: ["tabular-nums"] as const,
   },
@@ -51,7 +52,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.type.scale.eyebrow,
     fontWeight: "600",
     letterSpacing: theme.type.tracking.eyebrow,
-    lineHeight: 1,
+    lineHeight: theme.type.scale.eyebrow * 1.05,
     textTransform: "uppercase" as const,
     color: theme.colors.ink3,
     marginTop: theme.space["1"],
@@ -60,7 +61,7 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fonts.body,
     fontSize: theme.type.scale.eyebrow,
     letterSpacing: 0.14, // no matching token — tight tracking to match the design reference
-    lineHeight: 1,
+    lineHeight: theme.type.scale.eyebrow * 1.05,
     color: theme.colors.ink4,
     marginTop: 3, // no matching token — deliberate spacing value
   },
