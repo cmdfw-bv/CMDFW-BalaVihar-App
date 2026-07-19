@@ -12,7 +12,7 @@ import { colorAtPath } from "../core/tokenPath";
 // subtitle/trailing slots), per the Stage 6 brief.
 export interface ConversationRowProps {
   /** Display name (also sourced for the DM avatar initial). */
-  name?: string;
+  name?: React.ReactNode;
   /** Last-message preview (truncates). */
   preview?: React.ReactNode;
   time?: React.ReactNode;
@@ -30,7 +30,7 @@ export interface ConversationRowProps {
 }
 
 export default function ConversationRow({
-  name = "",
+  name,
   preview,
   time = "",
   unread = 0,
@@ -44,9 +44,9 @@ export default function ConversationRow({
   const { theme } = useUnistyles();
   const meta = conversationRowMeta(kind, role, unread);
   const hue = colorAtPath(theme.colors, meta.hueTokenKey);
-  // Reference: `(name || "?").trim().charAt(0)` — `name` is typed as a plain string here (unlike
-  // the .jsx reference's untyped prop) specifically so this initial can be derived safely.
-  const initial = (name.trim() || "?").charAt(0);
+  // Reference: `(name || "?").trim().charAt(0)` — guard for string type since `name` is now
+  // `React.ReactNode` to match the design mirror's `.d.ts`.
+  const initial = typeof name === "string" ? (name.trim() || "?").charAt(0) : "?";
 
   return (
     <View style={[styles.wrap(active), style]}>
