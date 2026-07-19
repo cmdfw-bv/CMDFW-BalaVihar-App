@@ -20,14 +20,17 @@ import { feedScopeMeta, feedCardMeta, feedTagToneTokenKeys, type FeedScope } fro
 // passthrough) is dropped — same divergence as Card.tsx's dropped `as` prop; RN has no
 // equivalent spread-onto-host-element concept.
 //
-// RN-Web-specific structural note (post-Stage-10 fix): the two Pressables above must be DOM
-// *siblings*, never nested — a Pressable with accessibilityRole="button" renders as a real HTML
-// <button> on RN Web, and a <button> cannot legally contain a nested <button> (hydration-validity
-// error). The reference's single <article onClick> + nested <button> is valid HTML because an
-// <article> isn't a button; RN's Pressable-as-<button> behavior forces this divergence. So the
-// outermost element here is a plain View (not Pressable), the "main card body" (header, title,
-// body, homework) is wrapped in one Pressable that fires onOpen, and the comment-count action is
-// its own separate, sibling Pressable in the footer — not a descendant of the body Pressable.
+// RN-Web-specific structural note (post-Stage-10 fix): the two onOpen-firing Pressables below
+// must be DOM *siblings*, never nested — a Pressable with accessibilityRole="button" renders as a
+// real HTML <button> on RN Web, and a <button> cannot legally contain a nested <button>
+// (hydration-validity error). The reference's single <article onClick> + nested <button> is valid
+// HTML because an <article> isn't a button; RN's Pressable-as-<button> behavior forces this
+// divergence. So this component's own outermost element is a plain View (not Pressable) — it then
+// renders a core/Card (which itself always renders an inert, role-less Pressable that behaves as
+// a <div>, see the INVARIANT note on Card.tsx — do not add onPress/accessibilityRole to Card
+// without re-checking this file), inside which the "main card body" (header, title, body,
+// homework) is wrapped in one Pressable that fires onOpen, and the comment-count action is its
+// own separate, sibling Pressable in the footer — not a descendant of the body Pressable.
 export interface FeedAuthor {
   name?: string;
   role?: RoleKey;

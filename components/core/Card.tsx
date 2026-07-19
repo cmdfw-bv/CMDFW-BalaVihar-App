@@ -11,6 +11,13 @@ import { colorAtPath } from "./tokenPath";
 // same element. It's a `Pressable` rather than a plain `View` because the `interactive`
 // hover-lift needs `onHoverIn`/`onHoverOut`, which RN-Web implements on `Pressable`, not `View`;
 // with no `onPress` it behaves as an inert container, so this is a no-op divergence otherwise.
+//
+// INVARIANT (do not break without checking callers): this `Pressable` has no `onPress` and no
+// `accessibilityRole`, so RN-Web renders it as a plain `<div>`, not a `<button>`. At least one
+// consumer (`components/feed/FeedCard.tsx`) relies on that: it nests its own interactive
+// `Pressable`s (which DO render as `<button>` on web) inside `Card`, and two `<button>`s cannot
+// legally nest inside each other in HTML. If `Card` ever gains its own `onPress`/
+// `accessibilityRole="button"`, re-check every consumer that nests a `Pressable` inside it.
 export interface CardProps {
   tone?: CardTone;
   /** Lift + terracotta border on hover (web only; native ignores hover events, not a bug). */
