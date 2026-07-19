@@ -71,7 +71,7 @@ export default function MagicLinkLogin({
             Send magic link
           </Button>
           <Text style={styles.footnote}>
-            Accounts are set up by your center. There's no public sign-up — students never self-register.
+            Accounts are set up by your center. There&apos;s no public sign-up — students never self-register.
           </Text>
         </View>
       ) : (
