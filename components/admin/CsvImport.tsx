@@ -22,7 +22,7 @@ export interface CsvImportProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export default function CsvImport({ fileName, total, ready, flagged = 0, onChoose, onConfirm, style }: CsvImportProps) {
+export default function CsvImport({ fileName, total = 0, ready = 0, flagged = 0, onChoose, onConfirm, style }: CsvImportProps) {
   const { theme } = useUnistyles();
   const phase = csvImportPhase(fileName);
 
@@ -158,6 +158,7 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fonts.mono,
     fontSize: theme.type.scale.eyebrow, // 11, exact match to the reference's 11px
     color: theme.colors.ink4,
+    fontVariant: ["tabular-nums" as const],
   },
   // fontSize 12 in the reference sits equidistant between eyebrow=11 and xs=13; picking xs to
   // match Button.tsx's sm-size secondary-label token (this is a ghost/secondary button label).
@@ -170,6 +171,7 @@ const styles = StyleSheet.create((theme) => ({
     // fit, so this is disclosed rather than silently rounded (StatusChip.tsx precedent).
     paddingVertical: 6,
     paddingHorizontal: theme.space["3"], // 12px, exact match
+    minHeight: theme.chrome.hitMin, // 44px — satisfies the global >=44px touch target
   },
   replaceLabel: {
     fontFamily: theme.fonts.semibold,
