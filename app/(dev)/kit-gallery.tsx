@@ -731,16 +731,16 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radius.control,
   },
 
-  cardCell: { width: 220, maxWidth: "100%" },
+  cardCell: { width: 220, maxWidth: "100%" }, // no matching token — arbitrary flex-wrap cell width
   cardText: { fontFamily: theme.fonts.body, fontSize: theme.type.scale.sm, color: theme.colors.ink },
   cardTextOnDark: { fontFamily: theme.fonts.body, fontSize: theme.type.scale.sm, color: theme.colors.onDark },
 
   selectText: { fontFamily: theme.fonts.body, fontSize: theme.type.scale.body, color: theme.colors.ink },
 
   initialCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: theme.space["10"],
+    height: theme.space["10"],
+    borderRadius: theme.space["10"] / 2,
     backgroundColor: theme.colors.indigo,
     alignItems: "center",
     justifyContent: "center",
@@ -748,17 +748,17 @@ const styles = StyleSheet.create((theme) => ({
   initialLabel: { fontFamily: theme.fonts.display, fontSize: theme.type.scale.sm, color: theme.colors.onAction },
 
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: theme.space["10"],
+    height: theme.space["10"],
+    borderRadius: theme.space["10"] / 2,
     backgroundColor: theme.colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
 
   miniBar: {
-    width: 64,
-    height: 8,
+    width: theme.space["16"],
+    height: theme.space["2"],
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.line2,
     overflow: "hidden",
@@ -776,7 +776,7 @@ const styles = StyleSheet.create((theme) => ({
 
   chatCol: { flexDirection: "column", gap: theme.space["3"], width: "100%" },
 
-  csvCell: { flexGrow: 1, minWidth: 280, maxWidth: 360 },
+  csvCell: { flexGrow: 1, minWidth: 280, maxWidth: 360 }, // no matching token — arbitrary flex-wrap cell width
 
   hintText: { fontFamily: theme.fonts.body, fontSize: theme.type.scale.xs, color: theme.colors.ink3 },
 }));
