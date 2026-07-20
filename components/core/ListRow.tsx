@@ -38,8 +38,16 @@ const styles = StyleSheet.create((theme) => ({
   // natural size, not hardcode a dimension — see spec edge cases) — callers size their own
   // avatar/icon/bar content; this wrapper only centers it.
   leading: { flexShrink: 0, alignItems: "center", justifyContent: "center" },
-  body: { flex: 1, minWidth: 0 },
+  // minWidth is a floor, not 0 — a flexShrink:0 trailing slot (below) can otherwise report its
+  // full unwrapped natural width and push body to 0, since body's flex-basis (0%) gets zero
+  // shrink weight in the flex algorithm. Bug found via playwright at 360px: UserRoleRow with
+  // 3+ role badges overflowed off-screen uncontained instead of wrapping (issue caught by /test's
+  // design-parity gate, sankalp-component-kit).
+  body: { flex: 1, minWidth: theme.space["16"] },
   title: { fontFamily: theme.fonts.semibold, fontSize: theme.type.scale.sm, color: theme.colors.ink },
   subtitle: { fontFamily: theme.fonts.body, fontSize: theme.type.scale.xs, color: theme.colors.ink3, marginTop: 2 }, // no matching token — small vertical nudge
-  trailing: { flexShrink: 0, alignItems: "flex-end", justifyContent: "center" },
+  // flexShrink:1 (not 0) + minWidth:0 — lets this slot actually shrink under pressure so a
+  // wide/wrapping trailing child (e.g. UserRoleRow's multi-badge list) gets width-constrained
+  // and can wrap instead of overflowing uncontained past the row.
+  trailing: { flexShrink: 1, minWidth: 0, alignItems: "flex-end", justifyContent: "center" },
 }));
