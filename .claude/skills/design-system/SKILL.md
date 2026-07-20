@@ -16,7 +16,7 @@ Authoritative: `.docs/3_ARCHITECTURE.md` §12.13; ADR-0010 (Open Design), ADR-00
 > **Status:** the Sankalp artifacts + `theme.ts` **landed in commit `db453e8`** — they are live, not pending import. Every screen/component must be matched against its `bv-connect/**` reference, not just the DoD behaviors.
 
 ## Build to the Definition of Done (`.claude/rules/design-system.md`)
-Compose from `theme` tokens never hex · one primary action · saffron identity-only · tabular numerics · all five states incl. **permission-denied-as-designed** (offer switch-role) · role badge + scope · ≥44px · breakpoints 360/768/1024/1440 · serif display for showcase only.
+Compose from `theme` tokens never hex · one primary action · saffron identity-only · tabular numerics · all **four** states — loading / empty / error-preserving / content, **no permission-denied** (nav is role-derived; out-of-scope routes redirect home, ADR-0014) · role badge + scope · ≥44px · breakpoints 360/768/1024/1440 · serif display for showcase only.
 
 ## Workflow (Open Design → code)
 Per screen: pull the matching `bv-connect/**` component/screen via `DesignSync` → implement in RN with Unistyles + `theme`, matching its layout/copy/states → verify with a **playwright-cli design review** (`/test`). Media is orthogonal (`expo-image/expo-video/expo-audio/react-native-youtube-iframe`). Animation (future gamification) = Moti, declarative-only (`.claude/rules/motion.md`).

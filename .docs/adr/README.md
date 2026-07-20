@@ -35,6 +35,7 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0025](0025-cicd-residency-scan-and-codeowners.md) | CI residency/tracker-dependency scan + CODEOWNERS-required review (ADR-0024 addendum) | Closed | 2026-07-11 |
 | [ADR-0026](0026-user-role-approval-tiering-and-audit.md) | user-role-approval: tiered privilege-escalation guard on the first `user_roles` write path; grant/revoke audited via structured log, not `audit_log` | Closed | 2026-07-11 |
 | [ADR-0027](0027-role-switcher-label-active-role-agnostic-self-scope-read.md) | Role-switcher labels are an active-role-agnostic self-scope read (ADR-0019 addendum): extends the unaudited exemption to SECURITY DEFINER reads proven identity-scoped by adversarial test | Closed | 2026-07-17 |
+| [ADR-0028](0028-sankalp-component-kit-single-owner-full-library.md) | Sankalp component kit ships as one System-owned unit — full-library exception to §12.12 per-capability ownership (presentational porting only; data-wiring stays with each owning persona) | Closed | 2026-07-18 |
 
 ## How to read an ADR
 
