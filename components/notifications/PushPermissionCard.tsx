@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { shouldShowPushPrompt } from './pushPromptVisibility';
 import { hasDismissedPushPrompt, dismissPushPrompt } from '../../lib/notifications/promptState';
 import { subscribeForPush } from '../../lib/notifications/registerForPush';
+import { needsIosInstallHint } from '../../lib/notifications/installHint';
 import { useSession } from '../../lib/auth/SessionProvider';
 
 export default function PushPermissionCard() {
@@ -14,6 +15,15 @@ export default function PushPermissionCard() {
   );
 
   if (!shouldShowPushPrompt(Platform.OS, dismissed)) return null;
+
+  // iOS Safari (not yet added to Home Screen) can never complete pushManager.subscribe() —
+  // defer entirely to AddToHomeScreenHint instead of showing a dead "Enable notifications"
+  // button ahead of it (spec: notifications-infra.md, "Client-side subscribe flow" step 5).
+  if (Platform.OS === 'web') {
+    const isStandalone =
+      typeof window !== 'undefined' && !!window.matchMedia?.('(display-mode: standalone)').matches;
+    if (needsIosInstallHint(navigator.userAgent, isStandalone)) return null;
+  }
 
   function persistDismiss() {
     if (Platform.OS === 'web') dismissPushPrompt(window.localStorage);
@@ -67,13 +77,17 @@ const styles = StyleSheet.create((theme) => ({
     margin: theme.space['4'],
   },
   iconWrap: {
-    width: 42,
-    height: 42,
+    width: theme.space['10'],
+    height: theme.space['10'],
     borderRadius: theme.radius.control,
     backgroundColor: theme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // No theme token maps to a single-glyph icon size: type.scale is text-purpose sizing
+  // (h3=22 for headings, lead=18 for lead paragraphs) — both equidistant from 20 and neither
+  // semantically an icon-glyph size. Left as a literal per finding-3 guidance rather than
+  // contorting an unrelated token. See final-review-fix-report.md.
   iconGlyph: {
     fontSize: 20,
   },

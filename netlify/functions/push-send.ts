@@ -17,11 +17,6 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   const supabaseUrl = process.env['EXPO_PUBLIC_SUPABASE_URL'] ?? '';
   const serviceRoleKey = process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
   const client = createClient(supabaseUrl, serviceRoleKey);
-  configureVapid(
-    process.env['VAPID_SUBJECT'] ?? '',
-    process.env['EXPO_PUBLIC_VAPID_PUBLIC_KEY'] ?? '',
-    process.env['VAPID_PRIVATE_KEY'] ?? ''
-  );
 
   // ── Phase 0: Auth ──────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] ?? event.headers['Authorization'] ?? '';
@@ -82,6 +77,12 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
     .from('push_subscriptions')
     .select('id, endpoint, p256dh_key, auth_key')
     .in('user_id', recipientIds);
+
+  configureVapid(
+    process.env['VAPID_SUBJECT'] ?? '',
+    process.env['EXPO_PUBLIC_VAPID_PUBLIC_KEY'] ?? '',
+    process.env['VAPID_PRIVATE_KEY'] ?? ''
+  );
 
   const payload = { title: payloadTitleForKind(conversation['kind'] as ConversationKind) };
   let sent = 0;
