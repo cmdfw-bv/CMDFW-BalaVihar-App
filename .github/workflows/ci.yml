@@ -36,7 +36,17 @@ jobs:
       - run: npm ci
       - run: npx supabase start
       - run: npx supabase db reset
-      - run: npx supabase test db
+      - name: supabase test db (retries on transient registry rate-limits)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npx supabase test db; then
+              exit 0
+            fi
+            echo "attempt ${attempt} failed" >&2
+            [ "${attempt}" -lt 3 ] && sleep $((attempt * 30))
+          done
+          exit 1
 
   secrets-pii:
     runs-on: ubuntu-latest
