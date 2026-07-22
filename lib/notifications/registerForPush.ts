@@ -1,13 +1,13 @@
 import { supabase } from '../supabase';
 import { urlBase64ToUint8Array } from './vapidKey';
-import { subscribeToPush, type PushSubscriptionKeys } from './subscribeToPush';
+import { subscribeToPush, type PushSubscriptionKeys, type SubscribeToPushDeps } from './subscribeToPush';
 
 export async function subscribeForPush(userId: string): Promise<void> {
   const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY ?? '';
   await subscribeToPush({
     register: async () => {
       const registration = await navigator.serviceWorker.register('/sw.js');
-      return { pushManager: registration.pushManager as any };
+      return { pushManager: registration.pushManager as unknown as Awaited<ReturnType<SubscribeToPushDeps['register']>>['pushManager'] };
     },
     applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     upsertSubscription: async (keys: PushSubscriptionKeys) => {
