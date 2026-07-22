@@ -1,0 +1,17 @@
+{
+  "name": "Bala Vihar App",
+  "short_name": "Bala Vihar",
+  "description": "CMDFW Bala Vihar — classes, chat, and attendance for students, parents, and teachers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f1e6",
+  "theme_color": "#b8531a",
+  "icons": [
+    {
+      "src": "/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
