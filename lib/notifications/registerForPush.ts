@@ -6,7 +6,11 @@ export async function subscribeForPush(userId: string): Promise<void> {
   const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY ?? '';
   await subscribeToPush({
     register: async () => {
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      // register() resolves once the worker is *installing*, not yet active — subscribe()
+      // throws immediately if there's no active worker (Chrome does not wait). Await `ready`
+      // so the very first Enable click doesn't lose the race (issue #41).
+      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.ready;
       return { pushManager: registration.pushManager as unknown as Awaited<ReturnType<SubscribeToPushDeps['register']>>['pushManager'] };
     },
     applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
