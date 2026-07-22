@@ -14,7 +14,7 @@
 
 | Item | Value |
 |---|---|
-| Organization | `CMDFW Balavihar` — owned by **bvportal@cmdfw.org** (dedicated org, not a personal account) |
+| Organization | `CMDFW Balavihar`, org ID **`omjfyyywlgiziiguebgq`** — owned by **bvportal@cmdfw.org** (dedicated org, not a personal account). ⚠️ Confirm by **org ID** — an unrelated personal org shares the same display name (see §5.2). |
 | Project name | `cmdfw-bv-staging` |
 | Project ref | `ejjvqtleuuamgtlmtxkc` |
 | Project URL | `https://ejjvqtleuuamgtlmtxkc.supabase.co` |
@@ -92,7 +92,11 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
 
 1. **`supabase db push` prints a red error at the end** — `failed to cache migrations catalog: … pgdelta-target-ca.crt: ENOENT`. This is a **post-push caching step only**; every migration applied cleanly and `migration list` confirms full parity. Appears to be a CLI tooling bug (CLI v2.95.4). **Non-blocking — do not re-run the push in a panic.**
 
-2. **`supabase link` failed with `Your account does not have the necessary privileges`** — the CLI had authorized a *different* Supabase account. That account had access to **two pre-existing, INACTIVE projects** — `cmdfw-balavihar` (2026-03-12) and `cmdfw-staging` (2026-04-29) — in an unrelated org, almost certainly leftovers from the throwaway board-demo POC (2_POC §Framing). **That org is already at 2/2 free projects.** Someone should confirm ownership and clean them up so they aren't mistaken for the real environments. Fix was `supabase logout` + re-login as bvportal@cmdfw.org.
+2. **`supabase link` failed with `Your account does not have the necessary privileges`** — the CLI had authorized a **different Supabase account** (a maintainer's personal one) rather than the `bvportal@cmdfw.org` account that owns this project. Two things make this easy to misdiagnose:
+   - The failure surfaces at the **API level, before** the database-password prompt matters — so a wrong-account error **looks like a wrong-password error**. Don't go resetting the database password chasing it.
+   - A personal org happened to carry the **same display name — "CMDFW Balavihar"** — as the project org. **Verify by org ID, never by name:** this project's org is **`omjfyyywlgiziiguebgq`**. (The personal projects have since been renamed with a `-sandbox` suffix to reduce the ambiguity, but the org display names still match.)
+
+   Fix: `supabase logout` → sign out of supabase.com in the browser if needed → `supabase login` as `bvportal@cmdfw.org` → verify with `supabase projects list` that **`cmdfw-bv-staging` appears** before retrying `link`.
 
 3. **Netlify could not see the repo while it lived under a personal GitHub account.** Netlify connects via its **GitHub App**, and an app installed on a *personal* account is only accessible to that account's **owner** — a collaborator (even with `push`) cannot use it, and the repo being public is not sufficient. This is what drove the move to a **GitHub organization**; once the repo is org-owned, any member can use the org-level installation.
 
