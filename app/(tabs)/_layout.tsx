@@ -8,6 +8,8 @@ import AppHeader from "../../components/AppHeader";
 import DesktopSidebar, { SIDEBAR_WIDTH } from "../../components/DesktopSidebar";
 import MobileTabBar from "../../components/MobileTabBar";
 import { useIsDesktop } from "../../lib/useIsDesktop";
+import PushPermissionCard from "../../components/notifications/PushPermissionCard";
+import AddToHomeScreenHint from "../../components/notifications/AddToHomeScreenHint";
 
 export default function TabsLayout() {
   const { activeRole } = useSession();
@@ -77,7 +79,18 @@ export default function TabsLayout() {
 
   // No longer caps/centers the whole shell (see sceneStyle above) — just fills the viewport
   // and paints the canvas background behind the sidebar-flush-left / content-centered split.
-  return isDesktop ? <View style={styles.desktopWrap}>{tabs}</View> : tabs;
+  // PushPermissionCard/AddToHomeScreenHint sit above Tabs in a sibling flex:1 body view (not
+  // as loose siblings) so Tabs keeps getting flex:1 straight from its parent, unchanged from
+  // today's layout (issue #5).
+  const shell = (
+    <View style={styles.shellWrap}>
+      <PushPermissionCard />
+      <AddToHomeScreenHint />
+      <View style={styles.shellBody}>{tabs}</View>
+    </View>
+  );
+
+  return isDesktop ? <View style={styles.desktopWrap}>{shell}</View> : shell;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -85,5 +98,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     width: "100%",
     backgroundColor: theme.colors.canvas,
+  },
+  shellWrap: {
+    flex: 1,
+  },
+  shellBody: {
+    flex: 1,
   },
 }));
