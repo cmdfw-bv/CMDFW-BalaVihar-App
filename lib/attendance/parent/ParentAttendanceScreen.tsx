@@ -1,3 +1,4 @@
+import '../../unistyles';
 import { ScrollView } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import StateView from '../../../components/core/StateView';
