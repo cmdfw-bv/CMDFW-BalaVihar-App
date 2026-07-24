@@ -36,18 +36,17 @@ design check. Every item is objective and greppable.
 - [ ] No horizontal scroll at 360 / 768 / 1024 / 1440.
 - [ ] Phone column ≤ `chrome.maxw` (440); desktop dashboard ≤ `chrome.deskw` (1180).
 
-## The five required states
+## The four required states
 
-Every data-bearing surface implements all five. Copy stays calm and honest and
-preserves the user's work.
+Every data-bearing surface implements all four. Copy stays calm and honest and
+preserves the user's work. **No permission-denied state** — navigation is
+role-derived and out-of-scope routes redirect home instead of rendering a denial
+screen (ADR-0014).
 
 - [ ] **Loading** — skeletons or a calm spinner; never a blank flash.
 - [ ] **Empty** — a reassuring line, e.g. *"Nothing here yet."* Not an error tone.
 - [ ] **Error** — recoverable, honest, offers a retry. Never blames the user.
-- [ ] **Permission-denied (out of scope)** — designed, not a crash. *"This isn't in
-      your scope… The data was never sent to this device."* RLS is the real guard;
-      the UI states the scope plainly.
-- [ ] **Offline** — content degrades gracefully; queued actions say so.
+- [ ] **Content** — the real data, once loaded.
 
 ## Motion & accessibility
 

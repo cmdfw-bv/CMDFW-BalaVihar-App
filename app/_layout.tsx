@@ -19,6 +19,11 @@ function RootNavigator() {
       {/* Web's magic-link emailRedirectTo target (see app/auth/callback.tsx) — same reasoning
           as "index" above, must be always-declared or Expo Router 404s the redirect URL. */}
       <Stack.Screen name="auth/callback" />
+      {/* Dev-only kit gallery (issue #18) — not reachable from any persona nav map, exists solely
+          as a visual/manual verification target for /test. Always-declared for the same reason
+          as index/auth/callback above: Stack.Protected groups don't apply here since there's no
+          session-gated concern — this route never touches auth state. */}
+      <Stack.Screen name="(dev)" />
       <Stack.Protected guard={status === "signed-out"}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
