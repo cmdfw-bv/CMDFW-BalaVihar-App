@@ -1,8 +1,8 @@
 # System — Core schema & RLS foundation
 
-> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)**, **ADR-0020 (superseded same day by ADR-0021)**, **ADR-0021 (Teacher attendance-write RPC, new)**, **ADR-0027 (role-switcher label active-role-agnostic self-scope read, new — ADR-0019 addendum)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
+> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)**, **ADR-0020 (superseded same day by ADR-0021)**, **ADR-0021 (Teacher attendance-write RPC, new)**, **ADR-0027 (role-switcher label active-role-agnostic self-scope read, new — ADR-0019 addendum)**, **ADR-0030 (`class_updates` System-owned, new)**, **ADR-0031 (`class_meetings` calendar System-owned, new)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
 
-**Stage:** Built — tested, full suite green (73/73; verified live 2026-07-09). `/refine` ✓ → `/architect` ✓ (ADR-0018, ADR-0019, ADR-0021, ADR-0027 addendum) → `/design` ✓ → `/plan` ✓ → `/build` ✓ → `/test` ✓ → next is `/deploy-staging`.
+**Stage:** Built — tested, full suite green (73/73; verified live 2026-07-09). `/refine` ✓ → `/architect` ✓ (ADR-0018, ADR-0019, ADR-0021, ADR-0027 addendum) → `/design` ✓ → `/plan` ✓ → `/build` ✓ → `/test` ✓ → next is `/deploy-staging`. **Addendum in flight:** `class_meetings`/`class_updates`/`sessions.meeting_weekday` (ADR-0030/ADR-0031, `/design` ✓ — see bottom of file), signed off 2026-07-24 → `/plan` ✓ (Tasks 12–14 appended to `core-schema-and-rls.plan.md`) → `/migration` ✓ (2026-07-24; 192/192 pgTAP passing, full suite incl. `160_class_meetings_schema.sql`/`165_session_compliance_rpc.sql`) — ready for `/build`.
 
 ---
 
@@ -282,5 +282,202 @@ Everything already listed in the item's "Out of scope" section above; this adden
 
 ### Sign-off
 - [x] **Human sign-off on this addendum** (2026-07-09, shree.srinivas@outlook.com) → ready for **`/plan`** (rewrite Task 11 of `core-schema-and-rls.plan.md`) → **`/migration`**.
+
+---
+
+## Design addendum — ADR-0030 → ADR-0031 (`class_meetings`, `class_updates`, `sessions.meeting_weekday`, 2026-07-24)
+
+**Stage:** 1 — Design (third addendum to this already-Built item, same pattern as the ADR-0021 addendum above: folded into this spec per each ADR's Consequences, no new System backlog item). Coordinated with `.docs/specs/coordinator/compliance-dashboard.md`'s own `/design` pass, which specifies the consuming RPC's client usage and screen in detail — this section is the schema/RPC/RLS side of the same design pass.
+
+**Why here, not a new item:** ADR-0030 (`class_updates`) and ADR-0031 (`class_meetings`, `sessions.meeting_weekday`) both concluded these are System-owned — one persona (Teacher, eventually) writes, a different persona (Coordinator, now) reads, the same shape as the existing `attendance` pattern this item already owns.
+
+### Table catalog additions
+
+| Table/column | Definition | Notes |
+|---|---|---|
+| `sessions.meeting_weekday` | `smallint not null, check (meeting_weekday between 0 and 6)` (0=Sunday..6=Saturday, Postgres `extract(dow from ...)` convention) | Set at session creation. No pilot data predates this column (pre-pilot POC), so this ships as a straight `not null` add — no nullable-then-backfill step needed. |
+| `class_meetings` (new) | `id uuid pk, class_id→classes, meeting_date date, status enum('scheduled','cancelled') default 'scheduled', created_at`, unique(`class_id, meeting_date`) | ADR-0031: one row per class × expected meeting date, generated (not hand-entered) — see RPC below. Cancellations flip `status`, never delete, so "scheduled then cancelled" stays distinguishable from "never scheduled." |
+| `class_updates` (new) | `id uuid pk, class_id→classes, meeting_date date, posted_by→auth.users, posted_at timestamptz`, unique(`class_id, meeting_date`) | ADR-0030's minimum shape, plus `meeting_date` (added at this pass to match a posted update against a specific `class_meetings` row for the rate calculation — ADR-0030 explicitly left exact columns to `/design`). One class-wide update per date, not per-student. Teacher's write RPC (once that item is refined) is a future consumer of this table, not built this pass. |
+
+### Generation mechanism (ADR-0031's open choice, resolved here)
+
+**A callable `SECURITY DEFINER` RPC, not a one-time migration-time function.** No Admin "create session" item exists yet (unrefined backlog) — a migration-time-only function would have nothing to call it from at real session-creation time once that item is built. A callable RPC works both ways: `supabase/seed/` calls it directly for synthetic POC sessions now, and a future session-management item calls the same function later with no rewrite (mirrors ADR-0030's "System-owned RPC, consumed later" shape).
+
+```sql
+create or replace function generate_class_meetings_for_session(p_session_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text := auth.jwt()->>'active_role';
+  v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
+  v_authorized boolean := false;
+  v_session sessions%rowtype;
+  v_d date;
+begin
+  select * into v_session from sessions where id = p_session_id;
+
+  if v_role in ('bv_coordinator','admin') then
+    v_authorized := true;
+  elsif v_role = 'coordinator' then
+    v_authorized := (v_scope_id = p_session_id);
+  end if;
+
+  if not v_authorized or v_session.id is null then
+    insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+    values (auth.uid(), v_role, 'denied', 'sessions', p_session_id, null);
+    return;
+  end if;
+
+  for v_d in
+    select generate_series(v_session.start_date, v_session.end_date, interval '1 day')::date
+  loop
+    if extract(dow from v_d) = v_session.meeting_weekday then
+      insert into class_meetings (class_id, meeting_date)
+      select c.id, v_d from classes c where c.session_id = p_session_id
+      on conflict (class_id, meeting_date) do nothing;
+    end if;
+  end loop;
+end;
+$$;
+
+revoke all on function generate_class_meetings_for_session(uuid) from public;
+grant execute on function generate_class_meetings_for_session(uuid) to authenticated;
+```
+
+- **Idempotent by design** (`on conflict do nothing`) — safe to re-run if a class is added to the session after the first pass (the late-added class's rows get created; existing classes' rows, including any already-`cancelled` ones, are untouched).
+- **No `audit_log` row on success** — this writes organizational metadata (meeting dates), not a minor's record, matching the existing convention that only reads/writes of `students`/`attendance`/`consents` get audited. A denied (out-of-scope) call does log, matching every other RPC's denied-logging precedent.
+- Skip weeks are **not** produced as `cancelled` by this function — dates start `scheduled` and are flipped by the CSV skip-dates seam below, intended to run *after* this generation pass for a given session.
+
+### CSV skip-dates seam (ADR-0031's skip-week mechanism)
+
+Extends `csv-enrollment-import.md`'s existing Netlify function (ADR-0022) with a second, small import shape — that file's own addendum should cross-reference this section rather than duplicate it:
+- New CSV shape: `session_id, skip_date` rows (Admin-uploaded, same trust boundary as enrollment import — service-role key, server-side only, no new residency/PII surface).
+- Per row: `update class_meetings set status='cancelled' where meeting_date=:skip_date and class_id in (select id from classes where session_id=:session_id)`.
+- **Ordering dependency:** a skip date entered before `generate_class_meetings_for_session` has run for that session is a no-op (no rows exist yet to cancel) — `csv-enrollment-import.md`'s addendum should note "generate before skip-import" as an operational sequencing note for Admin/Coordinator.
+
+### `class_meetings` RLS
+Read: matches `classes`/`sessions`' existing posture (organizational metadata, no PII, per the "not RPC-gated" note above) — Teacher (own class), Coordinator (own session), BV Coordinator/Admin (org). Write: no direct client grant — only `generate_class_meetings_for_session` and the CSV skip-import function (service-role) ever write to it.
+
+### `class_updates` RLS
+**Zero policies for any role this pass** — same posture `user_roles`' write side had before `user-role-approval` existed (a safe, locked table waiting for its owning write path, per that row's note in the RLS matrix above). Coordinator's read goes through `get_session_compliance_for_staff` below (`SECURITY DEFINER`, bypasses RLS by design), never a direct grant. Teacher's write RPC, once that item is refined, is the only thing that will ever need a policy or grant here.
+
+### New read RPC: `get_session_compliance_for_staff`
+
+Replaces N per-class `get_class_attendance_for_staff` calls with one session-wide aggregate (flagged during `/architect` review of `compliance-dashboard.md`). The per-date attendance-submitted flag and the roster-approximation rule (`enrollments.status='active' and enrolled_at <= meeting_date` — see that spec's Edge cases for the human-confirmed rationale) are baked into this query, not left to the client:
+
+```sql
+create or replace function get_session_compliance_for_staff(
+  p_session_id uuid,
+  p_window_size int default 4
+)
+returns table (
+  class_id uuid,
+  class_name text,
+  enrolled_count int,
+  window_start date,
+  window_end date,
+  attendance_rate numeric,
+  update_rate numeric
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text := auth.jwt()->>'active_role';
+  v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
+  v_authorized boolean := false;
+begin
+  if v_role in ('bv_coordinator','admin') then
+    v_authorized := true;
+  elsif v_role = 'coordinator' then
+    v_authorized := (v_scope_id = p_session_id);
+  end if;
+
+  if not v_authorized then
+    insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+    values (auth.uid(), v_role, 'denied', 'sessions', p_session_id, null);
+    return;
+  end if;
+
+  insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+  values (auth.uid(), v_role, 'read', 'attendance', p_session_id, null);
+
+  return query
+  with win as (
+    select cm.class_id, cm.meeting_date
+    from (
+      select cm.*, row_number() over (partition by cm.class_id order by cm.meeting_date desc) as rn
+      from class_meetings cm
+      join classes c on c.id = cm.class_id
+      where c.session_id = p_session_id and cm.status = 'scheduled' and cm.meeting_date <= current_date
+    ) cm
+    where rn <= p_window_size
+  ),
+  per_date as (
+    select
+      w.class_id,
+      w.meeting_date,
+      (select count(*) from enrollments e
+         where e.class_id = w.class_id and e.status = 'active' and e.enrolled_at <= w.meeting_date) as expected_count,
+      exists (select 1 from class_updates cu
+                where cu.class_id = w.class_id and cu.meeting_date = w.meeting_date) as update_posted
+    from win w
+  ),
+  per_date_full as (
+    select
+      pd.*,
+      (pd.expected_count > 0 and pd.expected_count = (
+         select count(*) from attendance a
+         join enrollments e on e.id = a.enrollment_id
+         where e.class_id = pd.class_id and a.class_meeting_date = pd.meeting_date
+           and e.status = 'active' and e.enrolled_at <= pd.meeting_date
+       )) as attendance_submitted
+    from per_date pd
+  )
+  select
+    c.id as class_id,
+    c.name as class_name,
+    (select count(*) from enrollments e where e.class_id = c.id and e.status = 'active')::int as enrolled_count,
+    (select min(meeting_date) from win where class_id = c.id) as window_start,
+    (select max(meeting_date) from win where class_id = c.id) as window_end,
+    case when count(pdf.meeting_date) filter (where pdf.expected_count > 0) = 0 then null
+         else round(100.0 * count(*) filter (where pdf.attendance_submitted)
+                     / count(*) filter (where pdf.expected_count > 0), 1)
+    end as attendance_rate,
+    case when count(pdf.meeting_date) = 0 then null
+         else round(100.0 * count(*) filter (where pdf.update_posted) / count(*), 1)
+    end as update_rate
+  from classes c
+  left join per_date_full pdf on pdf.class_id = c.id
+  where c.session_id = p_session_id
+  group by c.id, c.name;
+end;
+$$;
+
+revoke all on function get_session_compliance_for_staff(uuid, int) from public;
+grant execute on function get_session_compliance_for_staff(uuid, int) to authenticated;
+```
+
+- **One `audit_log` row per call, not per row/student** — a deliberate deviation from `get_class_attendance_for_staff`'s per-student-touched granularity, justified because this RPC's return shape (`compliance-dashboard.md` AC8) never includes student-identifying data — there's no individual "student touched" to attribute a row to.
+- **`attendance_rate`'s denominator excludes dates with `expected_count = 0`** (nobody active-as-of that date) entirely, from both numerator and denominator — a class isn't penalized or credited for a date nobody was expected. **`update_rate`'s denominator is every scheduled date in `win`** regardless of roster — that metric never depends on enrollment.
+- Logic above is the specified contract (two independent per-date boolean flags, one denominator each); `/migration` finalizes exact SQL if the aggregate syntax needs adjustment, same disclaimer this file's table catalog already carries for conceptual DDL generally.
+
+### pgTAP addition (extends the existing adversarial suite, §"pgTAP adversarial test plan" above)
+- Positive case: a Coordinator's call returns exactly the classes in their own session, with rates matching a hand-computed fixture (mixed full/partial/missing attendance and update rows across the trailing window).
+- Cross-scope: a Coordinator calling with a sibling session's `p_session_id` returns nothing and creates exactly one `audit_log` row (`action='denied'`).
+- **Roster-approximation fixture:** a student who withdrew mid-window is excluded from every date in the window (not just post-withdrawal dates) — asserts the documented approximation, not a regression.
+- **Zero-expected-date fixture:** a class-meeting date with zero active-as-of-that-date enrollments is excluded from `attendance_rate`'s denominator but a same-date `class_updates` row still counts toward `update_rate`.
+- `class_meetings`/`class_updates` direct `select` from Coordinator/Teacher/BV Coordinator/Admin returns zero rows (RLS-only for `class_meetings` per role; zero-policy for `class_updates`) — proves the RPC is the only path.
+- `generate_class_meetings_for_session` is idempotent — calling it twice produces no duplicate rows and doesn't reset an already-`cancelled` row back to `scheduled`.
+
+### Out of scope (unchanged, plus)
+Everything already listed in the item's "Out of scope" section above. Additionally for this addendum: Teacher's `class_updates` write RPC (ADR-0030, future item); a manual per-date `class_meetings` edit UI (ADR-0031, explicitly deferred); retrofitting `mark_attendance_for_staff` to validate against `class_meetings` (ADR-0031, explicitly deferred); an `enrollments.status_changed_at` column (descoped this pass — see `compliance-dashboard.md` Edge cases).
+
+### Sign-off
+- [x] **Human sign-off on this addendum** (2026-07-24, mehta.maulik@gmail.com) — incl. the coordinated `compliance-dashboard.md` design → ready for **`/plan`** (extend `core-schema-and-rls.plan.md`) → **`/migration`**.
 
 ---

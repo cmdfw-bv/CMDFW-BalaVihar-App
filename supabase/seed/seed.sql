@@ -25,8 +25,8 @@ declare
   d date;
 begin
   insert into centers (id, name) values (v_center_id, 'Frisco');
-  insert into sessions (id, center_id, name, start_date, end_date) values
-    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24');
+  insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
+    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 2);
 
   -- 13 classes spanning Shishu Vihaar (KG) through Gr12, all within the single F3 session.
   for i in 1..v_grade_count loop
@@ -39,6 +39,15 @@ begin
     insert into user_roles (user_id, role, scope_type, scope_id)
       values (v_teacher_user_id, 'teacher', 'class', v_class_id);
   end loop;
+
+  -- ADR-0031: generate the session's expected-meeting-date calendar for all 13 classes now
+  -- that they all exist. generate_class_meetings_for_session is role-gated (SECURITY DEFINER,
+  -- checks auth.jwt() same as under real RLS) even when called from a seed script, so a
+  -- throwaway authenticated context is required here — no audit_log row is written on a
+  -- successful call, so a non-existent actor id is safe (the FK is only touched on denial).
+  perform tests.authenticate_as(gen_random_uuid(), 'admin', 'org', null);
+  perform generate_class_meetings_for_session(v_session);
+  perform tests.clear_authentication();
 
   -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 13 classes.
   for i in 1..20 loop
@@ -84,6 +93,20 @@ begin
         select e.id, d, case when (i + j) % 5 = 0 then 'absent' else 'present' end,
                (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
         from enrollments e where e.student_id = v_student_id and e.class_id = v_class_id;
+
+        -- ADR-0030: one class_updates row per class per Tuesday (class-wide, not per-student) —
+        -- skipped for classes divisible by 3 (by position in v_class_ids) to produce a deliberate
+        -- mix of fully-compliant / partial / non-compliant classes for compliance-dashboard demo
+        -- data. ON CONFLICT guards against duplicate inserts across the per-student loop this is
+        -- nested inside (unique (class_id, meeting_date)).
+        if (array_position(v_class_ids, v_class_id)) % 3 <> 0 then
+          insert into class_updates (class_id, meeting_date, posted_by)
+          values (
+            v_class_id, d,
+            (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
+          )
+          on conflict (class_id, meeting_date) do nothing;
+        end if;
       end loop;
 
       insert into consents (student_id, consent_type, granted, granted_by) values

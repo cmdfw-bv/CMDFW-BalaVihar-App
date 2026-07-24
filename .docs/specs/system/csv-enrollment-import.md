@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Admin (uploader); all 6 personas indirectly (provisioned via import) · **scope:** org (Admin-only trigger; service-role server-side writes) · **governing ADR:** ADR-0003 (access-control-rls), ADR-0018 (family/household model), ADR-0022 (csv-import auth-provisioning boundary) · **covers:** doc 2 §2 (enrollment import), doc 3 §6 (Netlify Function csv-import.ts), doc 1 §3 (member-system CSV seam); resolves the "no minor self-registration" COPPA constraint (doc 3 §5.1)
 
-**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → `/plan` ✓ → `/migration` ✓ → `/build` ✓ (35/35 unit tests, 81 pgTAP tests, 0 typecheck errors) → `/test` ✓ (97/97 RLS adversarial tests; gate marker written) → next is `/deploy-staging`.
+**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0022) → `/design` ✓ → `/plan` ✓ → `/migration` ✓ → `/build` ✓ (35/35 unit tests, 81 pgTAP tests, 0 typecheck errors) → `/test` ✓ (97/97 RLS adversarial tests; gate marker written) → next is `/deploy-staging`. **Addendum in flight:** skip-dates CSV seam (ADR-0031, `/design` ✓ — see bottom of file), signed off 2026-07-24 → `/plan` ✓ (Stage 7 appended to `csv-enrollment-import.plan.md`) — ready for `/build` (F12–F16), non-blocking for `/deploy-staging` above.
 
 ---
 
@@ -350,3 +350,17 @@ All example emails use `.test` domains — they are clearly synthetic and will n
 - Admin UI upload screen (Admin persona UoW).
 - Progress streaming (response returned at end of full run).
 - Rate limiting beyond Netlify platform defaults.
+
+---
+
+## Design addendum — ADR-0031 (session skip-dates CSV seam, 2026-07-24)
+
+**Stage:** 1 — Design (small addendum; no new UoW). Full detail — the `class_meetings` schema, RLS, and `generate_class_meetings_for_session` RPC this seam feeds — lives in `core-schema-and-rls.md`'s **"Design addendum — ADR-0030 → ADR-0031"** section; this entry only records the extension to *this* item's import function.
+
+- **New import shape**, distinct from the enrollment CSV above: `session_id, skip_date` rows. Same trust boundary as enrollment import (Admin-uploaded, service-role key, server-side only) — no new residency/PII surface, since skip dates carry no student/PII data.
+- Effect per row: flips every `class_meetings` row for that session's classes on `skip_date` to `status='cancelled'` (never deletes).
+- **Ordering dependency:** a skip date submitted before `generate_class_meetings_for_session` has run for that session is a no-op — no `class_meetings` rows exist yet to cancel. Admin/Coordinator guidance: generate the session's meeting calendar first, then upload skip dates.
+- Whether this ships as a new endpoint/route or a second mode on the existing `/api/csv-import` endpoint (distinguished by CSV header shape) is left to `/plan` — either is a small, additive change to this already-built function, not a rewrite.
+
+### Sign-off
+- [x] **Human sign-off on this addendum** (2026-07-24, mehta.maulik@gmail.com) — coordinated with `compliance-dashboard.md` and `core-schema-and-rls.md`'s addenda → ready for **`/plan`**.
