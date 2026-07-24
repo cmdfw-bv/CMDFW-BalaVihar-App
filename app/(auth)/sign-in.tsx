@@ -3,6 +3,7 @@ import { useState } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import * as Linking from "expo-linking";
+import { useLocalSearchParams } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "../../lib/supabase";
 import Logo from "../../components/brand/Logo";
@@ -11,9 +12,12 @@ type ScreenState = "form" | "loading" | "error" | "sent";
 
 export default function SignIn() {
   const { theme } = useUnistyles();
+  // Set by /auth/callback when a magic link is rejected (expired/already-used/malformed,
+  // issue #44) — surfaced here instead of silently landing back on a blank form.
+  const { authError } = useLocalSearchParams<{ authError?: string }>();
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<ScreenState>("form");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [state, setState] = useState<ScreenState>(authError ? "error" : "form");
+  const [errorMessage, setErrorMessage] = useState(authError ?? "");
 
   async function submit() {
     setState("loading");
