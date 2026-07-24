@@ -4,7 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { eventDateFontSize, type EventDateSize } from "./EventDateBlock.logic";
 
 // Matches design/sankalp/components/brand/EventDateBlock.jsx — editorial date block.
-// no app consumer yet — ported for full-library completeness per ADR-0028
+// no app consumer yet — ported for full-library completeness per ADR-0029
 export interface EventDateBlockProps {
   day: React.ReactNode;
   month: React.ReactNode;

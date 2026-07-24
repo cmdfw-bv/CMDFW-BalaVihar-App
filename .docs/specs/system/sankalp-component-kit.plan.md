@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended — this item has zero cross-file coupling, see Shared seam) or `superpowers:executing-plans` to implement task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the full Sankalp design-kit component surface (8 `core/*` + `brand/EventDateBlock` + 17 `bv-connect/components/**` domain components) plus two new primitives (`ListRow`, `StateView`) into typed, theme-token-only, unit-tested RN/TS components under `components/`, per ADR-0028 and the `/design`-validated spec at `sankalp-component-kit.md`.
+**Goal:** Port the full Sankalp design-kit component surface (8 `core/*` + `brand/EventDateBlock` + 17 `bv-connect/components/**` domain components) plus two new primitives (`ListRow`, `StateView`) into typed, theme-token-only, unit-tested RN/TS components under `components/`, per ADR-0029 and the `/design`-validated spec at `sankalp-component-kit.md`.
 
 **Architecture:** Every component is presentational and prop-driven — no Supabase, no RLS, no privileged operations (`client-privacy.md`). Each component's non-trivial **prop→derived-value contract** (which variant maps to which token, which prop combination yields which visible branch) is extracted into a colocated pure `.ts` module and TDD'd with `vitest`, matching this repo's established pure-logic-boundary convention (`components/brand/logoTitleFontSize.ts`, `components/appHeaderSubtitle.ts`). The JSX/TSX render itself is wiring — ported from the already-approved `design/sankalp/**` reference `.jsx` + `.d.ts`, verified visually via the `app/(dev)/kit-gallery.tsx` harness at `/test` (`playwright-cli`), not by a component-render unit test (this repo has no `@testing-library/react-native` harness — see Testing strategy below).
 
@@ -15,7 +15,7 @@
 - ≥44px touch targets (`theme.chrome.hitMin`); no horizontal scroll at 360/768/1024/1440; `fontVariant: ['tabular-nums']` on any compared/counted number; exactly one primary `accent` action per composed view; `brand`/saffron (`theme.colors.gold`) is identity-only, never a competing CTA; display serif (`theme.fonts.display`) for showcase/identity only, never body or buttons.
 - No Supabase client calls, no data fetching, no privileged operations inside `components/**` for this item (AC#6). `ConsentCapture`/`AuditEntry`/`UserRoleRow`/`CsvImport` accept all data via props only, never log PII (AC#10, edge cases).
 - Every component must render correctly on both RN-Web and native Expo (AC#11) — no web-only APIs (`window`, raw `<div>`/CSS strings) in the ported `.tsx`.
-- `RoleBadge`/`PersonaSwitcher`/`MagicLinkLogin` ship as independent primitives; `components/AppHeader.tsx`, `components/RoleSwitcher.tsx`, `app/(auth)/sign-in.tsx` are **not touched** in this item (ADR-0028, out of scope).
+- `RoleBadge`/`PersonaSwitcher`/`MagicLinkLogin` ship as independent primitives; `components/AppHeader.tsx`, `components/RoleSwitcher.tsx`, `app/(auth)/sign-in.tsx` are **not touched** in this item (ADR-0029, out of scope).
 - **Marcellus (display font) is single-weight** — never pass `fontWeight` alongside `theme.fonts.display`; use `theme.fonts.medium`/`.semibold`/`.bold` (Mukta) for body/label emphasis instead (`UNISTYLES.md`).
 - Every `.tsx` file with a module-scope `StyleSheet.create()` needs the direct `import "../../lib/unistyles"` (or correct relative depth) per issue #29 / `scripts/check-unistyles-config.js` — same pattern as `Logo.tsx`/`AppHeader.tsx`. Forgetting this fails `app-tests` CI (F30 precedent).
 
@@ -24,7 +24,7 @@
 ## Already done (do not re-task)
 
 - **AC#7 doc patches** — `design/sankalp/USAGE.md` and `.claude/skills/design-system/SKILL.md` are already patched (four-state language, no permission-denied) as part of the `/design` pass; `git diff` on both files shows the completed patch in the working tree. Nothing to do here.
-- **ADR-0028** recorded and Closed; `.docs/adr/README.md` index updated.
+- **ADR-0029** recorded and Closed; `.docs/adr/README.md` index updated.
 - Design mirror confirmed current — no `DesignSync` refresh needed; all 27 `.jsx`/`.d.ts`/`.prompt.md` triples exist under `design/sankalp/components/{core,brand}/**` and `design/sankalp/bv-connect/components/**`.
 
 ## Testing strategy (plan-level decision — not architecturally significant, no bounce to `/architect`)
@@ -568,7 +568,7 @@ export function eventDateFontSize(size: EventDateSize): number {
 }
 ```
 - [ ] **Step 4** PASS.
-- [ ] **Step 5** Implement `EventDateBlock.tsx` — vertical block: large `day` (mono/display per reference, `eventDateFontSize(size)`), small `month` (uppercase eyebrow), optional `year`. No current consumer (spec: "port for completeness"; flag with a one-line comment `// no app consumer yet — ported for full-library completeness per ADR-0028`).
+- [ ] **Step 5** Implement `EventDateBlock.tsx` — vertical block: large `day` (mono/display per reference, `eventDateFontSize(size)`), small `month` (uppercase eyebrow), optional `year`. No current consumer (spec: "port for completeness"; flag with a one-line comment `// no app consumer yet — ported for full-library completeness per ADR-0029`).
 - [ ] **Step 6** Gallery note: "EventDateBlock: sm/md/lg, with and without year."
 - [ ] **Step 7 Commit**
 
@@ -1091,7 +1091,7 @@ export function resolveActivePersona(roles: Persona[], activeId?: string): Perso
   return roles.find((r) => r.id === activeId) ?? roles[0] ?? { name: '—' };
 }
 ```
-- [ ] Implement `PersonaSwitcher.tsx` — compact pill (`role`-hued dot + `resolveActivePersona(...).name`) opening a bottom-sheet `Modal` listing every `roles` entry as a `Pressable` row (role hue via the plural `roles.*` map, same gotcha as `RoleBadge`), calling `onChange(id)` and closing on select. Independent of `components/RoleSwitcher.tsx` (#17) — no shared code, no retrofit (ADR-0028).
+- [ ] Implement `PersonaSwitcher.tsx` — compact pill (`role`-hued dot + `resolveActivePersona(...).name`) opening a bottom-sheet `Modal` listing every `roles` entry as a `Pressable` row (role hue via the plural `roles.*` map, same gotcha as `RoleBadge`), calling `onChange(id)` and closing on select. Independent of `components/RoleSwitcher.tsx` (#17) — no shared code, no retrofit (ADR-0029).
 - [ ] Gallery note: "PersonaSwitcher: closed pill, open sheet with 3 roles including bv."
 - [ ] Commit.
 
@@ -1316,7 +1316,7 @@ export function magicLinkCopy(sent: boolean, email: string): { heading: string; 
   return { heading: 'Sign in', body: 'Enter your email and we’ll send you a magic link.' };
 }
 ```
-- [ ] Implement `MagicLinkLogin.tsx` — reuses the existing `components/brand/Logo.tsx` (#17) for its mark (per spec's Behavior section — this is the second, and only other, legitimate case of a kit component importing an already-shipped component, explicitly sanctioned by the spec); local `email` `useState` seeded from the `email` prop; single email `Field` (from `core/Field.tsx`) + submit `Button` (from `core/Button.tsx`) calling `onSend?.(email)`; `sent` prop toggles to the confirmation copy from `magicLinkCopy`. No sign-up path (accounts are coordinator/admin-provisioned). Ships **alongside** `app/(auth)/sign-in.tsx`, does not replace it (ADR-0028, out of scope) — this file lives only under `components/auth/`, nothing in `app/(auth)/` changes.
+- [ ] Implement `MagicLinkLogin.tsx` — reuses the existing `components/brand/Logo.tsx` (#17) for its mark (per spec's Behavior section — this is the second, and only other, legitimate case of a kit component importing an already-shipped component, explicitly sanctioned by the spec); local `email` `useState` seeded from the `email` prop; single email `Field` (from `core/Field.tsx`) + submit `Button` (from `core/Button.tsx`) calling `onSend?.(email)`; `sent` prop toggles to the confirmation copy from `magicLinkCopy`. No sign-up path (accounts are coordinator/admin-provisioned). Ships **alongside** `app/(auth)/sign-in.tsx`, does not replace it (ADR-0029, out of scope) — this file lives only under `components/auth/`, nothing in `app/(auth)/` changes.
 - [ ] Gallery note: "MagicLinkLogin: pre-send, sent state showing the echoed email."
 - [ ] Commit.
 

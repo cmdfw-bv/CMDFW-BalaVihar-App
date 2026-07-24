@@ -9,7 +9,7 @@ import { colorAtPath } from "../core/tokenPath";
 // Matches design/sankalp/bv-connect/components/navigation/PersonaSwitcher.jsx — the
 // multi-persona active-role control. A compact pill shows the current role; tapping opens a
 // bottom sheet to switch. Independent of components/RoleSwitcher.tsx (#17) — no shared code,
-// no retrofit, ships as a fully separate primitive per ADR-0028.
+// no retrofit, ships as a fully separate primitive per ADR-0029.
 export interface PersonaSwitcherProps {
   roles?: Persona[];
   activeId?: string;

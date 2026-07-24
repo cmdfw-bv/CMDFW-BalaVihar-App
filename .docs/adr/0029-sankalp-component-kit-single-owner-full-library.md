@@ -1,4 +1,4 @@
-# ADR-0028: Sankalp component kit ships as one System-owned unit (full-library exception to §12.12 per-capability ownership)
+# ADR-0029: Sankalp component kit ships as one System-owned unit (full-library exception to §12.12 per-capability ownership)
 
 **Status:** Closed · **Date:** 2026-07-18 · **Deciders:** Project owner + architect
 

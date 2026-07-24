@@ -1,8 +1,8 @@
 # System — Sankalp component kit
 
-> **owner:** System · **consumers:** all 6 personas' UI (every persona screen); unblocks independent/parallel build of feed, chat, dashboard, admin, notifications, and auth-adjacent screens without each re-porting design-kit reference components · **scope:** client presentational layer only — no RLS/data access, no privileged operations · **governing ADR:** ADR-0010 (design tooling — Open Design/Sankalp source), ADR-0011 (styling — Unistyles 3 + generated theme), ADR-0014 (access UX — four states, role-derived nav, conditional switcher), ADR-0028 (full-library, single-owner exception to §12.12 per-capability ownership) · **covers:** doc 2 issue #18 ("Build the reusable Sankalp component kit"); `.claude/rules/design-system.md` DoD; closes the ADR-0014 doc-patch debt left open in `design/sankalp/USAGE.md` and the `design-system` skill
+> **owner:** System · **consumers:** all 6 personas' UI (every persona screen); unblocks independent/parallel build of feed, chat, dashboard, admin, notifications, and auth-adjacent screens without each re-porting design-kit reference components · **scope:** client presentational layer only — no RLS/data access, no privileged operations · **governing ADR:** ADR-0010 (design tooling — Open Design/Sankalp source), ADR-0011 (styling — Unistyles 3 + generated theme), ADR-0014 (access UX — four states, role-derived nav, conditional switcher), ADR-0029 (full-library, single-owner exception to §12.12 per-capability ownership) · **covers:** doc 2 issue #18 ("Build the reusable Sankalp component kit"); `.claude/rules/design-system.md` DoD; closes the ADR-0014 doc-patch debt left open in `design/sankalp/USAGE.md` and the `design-system` skill
 
-**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0028 recorded) → `/design` ✓ (2026-07-18) → next is `/plan`.
+**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0029 recorded) → `/design` ✓ (2026-07-18) → next is `/plan`.
 
 ---
 
@@ -95,7 +95,7 @@ All 25 ported components plus `ListRow` and `StateView` are pure, prop-driven, s
 
 **`admin/*`** — `CsvImport` (dropzone → parsed ready/flagged summary; presentational states only, per AC#9 driven by fixture data in the gallery), `UserRoleRow` (list-row: avatar, multi-role badges, manage vs. approve/reject action set keyed by `status`).
 
-**`navigation/PersonaSwitcher`** — compact pill → bottom-sheet role switcher; ships as an independent primitive alongside the already-shipped `RoleSwitcher.tsx` (#17), not merged into it (ADR-0028, edge case below).
+**`navigation/PersonaSwitcher`** — compact pill → bottom-sheet role switcher; ships as an independent primitive alongside the already-shipped `RoleSwitcher.tsx` (#17), not merged into it (ADR-0029, edge case below).
 
 **`dashboard/*`** — `ComplianceBar` (value-derived success/warning/danger tone unless `status` overridden, mono-tabular figure), `CenterRollupRow` (list-row: name/region/attendance%/mini-bar; honest `—` via `placeholder` for centers with no data).
 
@@ -103,7 +103,7 @@ All 25 ported components plus `ListRow` and `StateView` are pure, prop-driven, s
 
 **`notifications/*`** — `NotificationItem` (list-row: typed icon/hue, unread dot+fill), `PushPermissionPrompt` (soft-ask before the native VAPID prompt; always offers "Not now"; iOS 16.4+ PWA-install caveat is copy-only in this item, no install-detection logic added here).
 
-**`auth/MagicLinkLogin`** — single email field → send → "check your email"; no sign-up path (accounts are coordinator/admin-provisioned); reuses the existing `Logo` component (#17) for its mark; ships alongside the already-shipped `app/(auth)/sign-in.tsx`, not replacing it (ADR-0028).
+**`auth/MagicLinkLogin`** — single email field → send → "check your email"; no sign-up path (accounts are coordinator/admin-provisioned); reuses the existing `Logo` component (#17) for its mark; ships alongside the already-shipped `app/(auth)/sign-in.tsx`, not replacing it (ADR-0029).
 
 **New primitives:**
 - **`ListRow`** (`core/`) — generic row: `leading` (node slot), `title`, `subtitle?`, `trailing?` (node slot), `onPress?`. No domain knowledge of avatars, bars, or badges — those compose *into* the slots by whatever future consumer needs them.
