@@ -18,7 +18,7 @@
 - **No docs-only fast path** — every job runs on every PR regardless of changed paths (spec design decision #3).
 - **Reuse `residency-guard.js`'s existing denylist as the single source of truth for `residency-scan`** — do not maintain a second copy (ADR-0025 decision #1, spec design decision "no drift").
 - **`secrets-pii` and `db-and-rls` are excluded from branch-protection admin bypass** — security-critical, no one waves them through (spec Design table note; carried to Task 8's handoff).
-- **Branch protection + CODEOWNERS real-handle fill-in are one-time human repo-admin steps** — not executed unattended by Claude Code (spec Edge cases, ADR-0024 consequence, ADR-0025 consequence). This repo is a personal-account repo (`mehtamaulik-creator/CMDFW-BalaVihar---Pilot-App`, confirmed via `gh repo view`), not an org — irrelevant to gitleaks licensing per design decision #2, but repeated here since it's why the CLI (not the Action) was chosen.
+- **Branch protection + CODEOWNERS real-handle fill-in are one-time human repo-admin steps** — not executed unattended by Claude Code (spec Edge cases, ADR-0024 consequence, ADR-0025 consequence). This repo was originally a personal-account repo (`mehtamaulik-creator/CMDFW-BalaVihar---Pilot-App`, confirmed via `gh repo view`); it has since been transferred to the `cmdfw-bv` org and renamed to `cmdfw-bv/CMDFW-BalaVihar-App` (2026-07-23) — now org-owned, which is what makes gitleaks-action's paid-license gate potentially relevant if we ever switched off the raw CLI (see design decision #2 in `cicd-pipeline.md`), though that's still why the CLI (not the Action) was chosen.
 - **CI does not auto-file GitHub issues on failure** (spec design decision #4) — a maintainer or the next Claude Code session reads the named failing job and follows `/test`'s existing issue-filing convention.
 - **Out of scope, do NOT build here:** cloud Supabase A/B provisioning, `/deploy-staging`/`/promote` mechanics, native (EAS) build CI, Sentry wiring, the pgTAP "coverage floor" heuristic (ADR-0025 consequence — explicitly rejected, false-positive risk).
 
@@ -805,7 +805,7 @@ Edit `.github/CODEOWNERS`, replace every `@<maintainer-handle>` with the real Gi
 
   Equivalent `gh api` reference (for the human to run, not Claude — repo-admin token required):
   ```bash
-  gh api -X PUT repos/mehtamaulik-creator/CMDFW-BalaVihar---Pilot-App/branches/main/protection \
+  gh api -X PUT repos/cmdfw-bv/CMDFW-BalaVihar-App/branches/main/protection \
     -f required_status_checks='{"strict":true,"contexts":["app-tests","db-and-rls","secrets-pii","residency-scan"]}' \
     -F enforce_admins=false \
     -f required_pull_request_reviews='{"require_code_owner_reviews":true}' \
@@ -816,7 +816,7 @@ Edit `.github/CODEOWNERS`, replace every `@<maintainer-handle>` with the real Gi
 - [ ] **Step 3: Verify (Claude Code can run this once the human confirms Steps 1–2 are done)**
 
 ```bash
-gh api repos/mehtamaulik-creator/CMDFW-BalaVihar---Pilot-App/branches/main/protection --jq '.required_status_checks.contexts'
+gh api repos/cmdfw-bv/CMDFW-BalaVihar-App/branches/main/protection --jq '.required_status_checks.contexts'
 ```
 Expected: `["app-tests","db-and-rls","secrets-pii","residency-scan"]`.
 
