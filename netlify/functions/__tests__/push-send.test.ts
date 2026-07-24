@@ -13,6 +13,10 @@ let tables: {
   conversations: Record<string, unknown> | null;
   conversation_participants: Array<Record<string, unknown>>;
   push_subscriptions: Array<Record<string, unknown>>;
+  class_updates: Record<string, unknown> | null;
+  enrollments: Array<Record<string, unknown>>;
+  students: Array<Record<string, unknown>>;
+  family_members: Array<Record<string, unknown>>;
 };
 const deleteEq = vi.fn().mockResolvedValue({ data: null, error: null });
 
@@ -34,6 +38,18 @@ function mockFrom(table: string) {
       delete: () => ({ eq: deleteEq }),
     };
   }
+  if (table === 'class_updates') {
+    return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: tables.class_updates, error: null }) }) }) };
+  }
+  if (table === 'enrollments') {
+    return { select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: tables.enrollments, error: null }) }) }) };
+  }
+  if (table === 'students') {
+    return { select: () => ({ in: () => Promise.resolve({ data: tables.students, error: null }) }) };
+  }
+  if (table === 'family_members') {
+    return { select: () => ({ in: () => Promise.resolve({ data: tables.family_members, error: null }) }) };
+  }
   throw new Error(`unexpected table: ${table}`);
 }
 
@@ -46,6 +62,8 @@ const SENDER_ID = 'sender-uuid';
 const CALLER_ID = 'sender-uuid'; // caller == sender in the happy path
 const MESSAGE_ID = '11111111-1111-1111-1111-111111111111';
 const CONVERSATION_ID = '22222222-2222-2222-2222-222222222222';
+const CLASS_UPDATE_ID = '33333333-3333-3333-3333-333333333333';
+const CLASS_ID = '44444444-4444-4444-4444-444444444444';
 
 function makeEvent(overrides: Partial<HandlerEvent> = {}): HandlerEvent {
   return {
@@ -78,6 +96,10 @@ beforeEach(() => {
     conversations: { kind: 'class' },
     conversation_participants: [{ user_id: 'recipient-1', participant_role: 'student', notify_level: 'all' }],
     push_subscriptions: [{ id: 'sub-1', endpoint: 'https://push.example/1', p256dh_key: 'p', auth_key: 'a' }],
+    class_updates: { id: CLASS_UPDATE_ID, class_id: CLASS_ID, posted_by: SENDER_ID },
+    enrollments: [{ student_id: 'student-row-1' }],
+    students: [{ user_id: 'student-user-1', family_id: 'family-1' }],
+    family_members: [{ user_id: 'parent-user-1' }],
   };
 });
 
@@ -174,5 +196,52 @@ describe('push-send handler', () => {
   it('payload passed to sendPush carries only a generic, kind-derived title — no PII (AC#9)', async () => {
     await handler(makeEvent(), {} as never);
     expect(pushDelivery.sendPush).toHaveBeenCalledWith(expect.anything(), { title: 'New message in your class chat' });
+  });
+});
+
+describe('push-send handler — class_update_id branch (ADR-0031)', () => {
+  it('422s when both message_id and class_update_id are present', async () => {
+    const res = (await handler(makeEvent({ body: body({ message_id: MESSAGE_ID, class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('422s when neither message_id nor class_update_id is present', async () => {
+    const res = (await handler(makeEvent({ body: body({}) }), {} as never)) as HandlerResponse;
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('200 noop when the class_update does not exist', async () => {
+    tables.class_updates = null;
+    const res = (await handler(makeEvent({ body: body({ class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body as string)).toMatchObject({ status: 'noop' });
+  });
+
+  it("403s when the caller is not the class update's poster", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'someone-else' } }, error: null });
+    const res = (await handler(makeEvent({ body: body({ class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('dispatches to the enrolled student (with login) and their parent, excluding the poster', async () => {
+    // Two recipients (student + parent) — one subscription each, matching the mock's
+    // ignore-the-filter/return-the-whole-table behavior used throughout this suite.
+    tables.push_subscriptions = [
+      { id: 'sub-1', endpoint: 'https://push.example/1', p256dh_key: 'p1', auth_key: 'a1' },
+      { id: 'sub-2', endpoint: 'https://push.example/2', p256dh_key: 'p2', auth_key: 'a2' },
+    ];
+    const res = (await handler(makeEvent({ body: body({ class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
+    expect(JSON.parse(res.body as string)).toEqual({ status: 'dispatched', recipients: 2, sent: 2, cleaned_up: 0 });
+  });
+
+  it('zero current enrollments dispatches to zero recipients, not an error (edge case)', async () => {
+    tables.enrollments = [];
+    const res = (await handler(makeEvent({ body: body({ class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
+    expect(JSON.parse(res.body as string)).toEqual({ status: 'dispatched', recipients: 0, sent: 0, cleaned_up: 0 });
+  });
+
+  it('payload carries the exact, generic, PII-free class-update title', async () => {
+    await handler(makeEvent({ body: body({ class_update_id: CLASS_UPDATE_ID }) }), {} as never);
+    expect(pushDelivery.sendPush).toHaveBeenCalledWith(expect.anything(), { title: 'New update posted in your class' });
   });
 });

@@ -37,6 +37,8 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0027](0027-role-switcher-label-active-role-agnostic-self-scope-read.md) | Role-switcher labels are an active-role-agnostic self-scope read (ADR-0019 addendum): extends the unaudited exemption to SECURITY DEFINER reads proven identity-scoped by adversarial test | Closed | 2026-07-17 |
 | [ADR-0028](0028-push-dispatch-client-invoked.md) | Push dispatch is client-invoked (after a `messages` insert), not a DB trigger/`pg_net` — no new extension/secret surface | Closed | 2026-07-21 |
 | [ADR-0029](0029-sankalp-component-kit-single-owner-full-library.md) | Sankalp component kit ships as one System-owned unit — full-library exception to §12.12 per-capability ownership (presentational porting only; data-wiring stays with each owning persona) | Closed | 2026-07-18 |
+| [ADR-0030](0030-class-update-comment-privacy-column-flag.md) | Class-update comment privacy: column-flag RLS (`is_private`/`target_parent_id`) with scope-derived Coordinator/BV Coordinator/Admin oversight read access — extends ADR-0015 with a lighter shape, no participant table | Closed | 2026-07-24 |
+| [ADR-0031](0031-push-send-discriminated-event-reference.md) | `push-send` contract extended to a discriminated `{message_id}`/`{class_update_id}` request body so `class-update-and-home-feed` can be its second caller (ADR-0028 addendum) | Closed | 2026-07-24 |
 
 ## How to read an ADR
 
