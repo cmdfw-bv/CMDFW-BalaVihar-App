@@ -12,4 +12,5 @@ description = "Known false positive: empty VAPID_PRIVATE_KEY= placeholder in .en
 regexTarget = "match"
 regexes = [
   '''VAPID_PRIVATE_KEY=\n''',
+  "p256dh_key: 'p256dh-fixture'",
 ]
