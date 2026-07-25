@@ -178,6 +178,36 @@ npm run dev           # starts the app at http://localhost:8888
 
 ---
 
+### UAT-9b: Sign out from the zero-role screen
+**Setup note:** as UAT-9 — use a genuine zero-role account (no `user_roles` rows), not a seeded account with rows temporarily removed, to avoid disturbing other fixtures.
+
+**Steps:**
+1. Sign in as the zero-role account, land on `/no-role`.
+2. Click "Sign out".
+
+**Expected result:**
+- Returns to `/sign-in`, session cleared. No console errors.
+
+- [x] Pass  - [ ] Fail (notes: issue #46 — playwright-cli against a throwaway `issue46-test@bv-seed.test.local` account created via `tests.create_supabase_user`, no `user_roles` row. Signed in via real magic-link through Mailpit, landed on `/no-role`, clicked "Sign out", returned to `/sign-in`. 0 console errors. Account deleted afterward.)
+
+---
+
+### UAT-9c: Auto-recovery after a mid-session role grant
+**Setup note:** as UAT-9b.
+
+**Steps:**
+1. Sign in as the zero-role account, land on `/no-role`.
+2. While still on `/no-role`, dispatch a tab-focus/`visibilitychange` event (or wait out one 60s interval tick) before any role exists — confirm no visible change.
+3. Grant a `user_roles` row for that account directly in the DB (same live session, no reload), then dispatch a tab-focus/`visibilitychange` event again.
+
+**Expected result:**
+- Step 2: nothing visible happens, no console error (silent no-op per AC#4).
+- Step 3: the app automatically navigates away from `/no-role` into the role's home tab — no manual reload, no console errors.
+
+- [x] Pass  - [ ] Fail (notes: issue #46 — playwright-cli, same throwaway account as UAT-9b. Step 2: dispatched `visibilitychange`+`focus` while still zero-role — stayed on `/no-role`, 0 console errors. Step 3: granted an active `parent`/`org` `user_roles` row via `docker exec ... psql` mid-session, re-dispatched `visibilitychange`+`focus` — app auto-navigated to `/feed` with no manual reload, 0 console errors. Role grant and account deleted afterward.)
+
+---
+
 ## 3. Sign-off
 
 | Date | Tester | Result |
@@ -186,3 +216,4 @@ npm run dev           # starts the app at http://localhost:8888
 | 2026-07-16 | Claude Code (`/test` gate, issue #17 MobileTabBar componentization + shared `TAB_TITLES`) | 9/9 Pass (UAT-3, -5 — the two scenarios that exercise the tab bar — re-walked live via playwright-cli against `parent1a`/`multirole` at 390px/768px, confirming the new `MobileTabBar` renders correctly and updates on role switch, see notes above; UAT-1, -2, -4, -6, -7, -8, -9 unaffected by this diff — carried forward from 2026-07-15) |
 | 2026-07-17 | Claude Code (`/test` gate, issue #17 code-review follow-ups: `SessionProvider.tsx` native-only deep-link guard + ADR-0027 minors'-PII audit-exemption addendum) | 9/9 Pass. Full suite re-run: vitest 233/233, pgTAP 19 files/169 assertions (incl. `150_scope_label_resolution_rpc.sql`, unaffected by the comment-only migration changes). UAT-1 re-walked live (web sign-in via `parent1a` and `multirole`, 0 console errors — the exact regression the code-review comment flagged is confirmed absent) and UAT-5 re-walked live (multirole role switch at 1024px desktop, including live confirmation of the ADR-0027 scope — the switcher resolved `Parent · Student7_1, Student7_2` while Teacher was the active role). Design parity re-checked at 390/768/1024/1440 for `app/(tabs)/_layout.tsx`/`DesktopSidebar.tsx`/`MobileTabBar.tsx` (untouched by today's diff, confirmed no regression — screenshots at all four breakpoints match the 2026-07-15/-16 passes). UAT-2, -3, -4, -6, -7, -8, -9 unaffected by this diff — carried forward. |
 | 2026-07-21 | Claude Code (`/test` gate, issue #5 notifications infra: `PushPermissionCard`/`AddToHomeScreenHint` wired into the nav shell) | Full suite green: vitest 280/280, pgTAP 19 files/169 assertions (no new migrations in this diff — `push_subscriptions` RLS unchanged, `/rls-audit` not required). No UAT scenario regressed. Design parity checked at 360/768/1024/1440 for `PushPermissionCard`/`AddToHomeScreenHint` (new) and `app/(tabs)/_layout.tsx` (nav-shell wiring) — consistent theme-token usage, no horizontal scroll, ≥44px touch targets, no regressions. UAT-3 and UAT-5 (the two nav-flow scenarios this diff's `_layout.tsx` change touches) re-walked live: `parent1a` still sees exactly Feed/Attendance/Chat with the push card rendering above the tab bar; `multirole` role switch (Teacher → BV Coordinator) still updates the tab bar in place with 0 console errors, unaffected by the new components. UAT-1, -2, -4, -6, -7, -8, -9 unaffected by this diff — carried forward. **Push-flow verification (playwright-cli, highest-risk item per §8.1):** iOS Safari UA (WebKit) confirms `AddToHomeScreenHint` shows and `PushPermissionCard` correctly defers to it pre-install, then swaps the instant `display-mode: standalone` is simulated (post-install) — matching the iOS 16.4+ precedence spec'd in `notifications-infra.md`. "Not now" dismisses and persists across reload. **Found + fixed a real bug in this pass:** the very first "Enable notifications" click on any fresh browser profile reliably failed silently (`AbortError: no active Service Worker` — `register()` resolves before the worker is active, and `subscribe()` doesn't wait) with no error shown to the user and no retry path, since the card dismisses unconditionally. Filed as issue #41, fixed in `lib/notifications/registerForPush.ts` (await `navigator.serviceWorker.ready` before subscribing), reverified end-to-end with a brand-new Chrome profile (0 prior SW registrations): first-ever click now succeeds, `POST push_subscriptions => 201 Created`, row confirmed via direct DB query, vitest re-run 280/280 green, issue closed. Also discovered and fixed a local-only setup gap: `.env`'s `EXPO_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` were blank (no generation step documented), which silently broke the subscribe flow with `InvalidAccessError` — populated with a freshly generated dev-only keypair for this workspace's local testing. |
+| 2026-07-25 | Claude Code (`/test` gate, issue #46: `/no-role` dead-end fix — sign-out `Button` + `useAutoRefreshOnRegain` hook, G5 of the amendment plan) | Full suite green: typecheck clean, vitest 379/379, pgTAP 19 files/169 assertions (no migration in this diff, `/rls-audit` not required per Architect review already recorded in the spec). Design parity checked at 360/768/1024/1440 for `app/no-role.tsx` — single centered empty state, token-driven colors/spacing (`theme.colors.accent`, `theme.space.lg` gap), `Button`'s `minHeight: theme.chrome.hitMin` (44px) satisfies the touch-target rule, no horizontal scroll, no regressions; screen has no divergent mobile/desktop layout so parity is trivial here. Added and ran live (playwright-cli + real magic-link via Mailpit, throwaway `issue46-test@bv-seed.test.local` zero-role account, deleted after): **UAT-9b** (sign-out from `/no-role` → returns to `/sign-in`, 0 console errors) and **UAT-9c** (a `visibilitychange`/`focus` tick while still zero-role is a silent no-op; granting a `user_roles` row mid-session then re-dispatching the same event auto-navigates to `/feed` with no manual reload, 0 console errors) — both Pass. UAT-1 through -9 unaffected by this diff — carried forward. |
