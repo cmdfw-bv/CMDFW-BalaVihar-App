@@ -17,3 +17,6 @@ Non-human persona owning cross-cutting/infra concerns: the auth/RLS engine, cons
 | [cicd-pipeline](cicd-pipeline.md) | POC-core (foundational — doc 3 §6.3 migration-guard gate) | System | all (delivery pipeline) | CI/CD + migration-guard/promotion gates | Built — pending `/test` |
 | cloud-environment-provisioning | POC-core (needed before staging/prod deploy, doc 3 §7.1) | System | all | cloud Supabase project A/B + staging/prod env wiring | Not started |
 | error-monitoring-infra | POC-core (doc 2: Admin "error monitoring") | System | Admin | Sentry setup (US region) + PII scrubbing before capture | Not started |
+| client-auth-session-and-nav | POC-core (foundational — **client gate**) | System | all 6 personas | client shell: magic-link sign-in + session provider + role-derived nav + active-role switcher (ADR-0005/0014/0023). Server side is `auth-hook-and-identity`; this is the missing client half. | Not started |
+| sankalp-component-kit | POC-core (foundational — client) | System | all persona UI | shared component library on Unistyles tokens; the four access-states with no permission-denied screen (ADR-0011/0014) | Not started |
+| pilot-seed-data | POC-core (test data) | System | all (dev/test) | realistic seed — Frisco center · F3 session · Shishu Vihaar/KG–Gr12 (13 grades), replacing the 5-band placeholder seed | Not started |
