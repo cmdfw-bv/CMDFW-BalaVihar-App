@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabase';
 import { joinRosterWithEnrollments, type RosterRow } from './rosterMap';
 import { seedMarks, type MarksByEnrollment } from './seedMarks';
@@ -29,6 +29,10 @@ export function useAttendanceRoster(classId: string) {
   const [marks, setMarks] = useState<MarksByEnrollment>({});
   const [header, setHeader] = useState<AttendanceHeader | null>(null);
   const [dateBounds, setDateBounds] = useState<DateBounds | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Ref alongside the state: a double-tap fires both event handlers before React commits the
+  // disabled-button re-render, so the `disabled` prop alone doesn't close the race — this does.
+  const isSubmittingRef = useRef(false);
 
   const load = useCallback(async (dateOverride?: string) => {
     setFetchStatus('loading');
@@ -74,6 +78,10 @@ export function useAttendanceRoster(classId: string) {
   }, [classId]);
 
   useEffect(() => {
+    // Guard against the transient classId="" the screen passes before the teacher's JWT/scopeId
+    // has resolved — querying with it would fail and flash the error state before the real
+    // scopeId arrives and re-triggers this effect. fetchStatus stays at its initial 'loading'.
+    if (!classId) return;
     load();
     // Fresh reads on every classId change only — a date-nav step calls load(dateOverride)
     // directly rather than re-running this effect (Design spec, "Date navigation").
@@ -95,19 +103,27 @@ export function useAttendanceRoster(classId: string) {
   }, [load, dateBounds, selectedDate]);
 
   const submitRows = useCallback(async (enrollmentIds: string[], currentMarks: MarksByEnrollment) => {
-    const settled = await Promise.allSettled(
-      enrollmentIds.map((id) =>
-        supabase.rpc('mark_attendance_for_staff', {
-          p_enrollment_id: id,
-          p_class_meeting_date: selectedDate,
-          p_status: currentMarks[id].status,
-        }).then(({ data, error }) => {
-          if (error) throw error;
-          return data;
-        }),
-      ),
-    );
-    setMarks((prev) => applySubmitResults(prev, enrollmentIds.map((enrollmentId, i) => ({ enrollmentId, settled: settled[i] }))));
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      const settled = await Promise.allSettled(
+        enrollmentIds.map((id) =>
+          supabase.rpc('mark_attendance_for_staff', {
+            p_enrollment_id: id,
+            p_class_meeting_date: selectedDate,
+            p_status: currentMarks[id].status,
+          }).then(({ data, error }) => {
+            if (error) throw error;
+            return data;
+          }),
+        ),
+      );
+      setMarks((prev) => applySubmitResults(prev, enrollmentIds.map((enrollmentId, i) => ({ enrollmentId, settled: settled[i] }))));
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
   }, [selectedDate]);
 
   const submit = useCallback(() => submitRows(rows.map((r) => r.enrollmentId), marks), [submitRows, rows, marks]);
@@ -128,6 +144,7 @@ export function useAttendanceRoster(classId: string) {
     markLocal,
     submit,
     retryFailed,
+    isSubmitting,
     // Initial-fetch retry (error state) — re-walks-back only if no date was ever established.
     retry: () => load(selectedDate || undefined),
   };

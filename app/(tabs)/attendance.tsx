@@ -13,7 +13,7 @@ import Button from "../../components/core/Button";
 export default function AttendanceScreen() {
   useRoleGuard("attendance");
   const { scopeId } = useSession();
-  const { status, rows, marks, header, dateBounds, selectedDate, goToPrevious, goToNext, markLocal, submit, retryFailed, retry } =
+  const { status, rows, marks, header, dateBounds, selectedDate, goToPrevious, goToNext, markLocal, submit, retryFailed, retry, isSubmitting } =
     useAttendanceRoster(scopeId ?? "");
 
   const failedCount = Object.values(marks).filter((m) => m.error).length;
@@ -39,8 +39,8 @@ export default function AttendanceScreen() {
             <AttendanceRosterRow key={row.enrollmentId} row={row} mark={marks[row.enrollmentId]} onChange={markLocal} />
           ))}
         </View>
-        <Button variant="primary" size="lg" fullWidth onClick={failedCount > 0 ? retryFailed : submit}>
-          {failedCount > 0 ? `Retry (${failedCount} failed)` : allSaved ? "Submitted" : "Submit"}
+        <Button variant="primary" size="lg" fullWidth disabled={isSubmitting} onClick={failedCount > 0 ? retryFailed : submit}>
+          {isSubmitting ? "Submitting…" : failedCount > 0 ? `Retry (${failedCount} failed)` : allSaved ? "Submitted" : "Submit"}
         </Button>
       </StateView>
     </View>
