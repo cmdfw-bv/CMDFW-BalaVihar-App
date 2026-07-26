@@ -46,7 +46,8 @@ begin
       select cm.*, row_number() over (partition by cm.class_id order by cm.meeting_date desc) as rn
       from class_meetings cm
       join classes c on c.id = cm.class_id
-      where c.session_id = p_session_id and cm.status = 'scheduled' and cm.meeting_date <= current_date
+      where c.session_id = p_session_id and cm.status = 'scheduled'
+        and cm.meeting_date < (now() at time zone 'America/Chicago')::date
     ) cm
     where rn <= p_window_size
   ),
@@ -55,7 +56,7 @@ begin
       w.class_id,
       w.meeting_date,
       (select count(*) from enrollments e
-         where e.class_id = w.class_id and e.status = 'active' and e.enrolled_at <= w.meeting_date) as expected_count,
+         where e.class_id = w.class_id and e.status = 'active' and e.enrolled_at::date <= w.meeting_date) as expected_count,
       exists (select 1 from class_updates cu
                 where cu.class_id = w.class_id and cu.meeting_date = w.meeting_date) as update_posted
     from win w
@@ -67,7 +68,7 @@ begin
          select count(*) from attendance a
          join enrollments e on e.id = a.enrollment_id
          where e.class_id = pd.class_id and a.class_meeting_date = pd.meeting_date
-           and e.status = 'active' and e.enrolled_at <= pd.meeting_date
+           and e.status = 'active' and e.enrolled_at::date <= pd.meeting_date
        )) as attendance_submitted
     from per_date pd
   )

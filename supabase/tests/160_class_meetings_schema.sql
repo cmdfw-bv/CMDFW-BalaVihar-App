@@ -62,15 +62,22 @@ select is(
   'cancelled',
   'idempotent re-run does not reset an already-cancelled row back to scheduled');
 
--- class_meetings RLS: teacher sees only their own class's rows.
-select tests.authenticate_as(:'v_teacher'::uuid, 'teacher', 'class', 'cc600000-0000-0000-0000-000000000001'::uuid);
-select is((select count(*) from class_meetings)::int, 4, 'teacher sees only their own class''s 4 rows');
-select tests.clear_authentication();
-
--- class_meetings RLS: coordinator sees every class in their own session, not the sibling session's.
+-- Add a same-session sibling class (A2) and generate its calendar *before* checking the
+-- teacher's RLS scope, so "teacher sees only their own class's rows" actually proves exclusion
+-- (4-of-8) rather than coincidentally matching "teacher sees the whole table" (which it would if
+-- class 1 were still the only class in class_meetings with any rows).
 insert into classes (id, session_id, name, grade_band) values ('cc600000-0000-0000-0000-000000000003', 'a6000000-0000-0000-0000-000000000001', 'Meetings Class A2', 'Gr4');
 select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
 select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+
+-- class_meetings RLS: teacher sees only their own class's rows, excluded from A2's in the same session.
+select tests.authenticate_as(:'v_teacher'::uuid, 'teacher', 'class', 'cc600000-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from class_meetings)::int, 4, 'teacher sees only their own class''s 4-of-8 rows (A2''s rows in the same session are excluded)');
+select tests.clear_authentication();
+
+-- class_meetings RLS: coordinator sees every class in their own session, not the sibling session's.
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
 select is((select count(*) from class_meetings)::int, 8, 'coordinator sees all classes'' rows in their own session, none from the sibling session');
 select tests.clear_authentication();
 

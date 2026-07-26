@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import { getSessionCompliance } from './api';
+import { createFetchCoalescer } from './fetchCoalescer';
 import { computeRollup, type ComplianceRow } from './rollup';
 import { deriveDashboardViewState } from './viewState';
 
@@ -11,7 +12,7 @@ export function useSessionCompliance(sessionId: string | null, windowSize = 4) {
   const hasEverSucceeded = useRef(false);
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
 
-  const fetchOnce = useCallback(async () => {
+  const doFetch = useCallback(async () => {
     if (!sessionId) return;
     try {
       const data = await getSessionCompliance(supabase, sessionId, windowSize);
@@ -22,6 +23,13 @@ export function useSessionCompliance(sessionId: string | null, windowSize = 4) {
       setLastFetchFailed(true);
     }
   }, [sessionId, windowSize]);
+
+  // Coalesces overlapping triggers (e.g. visibilitychange + focus firing together on browser
+  // refocus) into a single in-flight request, so a tab refocus can't double-write audit_log
+  // rows or let a stale response clobber a newer one out of order.
+  const fetchOnceRef = useRef(createFetchCoalescer(doFetch));
+  useEffect(() => { fetchOnceRef.current = createFetchCoalescer(doFetch); }, [doFetch]);
+  const fetchOnce = useCallback(() => { fetchOnceRef.current(); }, []);
 
   // Mount + in-app route refocus.
   useFocusEffect(useCallback(() => { fetchOnce(); }, [fetchOnce]));

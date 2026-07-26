@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(21);
 
 insert into centers (id, name) values ('c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Center');
 -- Sundays: Jan4, Jan11, Jan18 — window_size=2 keeps the last two (Jan11, Jan18).
@@ -77,6 +77,35 @@ insert into enrollments (student_id, class_id, session_id, status, enrolled_at) 
 -- (deliberately: no generate_class_meetings_for_session call after this insert — Class E must
 -- end up with zero class_meetings rows, proving the "new class, no meetings yet" null placeholder)
 
+-- Class F: a meeting scheduled for *today* (current_date) — the only meeting this class has.
+-- current_date's own meeting must not enter the trailing window before it happens (the day
+-- rolls over server-side before any teacher could plausibly have submitted for it yet).
+insert into classes (id, session_id, name, grade_band) values
+  ('cc650000-0000-0000-0000-00000000000f', 'a6500000-0000-0000-0000-000000000001', 'Class F (todays meeting)', 'Gr3');
+insert into class_meetings (class_id, meeting_date, status) values
+  ('cc650000-0000-0000-0000-00000000000f', current_date, 'scheduled');
+insert into families (id, label) values ('f6500000-0000-0000-0000-0000000000f1', 'Family F');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-0000000000f1', 'f6500000-0000-0000-0000-0000000000f1', 'F1', 'Student', 'Gr3');
+insert into enrollments (student_id, class_id, session_id, status, enrolled_at) values
+  ('56500000-0000-0000-0000-0000000000f1', 'cc650000-0000-0000-0000-00000000000f', 'a6500000-0000-0000-0000-000000000001', 'active', current_date - interval '30 days');
+
+-- Class G: single student enrolled mid-day UTC on the same calendar day as the meeting date —
+-- exercises the timestamptz-vs-date comparison independent of any wall-clock "today" behavior.
+-- Attendance is submitted for that same date, so a *correct*, deterministic day-level comparison
+-- must count the student as expected and the attendance as submitted (100.0), not exclude them.
+insert into classes (id, session_id, name, grade_band) values
+  ('cc650000-0000-0000-0000-000000000010', 'a6500000-0000-0000-0000-000000000001', 'Class G (same-day enrollment)', 'Gr3');
+insert into class_meetings (class_id, meeting_date, status) values
+  ('cc650000-0000-0000-0000-000000000010', '2026-01-11', 'scheduled');
+insert into families (id, label) values ('f6500000-0000-0000-0000-000000000010', 'Family G');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-000000000010', 'f6500000-0000-0000-0000-000000000010', 'G1', 'Student', 'Gr3');
+insert into enrollments (id, student_id, class_id, session_id, status, enrolled_at) values
+  ('e6500000-0000-0000-0000-000000000010', '56500000-0000-0000-0000-000000000010', 'cc650000-0000-0000-0000-000000000010', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-11 23:00:00+00');
+insert into attendance (enrollment_id, class_meeting_date, status, marked_by) values
+  ('e6500000-0000-0000-0000-000000000010', '2026-01-11', 'present', :'v_teacher'::uuid);
+
 -- Positive case: Coordinator's own-session call.
 select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6500000-0000-0000-0000-000000000001'::uuid);
 
@@ -115,6 +144,14 @@ select is(
   null, 'Class E update_rate = null');
 
 select is(
+  (select attendance_rate from t_compliance where class_id = 'cc650000-0000-0000-0000-00000000000f'),
+  null, 'Class F: todays scheduled meeting must not enter the window before it can be marked (current_date boundary bug)');
+
+select is(
+  (select attendance_rate from t_compliance where class_id = 'cc650000-0000-0000-0000-000000000010'),
+  100.0, 'Class G: same-day enrollment at a different UTC time-of-day must still count as expected (timestamptz-vs-date boundary bug)');
+
+select is(
   (select count(*) from audit_log where actor_role = 'coordinator' and action = 'read' and target_table = 'attendance' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
   1, 'exactly one audit_log read row per successful call (never per-student — AC8, no student-identifying data returned)');
 
@@ -129,6 +166,51 @@ select tests.clear_authentication();
 select is(
   (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
   1, 'the cross-scope call writes exactly one denied audit_log row');
+
+-- Cross-role: a wrong-*role* caller must be denied even when authenticated within the target
+-- session's own scope — the RPC's `elsif v_role = 'coordinator'` branch must not silently let
+-- teacher/parent/student calls fall through as authorized (constitution §11.3, non-negotiable #4).
+select tests.create_supabase_user('compliance-parent@test.local') as v_parent \gset
+select tests.create_supabase_user('compliance-student@test.local') as v_student \gset
+
+select tests.authenticate_as(:'v_teacher'::uuid, 'teacher', 'class', 'cc650000-0000-0000-0000-00000000000a'::uuid);
+select is(
+  (select count(*) from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2))::int,
+  0, 'teacher (wrong role, in-scope class) gets zero rows from get_session_compliance_for_staff');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'teacher' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  1, 'teacher''s denied call writes one denied audit_log row');
+
+select tests.authenticate_as(:'v_parent'::uuid, 'parent');
+select is(
+  (select count(*) from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2))::int,
+  0, 'parent gets zero rows from get_session_compliance_for_staff');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'parent' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  1, 'parent''s denied call writes one denied audit_log row');
+
+select tests.authenticate_as(:'v_student'::uuid, 'student');
+select is(
+  (select count(*) from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2))::int,
+  0, 'student gets zero rows from get_session_compliance_for_staff');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'student' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  1, 'student''s denied call writes one denied audit_log row');
+
+-- anon: no execute grant at all (RPC revokes from public, grants only to authenticated).
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'anon', true);
+select throws_ok(
+  $t$ select * from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) $t$,
+  '42501',
+  null,
+  'anon role is denied execute on get_session_compliance_for_staff (no grant to anon)'
+);
+reset role;
+select set_config('request.jwt.claims', '', true);
 
 -- audit_log_coordinator_read branch (c): sibling-session coordinator must not see Session A's
 -- own-session audit rows (the 'read' row from the positive-case RPC call above) via direct
