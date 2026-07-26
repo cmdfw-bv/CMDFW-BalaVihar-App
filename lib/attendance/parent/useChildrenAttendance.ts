@@ -27,10 +27,15 @@ export function useChildrenAttendance(): UseChildrenAttendanceResult {
           setState('error');
           return;
         }
-        const rows = (data ?? []) as unknown as EnrollmentRow[];
-        const mapped = sortChildrenByName(rows.map(mapEnrollmentRow));
-        setChildren(mapped);
-        setState(mapped.length === 0 ? 'empty' : 'content');
+        try {
+          const rows = (data ?? []) as unknown as EnrollmentRow[];
+          const mapped = sortChildrenByName(rows.map(mapEnrollmentRow));
+          setChildren(mapped);
+          setState(mapped.length === 0 ? 'empty' : 'content');
+        } catch {
+          setErrorText('Something went wrong loading attendance.');
+          setState('error');
+        }
       });
   }, []);
 

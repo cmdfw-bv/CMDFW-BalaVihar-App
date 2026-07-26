@@ -33,7 +33,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
 
 ### Stage 1 — `lib/attendance/parent/childAttendanceStats.ts` (pure, TDD)
 
-- [ ] **P1 — tests (RED)** `lib/attendance/parent/__tests__/childAttendanceStats.test.ts`
+- [x] **P1 — tests (RED)** `lib/attendance/parent/__tests__/childAttendanceStats.test.ts`
   ```typescript
   import { describe, it, expect } from 'vitest';
   import {
@@ -102,7 +102,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
   ```
   Run `npm test` (or `vitest run lib/attendance/parent`) → confirm RED (module doesn't exist yet).
 
-- [ ] **P2 — implementation** `lib/attendance/parent/childAttendanceStats.ts`
+- [x] **P2 — implementation** `lib/attendance/parent/childAttendanceStats.ts`
   ```typescript
   export interface AttendanceStats {
     present: number;
@@ -162,7 +162,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
 
 ### Stage 2 — `lib/attendance/parent/useChildrenAttendance.ts` (wiring, hand-verified at `/build`)
 
-- [ ] **P3 — implementation**
+- [x] **P3 — implementation**
   ```typescript
   import { useCallback, useEffect, useState } from 'react';
   import { supabase } from '../../supabase';
@@ -213,7 +213,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
 
 ### Stage 3 — Presentational components (wiring, hand-verified)
 
-- [ ] **P4 — `lib/attendance/parent/ChildAttendanceRow.tsx`**
+- [x] **P4 — `lib/attendance/parent/ChildAttendanceRow.tsx`**
   ```typescript
   import { View } from 'react-native';
   import { StyleSheet } from 'react-native-unistyles';
@@ -245,7 +245,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
   }));
   ```
 
-- [ ] **P5 — `lib/attendance/parent/ParentAttendanceScreen.tsx`**
+- [x] **P5 — `lib/attendance/parent/ParentAttendanceScreen.tsx`**
   ```typescript
   import { ScrollView } from 'react-native';
   import { StyleSheet } from 'react-native-unistyles';
@@ -281,7 +281,7 @@ export const CHILDREN_ATTENDANCE_QUERY = {
 
 ### Stage 4 — Screen wiring
 
-- [ ] **P6 — `app/(tabs)/attendance.tsx`** — add the Parent branch (decision #5: thin role dispatcher, every other role keeps today's placeholder)
+- [x] **P6 — `app/(tabs)/attendance.tsx`** — add the Parent branch (decision #5: thin role dispatcher, every other role keeps today's placeholder)
   ```typescript
   import { View, Text } from "react-native";
   import { useRoleGuard } from "../../lib/auth/useRoleGuard";
@@ -308,8 +308,8 @@ export const CHILDREN_ATTENDANCE_QUERY = {
 
 ### Stage 5 — Verify (`/build`, `/test`)
 
-- [ ] **P7 — `/build` manual walkthrough:** seed a Parent test account (single child, multi-child, zero-active-enrollment, and a child with zero marked attendance) via local Supabase; confirm all four `StateView` states render correctly and `refetch` recovers from a forced error (e.g. kill local Supabase mid-load).
-- [ ] **P8 — `/test` design-parity pass (`playwright-cli`):** all four breakpoints (360/768/1024/1440) against AC#8 — no hex literals (grep `ChildAttendanceRow.tsx`/`ParentAttendanceScreen.tsx` for hex, expect none), tabular-nums via `StatTile`'s existing mono variant, ≥44px touch targets via `ListRow`'s existing `theme.chrome.hitMin`, long-name truncation at 360px (`ListRow`'s existing `numberOfLines={1}`, no new work needed — just confirm it holds for this consumer). Multi-guardian case (AC edge case) is provable by construction (no per-guardian filtering code exists) rather than a live two-account test — note this in `/test`'s report rather than re-deriving it.
+- [x] **P7 — `/build` manual walkthrough:** seed a Parent test account (single child, multi-child, zero-active-enrollment, and a child with zero marked attendance) via local Supabase; confirm all four `StateView` states render correctly and `refetch` recovers from a forced error (e.g. kill local Supabase mid-load).
+- [x] **P8 — `/test` design-parity pass (`playwright-cli`):** all four breakpoints (360/768/1024/1440) against AC#8 — no hex literals (grep `ChildAttendanceRow.tsx`/`ParentAttendanceScreen.tsx` for hex, expect none), tabular-nums via `StatTile`'s existing mono variant, ≥44px touch targets via `ListRow`'s existing `theme.chrome.hitMin`, long-name truncation at 360px (`ListRow`'s existing `numberOfLines={1}`, no new work needed — just confirm it holds for this consumer). Multi-guardian case (AC edge case) is provable by construction (no per-guardian filtering code exists) rather than a live two-account test — note this in `/test`'s report rather than re-deriving it.
 
 ---
 
