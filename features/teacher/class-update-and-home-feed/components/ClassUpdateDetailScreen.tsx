@@ -42,7 +42,10 @@ export default function ClassUpdateDetailScreen() {
   );
 
   const load = useCallback(async () => {
-    setState("loading");
+    // Matches HomeFeedScreen's guard: a refetch after an already-successful load (e.g. the
+    // post-send reload below) stays on "content" instead of blanking the whole thread stack
+    // to a full-screen spinner.
+    setState((prev) => (prev === "content" ? prev : "loading"));
     try {
       const found = await fetchClassUpdateById(supabase, id);
       const rows = await fetchComments(supabase, id);
