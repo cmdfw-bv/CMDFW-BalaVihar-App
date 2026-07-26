@@ -20,6 +20,20 @@ interface RawClassUpdateRow {
   classes: { name: string; sessions: { name: string; centers: { name: string } } } | null;
 }
 
+const CLASS_UPDATE_COLUMNS = 'id, class_id, posted_by, body, homework, created_at, classes(name, sessions(name, centers(name)))';
+
+function mapClassUpdateRow(row: RawClassUpdateRow): ClassUpdateRow {
+  return {
+    id: row.id,
+    class_id: row.class_id,
+    posted_by: row.posted_by,
+    body: row.body,
+    homework: row.homework,
+    created_at: row.created_at,
+    classLabel: row.classes ? `${row.classes.sessions.centers.name} · ${row.classes.sessions.name} · ${row.classes.name}` : '',
+  };
+}
+
 // RLS already scopes which rows come back per viewer (Student/Parent/Teacher/oversight) — this
 // query is identical for every role (§12.1 non-negotiable #1: access is DB-enforced, not
 // client-branched). The classes/sessions/centers nested select is readable per-viewer because
@@ -28,18 +42,24 @@ interface RawClassUpdateRow {
 export async function fetchClassUpdatesFeed(supabase: SupabaseClient): Promise<ClassUpdateRow[]> {
   const { data, error } = await supabase
     .from('class_updates')
-    .select('id, class_id, posted_by, body, homework, created_at, classes(name, sessions(name, centers(name)))')
+    .select(CLASS_UPDATE_COLUMNS)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as unknown as RawClassUpdateRow[]).map((row) => ({
-    id: row.id,
-    class_id: row.class_id,
-    posted_by: row.posted_by,
-    body: row.body,
-    homework: row.homework,
-    created_at: row.created_at,
-    classLabel: row.classes ? `${row.classes.sessions.centers.name} · ${row.classes.sessions.name} · ${row.classes.name}` : '',
-  }));
+  return ((data ?? []) as unknown as RawClassUpdateRow[]).map(mapClassUpdateRow);
+}
+
+// Detail screen needs exactly one row — filter server-side instead of refetching (and re-joining)
+// the whole feed and finding it client-side. maybeSingle() (not single()) so an out-of-scope/
+// nonexistent id resolves to null, matching fetchClassUpdatesFeed(...).find(...)'s prior behavior,
+// rather than throwing.
+export async function fetchClassUpdateById(supabase: SupabaseClient, id: string): Promise<ClassUpdateRow | null> {
+  const { data, error } = await supabase
+    .from('class_updates')
+    .select(CLASS_UPDATE_COLUMNS)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapClassUpdateRow(data as unknown as RawClassUpdateRow) : null;
 }
 
 export async function insertClassUpdate(

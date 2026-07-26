@@ -9,12 +9,18 @@ import FeedCard from "../../../../components/feed/FeedCard";
 import CommentThread from "../../../../components/comments/CommentThread";
 import CommentComposer from "../../../../components/comments/CommentComposer";
 import StateView from "../../../../components/core/StateView";
-import { fetchClassUpdatesFeed, type ClassUpdateRow } from "../api/classUpdates";
+import { fetchClassUpdateById, type ClassUpdateRow } from "../api/classUpdates";
 import { fetchComments, insertComment, resolveParentFamilyLabel, type CommentRow } from "../api/comments";
 import { groupCommentsForViewer } from "../logic/threadAssembly";
 
 type ScreenState = "loading" | "error" | "content";
 type ViewerRole = "student" | "parent" | "teacher";
+
+// Only these three roles have an INSERT policy on `comments` (comments_student_insert /
+// comments_parent_insert / comments_teacher_insert). Coordinator/BV Coordinator/Admin have
+// select-only oversight policies (comments_coordinator_select/comments_org_select), so they must
+// never see a live composer (finding: PR #48 review).
+const COMMENTABLE_ROLES: ReadonlySet<string> = new Set<ViewerRole>(["student", "parent", "teacher"]);
 
 export default function ClassUpdateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,14 +30,21 @@ export default function ClassUpdateDetailScreen() {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [parentLabels, setParentLabels] = useState<Map<string, string | null>>(new Map());
 
-  const role = (activeRole as ViewerRole) ?? "student";
-  const groups = useMemo(() => groupCommentsForViewer(comments, role, session?.user.id ?? ""), [comments, role, session]);
+  const canComment = COMMENTABLE_ROLES.has(activeRole ?? "");
+  const role: ViewerRole = canComment ? (activeRole as ViewerRole) : "student";
+  // Oversight roles get the same full public+private read Teacher gets (comments_coordinator_select /
+  // comments_org_select mirror comments_teacher_public_select's scope) — reuse the teacher-shaped
+  // grouping for them too, just without a composer.
+  const groupingRole: ViewerRole = canComment ? role : "teacher";
+  const groups = useMemo(
+    () => groupCommentsForViewer(comments, groupingRole, session?.user.id ?? ""),
+    [comments, groupingRole, session]
+  );
 
   const load = useCallback(async () => {
     setState("loading");
     try {
-      const feed = await fetchClassUpdatesFeed(supabase);
-      const found = feed.find((u) => u.id === id) ?? null;
+      const found = await fetchClassUpdateById(supabase, id);
       const rows = await fetchComments(supabase, id);
       setUpdate(found);
       setComments(rows);
@@ -49,7 +62,7 @@ export default function ClassUpdateDetailScreen() {
   // display name (M4's resolve_parent_family_label RPC) — fetched once per private group key,
   // never a Student's name (data minimization, /design's UI section).
   useEffect(() => {
-    if (role !== "teacher" || !update) return;
+    if (groupingRole !== "teacher" || !update) return;
     const privateKeys = groups.filter((g) => g.isPrivate).map((g) => g.key);
     const missing = privateKeys.filter((k) => !parentLabels.has(k));
     if (missing.length === 0) return;
@@ -59,7 +72,7 @@ export default function ClassUpdateDetailScreen() {
       );
       setParentLabels((prev) => new Map([...prev, ...entries]));
     })();
-  }, [role, update, groups, parentLabels]);
+  }, [groupingRole, update, groups, parentLabels]);
 
   async function send(targetParentId: string | null, isPrivate: boolean, body: string) {
     if (!session) return;
@@ -96,7 +109,7 @@ export default function ClassUpdateDetailScreen() {
 
       {groups.map((g) => (
         <View key={g.key} style={styles.threadCard}>
-          {role === "teacher" ? (
+          {groupingRole === "teacher" ? (
             <Text style={styles.threadLabel}>
               {g.isPrivate ? (parentLabels.get(g.key) ?? "Private thread") : "Public"}
             </Text>
@@ -109,12 +122,14 @@ export default function ClassUpdateDetailScreen() {
               time: new Date(c.created_at).toLocaleDateString(),
             }))}
           >
-            <CommentComposer
-              canPrivate={role === "parent"}
-              onSend={({ body, isPrivate }) =>
-                send(role === "teacher" && g.isPrivate ? g.key : null, role === "teacher" ? g.isPrivate : isPrivate, body)
-              }
-            />
+            {canComment ? (
+              <CommentComposer
+                canPrivate={role === "parent"}
+                onSend={({ body, isPrivate }) =>
+                  send(role === "teacher" && g.isPrivate ? g.key : null, role === "teacher" ? g.isPrivate : isPrivate, body)
+                }
+              />
+            ) : null}
           </CommentThread>
         </View>
       ))}

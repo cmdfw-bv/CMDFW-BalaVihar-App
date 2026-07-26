@@ -12,8 +12,9 @@ export interface CommentComposerProps {
   /** Allow the public/private toggle (off for surfaces where all comments are public). */
   canPrivate?: boolean;
   placeholder?: string;
-  /** Called with { body, isPrivate } on send. */
-  onSend?: (payload: { body: string; isPrivate: boolean }) => void;
+  /** Called with { body, isPrivate } on send. May reject/throw on failure (e.g. RLS denial,
+   * network error) — the composer keeps the typed text and shows an error until it resolves. */
+  onSend?: (payload: { body: string; isPrivate: boolean }) => void | Promise<void>;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -26,13 +27,23 @@ export default function CommentComposer({ canPrivate = true, placeholder = "Add 
   const { theme } = useUnistyles();
   const [value, setValue] = React.useState("");
   const [priv, setPriv] = React.useState(false);
-  const canSend = value.trim().length > 0;
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState(false);
+  const canSend = value.trim().length > 0 && !sending;
 
-  const send = () => {
+  const send = async () => {
     const payload = buildCommentPayload(value, priv);
-    if (payload) {
-      onSend?.(payload);
+    if (!payload) return;
+    setSending(true);
+    try {
+      await onSend?.(payload);
       setValue("");
+      setError(false);
+    } catch {
+      // Keep the typed text so nothing the user wrote is lost — they can retry.
+      setError(true);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -58,6 +69,7 @@ export default function CommentComposer({ canPrivate = true, placeholder = "Add 
           </Svg>
         </Pressable>
       </View>
+      {error ? <Text style={styles.errorText}>Couldn&apos;t send. Try again.</Text> : null}
       {canPrivate ? (
         <View style={styles.toggle}>
           {TOGGLE_OPTIONS.map((o) => {
@@ -156,4 +168,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.type.scale.eyebrow,
     color: on ? theme.colors.onAction : theme.colors.ink3,
   }),
+  errorText: {
+    fontFamily: theme.fonts.body,
+    fontSize: theme.type.scale.eyebrow,
+    color: theme.colors.status.absent,
+  },
 }));

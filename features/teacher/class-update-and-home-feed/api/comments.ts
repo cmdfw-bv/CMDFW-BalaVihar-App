@@ -44,9 +44,9 @@ export async function insertComment(
 }
 
 // Labels a Teacher's private-thread card with the target Parent/family's own display name
-// (M4's resolve_parent_family_label RPC) — reuses the same string_agg(students.first_name)
-// convention resolve_my_scope_labels() already established, just for "this other Parent"
-// instead of "myself". Returns null (not an error) when unauthorized/no-match — no existence leak.
+// (M4's resolve_parent_family_label RPC) — the RPC selects families.label directly, never a
+// student-derived value (data minimization). Returns null (not an error) when unauthorized/no-match
+// — no existence leak.
 export async function resolveParentFamilyLabel(
   supabase: SupabaseClient,
   parentUserId: string,
