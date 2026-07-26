@@ -1,10 +1,10 @@
 # Plan — Teacher: class-update-and-home-feed
 
-> Spec: [class-update-and-home-feed.md](class-update-and-home-feed.md) · ADR-0030, ADR-0031 (both Closed) · stage: `/plan` (this doc) → `/migration` ✓ (2026-07-24, Stage 1 only — see M1–M5 below) → `/build` ✓ (2026-07-24, Stages 2–5 — see W8 below) → next `/test`
+> Spec: [class-update-and-home-feed.md](class-update-and-home-feed.md) · ADR-0032, ADR-0033 (both Closed) · stage: `/plan` (this doc) → `/migration` ✓ (2026-07-24, Stage 1 only — see M1–M5 below) → `/build` ✓ (2026-07-24, Stages 2–5 — see W8 below) → next `/test`
 
 ## Plan-level decisions beyond the signed-off `/design`
 
-The signed-off design's table catalog and RLS SQL are implemented **verbatim** below, with two narrow additions the design didn't specify because they're implementation-level, not access-control decisions — neither reopens ADR-0030 (they don't change *who* can read what, only *what a row records once you're already allowed to read it*):
+The signed-off design's table catalog and RLS SQL are implemented **verbatim** below, with two narrow additions the design didn't specify because they're implementation-level, not access-control decisions — neither reopens ADR-0032 (they don't change *who* can read what, only *what a row records once you're already allowed to read it*):
 
 1. **`comments.author_role text not null`** (`'student'|'parent'|'teacher'`), set at insert time and pinned to the inserting role by each insert policy's `with check`. The design's UI section renders `Comment`'s `author.role` badge for every comment, but no table column carries that role and none of the three role-scoped `SELECT` policies can derive it after the fact from `author_user_id` alone (a multi-role account could hold more than one role over time). Storing it is the same posture as everything else here — the value the DB already knows at write time, not re-derived.
 2. **`public.resolve_parent_family_label(p_parent_user_id, p_class_id)`** — a `SECURITY DEFINER` RPC so a Teacher's stacked-private-thread UI (design decision #4) can label each thread card with the target Parent/family's name. The design explicitly says to reuse "`family_members`/`students`' existing display convention, not a new PII surface" — `resolve_my_scope_labels()` already established that convention (`string_agg(students.first_name)`) but is keyed to `auth.uid() = ur.user_id`, so it can only ever answer "what's *my own* label," never "what's *this other Parent's* label" — which is exactly what the Teacher's card needs. This function is the missing direction, gated identically to `is_parent_of_class`: only the class's current Teacher, its Coordinator, or org oversight can resolve a label, and only for a Parent who is actually enrolled-linked to that class. Unauthorized/no-match calls return `null`, not an error — no existence leak.
@@ -31,7 +31,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
 
 ### Stage 1 — Migrations (serialized)
 
-- [x] **M1 — pgTAP tests (RED)** `supabase/tests/160_class_updates_and_comments_rls.sql`
+- [x] **M1 — pgTAP tests (RED)** `supabase/tests/170_class_updates_and_comments_rls.sql`
   ```sql
   begin;
   select plan(22);
@@ -468,7 +468,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
 
 ---
 
-### Stage 2 — `push-send`'s `class_update_id` branch (ADR-0031; pure/mockable, TDD)
+### Stage 2 — `push-send`'s `class_update_id` branch (ADR-0033; pure/mockable, TDD)
 
 - [x] **P1 — tests (RED)** `netlify/functions/__tests__/class-update-dispatch.test.ts`
   ```typescript
@@ -547,7 +547,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
   //   const CLASS_UPDATE_ID = '33333333-3333-3333-3333-333333333333';
   //   const CLASS_ID = '44444444-4444-4444-4444-444444444444';
 
-  describe('push-send handler — class_update_id branch (ADR-0031)', () => {
+  describe('push-send handler — class_update_id branch (ADR-0033)', () => {
     it('422s when both message_id and class_update_id are present', async () => {
       const res = (await handler(makeEvent({ body: body({ message_id: MESSAGE_ID, class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
       expect(res.statusCode).toBe(422);
@@ -590,7 +590,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
   ```
   Run → FAIL (`push-send.ts` doesn't understand `class_update_id` yet, and `unexpected table` throws for the new mocks) = RED ✓.
 
-- [x] **P4 — implementation** `netlify/functions/push-send.ts` (full rewrite — refactors the existing `message_id`-only handler into two branch functions sharing one fan-out, per ADR-0031's discriminated body; behavior of the existing `message_id` branch is preserved exactly)
+- [x] **P4 — implementation** `netlify/functions/push-send.ts` (full rewrite — refactors the existing `message_id`-only handler into two branch functions sharing one fan-out, per ADR-0033's discriminated body; behavior of the existing `message_id` branch is preserved exactly)
   ```typescript
   import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
   import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -684,7 +684,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
     if (!classUpdate) return json(200, { status: 'noop', recipients: 0, sent: 0, cleaned_up: 0 });
 
     const posterUserId = classUpdate['posted_by'] as string;
-    // Same notification-spam guard as the message branch, applied to class_updates.posted_by (ADR-0031).
+    // Same notification-spam guard as the message branch, applied to class_updates.posted_by (ADR-0033).
     if (posterUserId !== callerUserId) return json(403, { reason: "caller is not the class update's poster" });
 
     const classId = classUpdate['class_id'] as string;
@@ -1320,7 +1320,7 @@ No author *name* resolution is added anywhere (not for `class_updates.posted_by`
   ```
 
 - [x] **W8 — manual walkthrough at `/build`** (`npm run dev`): Teacher posts (body-only, then body+homework) → confirm push-send call fires and Student/Parent home feeds show the new card within the four DoD states; Student posts a public comment; Parent posts a public comment, then a private comment; Teacher replies privately within that Parent's thread card; confirm a second Parent's private thread never appears on the first Parent's screen; confirm role-switch (a multi-role test account, if seeded) re-scopes the feed immediately; confirm zero-enrollment class and zero-comment class_update both render their honest empty states, not errors.
-  **What was actually verified at this `/build` pass (2026-07-24) — no headless-browser tool was available in this environment, so the interactive per-role click-through above was not executed:** `npm run typecheck` clean; `npm run lint` clean; full `npx vitest run` — 61 files / 398 tests green (includes the new `class-update-dispatch.test.ts`, extended `push-send.test.ts`, `threadAssembly.test.ts`, `classUpdatePayload.test.ts`); `npx supabase test db` — 20 files / 194 pgTAP assertions green, `160_class_updates_and_comments_rls.sql` at 25/25 unchanged since `/migration`; `npm run web` boots Metro/Expo Router cleanly (1165 modules, zero bundle errors) and every new route (`/feed`, `/class-update/new`, `/class-update/[id]`) resolves 200 with the router registering both dynamic routes correctly. **Not verified: the actual multi-role interactive flow (Teacher post → Student/Parent feed → public/private comment round-trip → push dispatch) — needs a real browser pass before `/test`/`/deploy-staging`.**
+  **What was actually verified at this `/build` pass (2026-07-24) — no headless-browser tool was available in this environment, so the interactive per-role click-through above was not executed:** `npm run typecheck` clean; `npm run lint` clean; full `npx vitest run` — 61 files / 398 tests green (includes the new `class-update-dispatch.test.ts`, extended `push-send.test.ts`, `threadAssembly.test.ts`, `classUpdatePayload.test.ts`); `npx supabase test db` — 20 files / 194 pgTAP assertions green, `170_class_updates_and_comments_rls.sql` at 25/25 unchanged since `/migration`; `npm run web` boots Metro/Expo Router cleanly (1165 modules, zero bundle errors) and every new route (`/feed`, `/class-update/new`, `/class-update/[id]`) resolves 200 with the router registering both dynamic routes correctly. **Not verified: the actual multi-role interactive flow (Teacher post → Student/Parent feed → public/private comment round-trip → push dispatch) — needs a real browser pass before `/test`/`/deploy-staging`.**
 
   **Real-browser pass completed at `/test` (2026-07-24, see `UAT.md` UAT-10 through UAT-17 + the 2026-07-24 / 2026-07-24 (fix pass) sign-off rows for full detail).** The interactive flow this note flagged as unverified found three real bugs, all now fixed: `push-send`'s service-role client had no grant on `class_updates` (silent no-op on every dispatch, issue #47, fixed via `20260724130000_push_send_service_role_grants.sql`); `/class-update/new` and `/class-update/[id]` had no header/back-nav/width-cap (fixed via new `app/class-update/_layout.tsx`); the Teacher's private-thread label exposed the Student's name instead of a family label, conflicting with this doc's own UI section wording (fixed — `resolve_parent_family_label()` now selects `families.label`). Public/private comment round-trip, cross-family isolation, role-switch re-scoping, and the DoD states were all verified live and pass.
 

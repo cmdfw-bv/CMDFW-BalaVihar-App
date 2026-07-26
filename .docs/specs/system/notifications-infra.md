@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all 6 human personas as recipients (Student, Parent, Teacher primary per issue #5; Coordinator/BV Coordinator/Admin also receive as `conversation_participants` in `session_staff`/`leadership` threads, per ADR-0016's role-aware defaults) · **scope:** Web Push (VAPID) delivery infra + AWS SES as Supabase Auth's SMTP provider (magic-link only) — plugs into `push_subscriptions` and `conversation_participants.notify_level` · **governing ADR:** ADR-0016 (notification-preferences, consumed — this item implements its dispatch rule), ADR-0015 (chat-access-model, consumed — mention syntax/no-DM boundary), ADR-0003 (access-control-rls, consumed), **ADR-0028 (push dispatch is client-invoked, new)** · **covers:** doc 3 §8 (notifications), doc 1 §9 (thinnest-slice push), doc 2 §2/§4/§5 (notifications/alerts per persona)
 
-**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0028; revisited 2026-07-24 during `#21`'s `/architect` pass — ADR-0031 amends the `push-send` contract below) → `/design` ✓ → `/plan` ✓ (`docs/superpowers/plans/2026-07-21-notifications-infra.md` — **needs a re-sync pass for ADR-0031 before `/build`**) → `/migration` is a no-op (no new tables/columns/RLS — confirmed in Design's "Data & RLS impact") → next is `/build`.
+**Stage:** `/refine` ✓ → `/architect` ✓ (ADR-0028; revisited 2026-07-24 during `#21`'s `/architect` pass — ADR-0033 amends the `push-send` contract below) → `/design` ✓ → `/plan` ✓ (`docs/superpowers/plans/2026-07-21-notifications-infra.md` — **needs a re-sync pass for ADR-0033 before `/build`**) → `/migration` is a no-op (no new tables/columns/RLS — confirmed in Design's "Data & RLS impact") → next is `/build`.
 
 ---
 
@@ -55,7 +55,7 @@ Student, Parent, Teacher as the named/primary recipients (issue #5); Coordinator
 No new RLS surface — `push_subscriptions` (owner-only) and `conversation_participants`/`messages` (participant-scoped) RLS already exist and are unchanged by this item. The `push-send` function runs service-role, server-side only; VAPID private key and SES credentials live only in `netlify/functions/` env (constitution rule #2).
 
 ### Explicitly out of scope (so a later item picks it up)
-- The `class_updates`/announcements table itself, and #21's own recipient/RLS logic beyond the `push-send` contract — owned by `#21 class-update-and-home-feed` (Teacher persona). This item's `push-send` contract (amended by ADR-0031) is the only piece shared across the two; #21 does not require rework of the function's core dispatch/cleanup/response phases.
+- The `class_updates`/announcements table itself, and #21's own recipient/RLS logic beyond the `push-send` contract — owned by `#21 class-update-and-home-feed` (Teacher persona). This item's `push-send` contract (amended by ADR-0033) is the only piece shared across the two; #21 does not require rework of the function's core dispatch/cleanup/response phases.
 - Realtime in-app (WebSocket) delivery while a client is connected — `#6 realtime-chat-delivery`.
 - Any custom per-event notification email or push-failure email fallback — explicitly decided out at POC (see Decisions above).
 - Exact invocation mechanism (client-call-after-insert vs. DB trigger/webhook) — a `/design`-stage decision, not fixed here.
@@ -114,20 +114,20 @@ The client call is **fire-and-forget**: the chat send UX resolves on the `messag
 
 `POST /.netlify/functions/push-send`, `Authorization: Bearer <user JWT>` (same auth pattern as `user-role-grant`/`csv-import`).
 
-**Request body (amended 2026-07-24, ADR-0031):** a discriminated union — `{ "message_id": "<uuid>" }` **or** `{ "class_update_id": "<uuid>" }`, never both, never neither (422 otherwise). `class_update_id` is `class-update-and-home-feed` (#21)'s reference, added as this item's second caller per ADR-0028's own anticipation; ADR-0031 is the record of the concrete contract shape. The function is deliberately "thin caller, fat function" (ADR-0028): it re-derives everything else from the DB, for either branch.
+**Request body (amended 2026-07-24, ADR-0033):** a discriminated union — `{ "message_id": "<uuid>" }` **or** `{ "class_update_id": "<uuid>" }`, never both, never neither (422 otherwise). `class_update_id` is `class-update-and-home-feed` (#21)'s reference, added as this item's second caller per ADR-0028's own anticipation; ADR-0033 is the record of the concrete contract shape. The function is deliberately "thin caller, fat function" (ADR-0028): it re-derives everything else from the DB, for either branch.
 
 Phases (matching the existing `user-role-grant.ts` phased style); phases 1, 2, 6, 7 are shared, phases 3–5 branch on which reference was sent:
 1. **Auth.** `client.auth.getUser(token)` → `caller_user_id`. 401 if missing/invalid.
 2. **Validate.** Exactly one of `message_id` / `class_update_id` present + UUID-shaped. 422 otherwise.
 3. **Load + authorize.**
    - `message_id` branch: service-role select of `messages` (id, conversation_id, sender_user_id, mention_targets). Not found → `200 {status:'noop'}`. If `sender_user_id !== caller_user_id` → `403`. (Flagged during design, confirmed at sign-off: because `push-send` runs service-role and bypasses RLS entirely, nothing else stops an authenticated-but-unrelated caller from repeatedly triggering dispatch about a message they didn't send — a notification-spam vector against that message's real recipients.)
-   - `class_update_id` branch (ADR-0031): service-role select of `class_updates` (id, class_id, posted_by). Not found → `200 {status:'noop'}`. If `posted_by !== caller_user_id` → `403` (same spam-vector rationale as the message branch).
+   - `class_update_id` branch (ADR-0033): service-role select of `class_updates` (id, class_id, posted_by). Not found → `200 {status:'noop'}`. If `posted_by !== caller_user_id` → `403` (same spam-vector rationale as the message branch).
 4. **Derive recipients.**
    - `message_id` branch: service-role select of `conversation_participants` for the message's `conversation_id`, excluding the sender. Filter per participant (see query below).
-   - `class_update_id` branch (ADR-0031): service-role select of current `enrollments` for `class_id` → the enrolled Students + their Parents, excluding the poster.
+   - `class_update_id` branch (ADR-0033): service-role select of current `enrollments` for `class_id` → the enrolled Students + their Parents, excluding the poster.
 5. **Payload copy** (PII-free, both branches — never scope_id, never message/update body, never names):
    - `message_id` branch: keyed off `conversations.kind` — `class` → "New message in your class chat", `session_staff` → "New message in your session staff chat", `leadership` → "New message in the leadership chat".
-   - `class_update_id` branch (ADR-0031): generic — "New update posted in your class" (exact copy is `class-update-and-home-feed`'s `/design` decision, following this ADR's shape).
+   - `class_update_id` branch (ADR-0033): generic — "New update posted in your class" (exact copy is `class-update-and-home-feed`'s `/design` decision, following this ADR's shape).
 6. **Fan out.** Service-role select of `push_subscriptions` for the recipient `user_id`s; `web-push` dispatch per subscription with the phase-5 payload.
 7. **Cleanup.** Any subscription whose send fails with `statusCode` 404/410 (permanently gone) is deleted from `push_subscriptions`. Other failures (e.g. transient 5xx) are logged and skipped — no retry queue at POC.
 8. **Response.** Always `200 { status: 'dispatched', recipients: N, sent: N, cleaned_up: N }` once past phases 1–3 — matches AC#7 (silent no-op, not an error).
@@ -180,7 +180,7 @@ Design DoD applied: tokens only (no hex/spacing literals — both reference comp
 
 ### Data & RLS impact
 
-No new tables, columns, or RLS policies — confirmed unchanged from the Requirements section above. `push-send` runs service-role (bypasses RLS by design, per ADR-0028) and is the only place that reads across the recipient set; it must never accept a client-supplied recipient list or payload (ADR-0028) and must reject a caller who isn't the referenced row's own author, for either branch (phase 3 above; ADR-0031 extends this to `class_updates.posted_by`).
+No new tables, columns, or RLS policies — confirmed unchanged from the Requirements section above. `push-send` runs service-role (bypasses RLS by design, per ADR-0028) and is the only place that reads across the recipient set; it must never accept a client-supplied recipient list or payload (ADR-0028) and must reject a caller who isn't the referenced row's own author, for either branch (phase 3 above; ADR-0033 extends this to `class_updates.posted_by`).
 
 ### Edge cases (added during design, beyond the refine-stage list above)
 - **Caller ≠ sender on `push-send`.** A `message_id` whose `sender_user_id` doesn't match the caller's JWT is rejected (403), not silently processed — closes the notification-spam vector described in phase 3.

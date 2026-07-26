@@ -1,4 +1,4 @@
-# ADR-0030: Class-update comment privacy — column-flag RLS with scope-derived oversight
+# ADR-0032: Class-update comment privacy — column-flag RLS with scope-derived oversight
 
 **Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** Teacher → `class-update-and-home-feed` (`.docs/specs/teacher/class-update-and-home-feed.md`), issue #21.

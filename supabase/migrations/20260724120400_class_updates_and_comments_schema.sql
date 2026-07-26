@@ -1,5 +1,5 @@
 -- Teacher: class-update-and-home-feed (issue #21). New tables — Teacher-authored class updates
--- and public/private comments on them (ADR-0030's column-flag privacy model, not a participant
+-- and public/private comments on them (ADR-0032's column-flag privacy model, not a participant
 -- table). class_id FK is `on delete restrict` (matches enrollments.class_id's convention — a
 -- class-with-updates shouldn't silently vanish); posted_by/author_user_id are `on delete set
 -- null`, mirroring messages.sender_user_id's existing convention exactly.

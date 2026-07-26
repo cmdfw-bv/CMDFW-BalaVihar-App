@@ -199,7 +199,7 @@ describe('push-send handler', () => {
   });
 });
 
-describe('push-send handler — class_update_id branch (ADR-0031)', () => {
+describe('push-send handler — class_update_id branch (ADR-0033)', () => {
   it('422s when both message_id and class_update_id are present', async () => {
     const res = (await handler(makeEvent({ body: body({ message_id: MESSAGE_ID, class_update_id: CLASS_UPDATE_ID }) }), {} as never)) as HandlerResponse;
     expect(res.statusCode).toBe(422);

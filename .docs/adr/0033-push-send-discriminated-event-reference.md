@@ -1,4 +1,4 @@
-# ADR-0031: `push-send` contract extended to a discriminated event reference (ADR-0028 addendum)
+# ADR-0033: `push-send` contract extended to a discriminated event reference (ADR-0028 addendum)
 
 **Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `notifications-infra` (`.docs/specs/system/notifications-infra.md`), consumed by Teacher → `class-update-and-home-feed` (issue #21).

@@ -1,8 +1,8 @@
 # Teacher — Class update & home feed
 
-> **owner:** Teacher · **consumers:** Student (own class, read + comment), Parent (each child's class, read + comment), Coordinator/BV Coordinator/Admin (oversight read of class updates + all comments, public and private, ADR-0030 extended during `/design`), System (`notifications-infra` — `push-send` second caller, ADR-0031) · **scope:** Teacher=class (post, own class only) · Student=self (read/comment, own class) · Parent=own-children (read/comment, each enrolled child's class) · Coordinator=session / BV Coordinator·Admin=org (oversight read — class updates + all comments, ADR-0030 extended) — §5.4 · **governing ADR:** ADR-0030 (comment privacy — column-flag RLS + scope-derived oversight), ADR-0031 (`push-send` discriminated event reference, ADR-0028 addendum) · **covers:** doc 2 Teacher POC-core "post class update (+ optional homework)"; doc 2 Student/Parent POC-core "home feed" + "two-way comments (public + private)"; doc 1 §5 thinnest-slice step 2–3 (Teacher posts, Student/Parent receive push + comment); doc 3 §6.2 (new table, flagged not yet in the canonical list); GitHub issue #21
+> **owner:** Teacher · **consumers:** Student (own class, read + comment), Parent (each child's class, read + comment), Coordinator/BV Coordinator/Admin (oversight read of class updates + all comments, public and private, ADR-0032 extended during `/design`), System (`notifications-infra` — `push-send` second caller, ADR-0033) · **scope:** Teacher=class (post, own class only) · Student=self (read/comment, own class) · Parent=own-children (read/comment, each enrolled child's class) · Coordinator=session / BV Coordinator·Admin=org (oversight read — class updates + all comments, ADR-0032 extended) — §5.4 · **governing ADR:** ADR-0032 (comment privacy — column-flag RLS + scope-derived oversight), ADR-0033 (`push-send` discriminated event reference, ADR-0028 addendum) · **covers:** doc 2 Teacher POC-core "post class update (+ optional homework)"; doc 2 Student/Parent POC-core "home feed" + "two-way comments (public + private)"; doc 1 §5 thinnest-slice step 2–3 (Teacher posts, Student/Parent receive push + comment); doc 3 §6.2 (new table, flagged not yet in the canonical list); GitHub issue #21
 
-**Stage:** Refined ✓ → `/architect` ✓ (ADR-0030, ADR-0031) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/160_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → next `/test`.
+**Stage:** Refined ✓ → `/architect` ✓ (ADR-0032, ADR-0033) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/170_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → next `/test`.
 
 ---
 
@@ -61,11 +61,11 @@
 - Enforced by RLS on the new tables (§12.1 non-negotiable #1) — the client never gates this on its own.
 
 ### Explicitly out of scope (so a later item picks it up)
-- **Comment moderation** (hide/delete/report) — separate future Teacher item. (Oversight *read* access into private threads is in scope — ADR-0030; acting on a comment is not.)
+- **Comment moderation** (hide/delete/report) — separate future Teacher item. (Oversight *read* access into private threads is in scope — ADR-0032; acting on a comment is not.)
 - **Class roster screen** — separate future Teacher item ("view class roster," doc 2).
 - **Announcements** (org/center-scoped, Coordinator/BV Coordinator/Admin-authored) — separate future items; this item's feed doesn't render them because they don't exist yet, but the feed shape doesn't preclude adding them later.
 - **Structured homework/assignment tracking, syllabus, due dates** — deferred (doc 2: "calendar/syllabus").
-- **`push-send` function itself** — built by `notifications-infra` (System); this item is its second caller via the `class_update_id` branch (ADR-0031), not a rebuild.
+- **`push-send` function itself** — built by `notifications-infra` (System); this item is its second caller via the `class_update_id` branch (ADR-0033), not a rebuild.
 
 ---
 
@@ -75,23 +75,23 @@
 
 Two genuinely new decisions were surfaced (not left implicit) and recorded:
 
-1. **ADR-0030 — comment privacy is column-flag RLS (`is_private`/`target_parent_id`), not a participant table.** The refine brief flagged this as a candidate extension of ADR-0015's Teacher↔Parent chat precedent. Reviewed against ADR-0015's actual rationale (a participant table exists there for grade-band membership derivation + `@mention` resolution + realtime presence — none of which apply to a fixed two/four-party comment thread) and against the already-built `Comment`/`CommentComposer` kit components (which already model privacy as a flat `isPrivate` prop). Decision: column-flag, with oversight eligibility (see next point) computed directly from JWT role+scope, no new table.
+1. **ADR-0032 — comment privacy is column-flag RLS (`is_private`/`target_parent_id`), not a participant table.** The refine brief flagged this as a candidate extension of ADR-0015's Teacher↔Parent chat precedent. Reviewed against ADR-0015's actual rationale (a participant table exists there for grade-band membership derivation + `@mention` resolution + realtime presence — none of which apply to a fixed two/four-party comment thread) and against the already-built `Comment`/`CommentComposer` kit components (which already model privacy as a flat `isPrivate` prop). Decision: column-flag, with oversight eligibility (see next point) computed directly from JWT role+scope, no new table.
 2. **Oversight read access, decided during this review (human confirmed):** Coordinator (own session) and BV Coordinator/Admin (org-wide) can **read** private Teacher↔Parent comment threads in their scope — mirroring ADR-0015's chat oversight posture, scope-derived rather than curated. This is new: the refine brief's own Access scope section didn't mention Coordinator/Admin at all. Moderation (acting on a comment) stays out of scope, unaffected by this.
-3. **ADR-0031 — `push-send`'s contract extended to a discriminated `{message_id}`/`{class_update_id}` body**, closing a real gap between `notifications-infra`'s AC#3 (promises a generic function) and its actual signed-off `/design` (hardcoded to `messages` only). `notifications-infra.md` has been amended accordingly (its `/plan` will need a re-sync pass before `/build`, noted on that spec). This item's own `/design` owns only the `class_update_id` branch's exact recipient query and payload string, per ADR-0031's shape — not a fresh invocation-mechanism decision.
+3. **ADR-0033 — `push-send`'s contract extended to a discriminated `{message_id}`/`{class_update_id}` body**, closing a real gap between `notifications-infra`'s AC#3 (promises a generic function) and its actual signed-off `/design` (hardcoded to `messages` only). `notifications-infra.md` has been amended accordingly (its `/plan` will need a re-sync pass before `/build`, noted on that spec). This item's own `/design` owns only the `class_update_id` branch's exact recipient query and payload string, per ADR-0033's shape — not a fresh invocation-mechanism decision.
 
 **Confirmed:** owner (Teacher), consumers (Student/Parent +, newly, Coordinator/BV Coordinator/Admin as oversight readers + System as `push-send`'s second caller), and scope are sound per §12.12, updated in the header above.
 
-**Hand-off → `/design`:** produce the `class_updates`/`comments` table shapes (columns per the refine brief + ADR-0030's `is_private`/`target_parent_id`), the exact RLS policy SQL (including the scope-derived oversight OR-conditions), confirm plain-RLS insert/read for Teacher (no RPC), and the `class_update_id`-branch payload copy string + recipient query for `push-send` per ADR-0031.
+**Hand-off → `/design`:** produce the `class_updates`/`comments` table shapes (columns per the refine brief + ADR-0032's `is_private`/`target_parent_id`), the exact RLS policy SQL (including the scope-derived oversight OR-conditions), confirm plain-RLS insert/read for Teacher (no RPC), and the `class_update_id`-branch payload copy string + recipient query for `push-send` per ADR-0033.
 
 ---
 
 ## Design (2026-07-24)
 
-> **Stage:** 1 — Design (this section). `/refine` ✓ → `/architect` ✓ (ADR-0030, ADR-0031) → `/design` ✓ → next `/plan`.
+> **Stage:** 1 — Design (this section). `/refine` ✓ → `/architect` ✓ (ADR-0032, ADR-0033) → `/design` ✓ → next `/plan`.
 
 ### Design decisions captured this pass
-1. **Table shapes** — `class_updates` + `comments`, column-flag privacy per ADR-0030. No participant table, no RPC (architect already confirmed plain RLS insert/select is sufficient — these aren't ADR-0019 "minor's record" tables).
-2. **Oversight is a full, plain scope-based read of `class_updates` and every `comments` row (public and private) — Coordinator (own session), BV Coordinator/Admin (org-wide).** *(Revised during this `/design` pass, human-directed — supersedes an earlier, narrower draft of this decision.)* The first draft of this design granted oversight into private comment threads only (via a `SECURITY DEFINER` lookup function, avoiding a standing `class_updates` grant), reasoned as the minimal read ADR-0030's own wording literally described. On review, that was an unnecessary asymmetry: every other operational table (`centers`/`sessions`/`classes`/`enrollments`) already gives Coordinator/BV Coordinator/Admin a plain scope-based read with no privacy branching, and class-update/public-comment content is *less* sensitive than the private threads ADR-0030 already opened up to these roles — restricting the less-sensitive content while granting the more-sensitive content was the actual inconsistency. Implemented as two ordinary scope-based `SELECT` policies per table (same shape as `classes_coordinator_select`/`classes_org_select`), which let the earlier `class_update_ref` bypass function be removed entirely — the `comments` oversight policies now resolve through the querying role's own genuine `class_updates` visibility. No new access-control mechanism, so this doesn't reopen ADR-0030 or need a new ADR — it's the existing §5.4 scope model applied uniformly to two tables this pass had under-scoped.
+1. **Table shapes** — `class_updates` + `comments`, column-flag privacy per ADR-0032. No participant table, no RPC (architect already confirmed plain RLS insert/select is sufficient — these aren't ADR-0019 "minor's record" tables).
+2. **Oversight is a full, plain scope-based read of `class_updates` and every `comments` row (public and private) — Coordinator (own session), BV Coordinator/Admin (org-wide).** *(Revised during this `/design` pass, human-directed — supersedes an earlier, narrower draft of this decision.)* The first draft of this design granted oversight into private comment threads only (via a `SECURITY DEFINER` lookup function, avoiding a standing `class_updates` grant), reasoned as the minimal read ADR-0032's own wording literally described. On review, that was an unnecessary asymmetry: every other operational table (`centers`/`sessions`/`classes`/`enrollments`) already gives Coordinator/BV Coordinator/Admin a plain scope-based read with no privacy branching, and class-update/public-comment content is *less* sensitive than the private threads ADR-0032 already opened up to these roles — restricting the less-sensitive content while granting the more-sensitive content was the actual inconsistency. Implemented as two ordinary scope-based `SELECT` policies per table (same shape as `classes_coordinator_select`/`classes_org_select`), which let the earlier `class_update_ref` bypass function be removed entirely — the `comments` oversight policies now resolve through the querying role's own genuine `class_updates` visibility. No new access-control mechanism, so this doesn't reopen ADR-0032 or need a new ADR — it's the existing §5.4 scope model applied uniformly to two tables this pass had under-scoped.
 3. **Comment count is a live, RLS-filtered `count(*)` query, not a denormalized counter column.** Requirement #6 needs the count to differ per viewer (a Parent's own private thread counts for them, not for another Parent) — RLS already produces exactly that when the count query runs as the viewer, so no per-viewer counter bookkeeping is needed or built.
 4. **Teacher's comment surface is stacked per-thread** (human-confirmed during this `/design`): one public `CommentThread` (all public comments + a public-only `CommentComposer`), plus one additional `CommentThread`+`CommentComposer` pair *per Parent who has an active private thread* on that update — each pre-scoped to that Parent, reusing the kit components verbatim, not a new component. A private thread only appears once that Parent has posted its first private comment; a Teacher cannot originate one (matches AC#5's "Teacher can reply privately *within that same Parent's thread*"). Student/Parent viewers need no such structure: a Student sees one thread (public only, `canPrivate=false`); a Parent sees one merged thread (their own private comments + all public comments, ordered together, `canPrivate=true` — sending with the toggle on implicitly targets `target_parent_id = auth.uid()`, no picker needed).
 5. **Within a thread, comments render oldest-first** (conversational order) — distinct from the feed itself, which is newest-first per AC#3. Not asked of the human — low-stakes UX default, consistent with every chat-style thread convention already in this design system (`Comment`/`CommentThread` have no built-in ordering opinion; ordering is a query-time `order by created_at asc` on the client side).
@@ -102,7 +102,7 @@ Two genuinely new decisions were surfaced (not left implicit) and recorded:
 | Table | Key columns | Notes |
 |---|---|---|
 | `class_updates` | `id, class_id→classes (not null), posted_by→auth.users (not null), body text (not null), homework text (nullable), created_at` | Teacher-authored post against their own current active-role class. `homework` is a plain optional text field (refine decision) — omitted, not empty-string, when there's no homework. |
-| `comments` | `id, class_update_id→class_updates (not null), author_user_id→auth.users (not null), body text (not null), is_private boolean (not null, default false), target_parent_id→auth.users (nullable — set iff `is_private`), created_at`, check: `(is_private = false and target_parent_id is null) or (is_private = true and target_parent_id is not null)` | Column-flag privacy model (ADR-0030) — no participant table. `target_parent_id` is always the Parent (never the Teacher), on both the Parent's own comment and the Teacher's replies within that thread. |
+| `comments` | `id, class_update_id→class_updates (not null), author_user_id→auth.users (not null), body text (not null), is_private boolean (not null, default false), target_parent_id→auth.users (nullable — set iff `is_private`), created_at`, check: `(is_private = false and target_parent_id is null) or (is_private = true and target_parent_id is not null)` | Column-flag privacy model (ADR-0032) — no participant table. `target_parent_id` is always the Parent (never the Teacher), on both the Parent's own comment and the Teacher's replies within that thread. |
 
 `class_id` FK: `on delete restrict` (matches `enrollments.class_id`'s convention — a class-with-updates shouldn't silently vanish). `posted_by`/`author_user_id`: `not null … on delete set null`, mirroring `messages.sender_user_id`'s existing convention in this codebase exactly (not re-litigated here). `class_update_id`/`target_parent_id`: `on delete cascade` / `on delete set null` respectively — a deleted update takes its comments with it (matches `messages` belonging to `conversations`); a deleted Parent account nulls the target rather than orphaning the FK.
 
@@ -183,7 +183,7 @@ grant execute on function public.is_parent_of_class(uuid, uuid) to authenticated
 
 -- comments SELECT — public branch, one policy per role (scope check mirrors
 -- that role's class_updates policy above); oversight branches (full read,
--- public + private, per ADR-0030 as extended by decision #2) below.
+-- public + private, per ADR-0032 as extended by decision #2) below.
 create policy comments_teacher_public_select on comments for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
@@ -235,7 +235,7 @@ using (
   )
 );
 
--- oversight (ADR-0030, extended during /design — decision #2 below): full read,
+-- oversight (ADR-0032, extended during /design — decision #2 below): full read,
 -- public and private, same plain scope-based pattern as class_updates' own
 -- oversight policies just above. Because Coordinator/BV Coordinator/Admin now
 -- carry a genuine class_updates SELECT grant, this subquery resolves correctly
@@ -301,9 +301,9 @@ with check (
 
 No moderation policies (`update`/`delete`) on `comments`, and no `update`/`delete` on `class_updates` — both explicitly out of scope for this item (edit/delete-a-post isn't in the acceptance criteria either; a Teacher who mis-posts corrects via a new comment, same posture as chat).
 
-### `push-send` — `class_update_id` branch (ADR-0031 hand-off)
+### `push-send` — `class_update_id` branch (ADR-0033 hand-off)
 
-**Recipient query** (service-role, run inside `push-send.ts` phase 4 for this branch; `$1 = class_updates.class_id`, `$2 = posted_by`, excluded per ADR-0031's self-notification rule):
+**Recipient query** (service-role, run inside `push-send.ts` phase 4 for this branch; `$1 = class_updates.class_id`, `$2 = posted_by`, excluded per ADR-0033's self-notification rule):
 
 ```sql
 select s.user_id
@@ -318,9 +318,9 @@ join family_members fm on fm.family_id = s.family_id
 where e.class_id = $1 and e.status = 'active' and fm.user_id <> $2
 ```
 
-`status = 'active'` matches ADR-0031's "currently enrolled" wording (same status value `enrollments_one_active_per_session` already keys off). `s.user_id is not null` excludes KG–Gr8 students with no login (`core-schema-and-rls` convention) — they have no `push_subscriptions` row to target anyway, but the filter keeps the query's intent explicit rather than relying on the later `push_subscriptions` join to silently drop them.
+`status = 'active'` matches ADR-0033's "currently enrolled" wording (same status value `enrollments_one_active_per_session` already keys off). `s.user_id is not null` excludes KG–Gr8 students with no login (`core-schema-and-rls` convention) — they have no `push_subscriptions` row to target anyway, but the filter keeps the query's intent explicit rather than relying on the later `push_subscriptions` join to silently drop them.
 
-**Payload copy** (PII-free, fixed string — no interpolation, matches the sibling `message_id` branch's per-kind pattern): **"New update posted in your class"** — the string ADR-0031/`notifications-infra`'s Design section already proposed; adopted as-is, no divergence.
+**Payload copy** (PII-free, fixed string — no interpolation, matches the sibling `message_id` branch's per-kind pattern): **"New update posted in your class"** — the string ADR-0033/`notifications-infra`'s Design section already proposed; adopted as-is, no divergence.
 
 **Trigger wiring** (this item's responsibility): after the Teacher's `class_updates` insert commits (RLS: `class_updates_teacher_insert`), the client calls `POST /.netlify/functions/push-send` with `{ class_update_id: <new row id> }` (Bearer JWT), fire-and-forget — same UX posture as chat send (`notifications-infra`'s Behavior section): the post's own success/failure is never blocked or held on the push call.
 
@@ -339,8 +339,8 @@ Design references (local mirror confirmed current against the components' own `.
 ### Data & RLS impact
 
 - Two new tables (`class_updates`, `comments`), both RLS-on, no service-role/RPC path for read or insert (architect-confirmed — not ADR-0019 "minor's record" tables). One new `SECURITY DEFINER` helper (`is_parent_of_class`, used only by the Teacher's private-reply insert check), following this codebase's existing `is_family_member`/`is_conversation_participant` precedent for "a policy needs a fact the querying role can't see directly." No bypass function is needed for oversight — Coordinator/BV Coordinator/Admin now hold genuine scope-based `SELECT` grants on both tables (decision #2), so their `comments` policies resolve through ordinary RLS-filtered subqueries.
-- No `audit_log` entries on reading or posting a class update or comment (architect-confirmed, ADR-0030) — conversational/class-wide content, not an individual minor's record under ADR-0019.
-- Oversight (Coordinator/BV Coordinator/Admin) is read-only into **`class_updates` and every `comments` row, public and private** (ADR-0030, extended per decision #2 this pass) — Coordinator scoped to their own session, BV Coordinator/Admin org-wide; not able to write/moderate anything (unchanged, still out of scope).
+- No `audit_log` entries on reading or posting a class update or comment (architect-confirmed, ADR-0032) — conversational/class-wide content, not an individual minor's record under ADR-0019.
+- Oversight (Coordinator/BV Coordinator/Admin) is read-only into **`class_updates` and every `comments` row, public and private** (ADR-0032, extended per decision #2 this pass) — Coordinator scoped to their own session, BV Coordinator/Admin org-wide; not able to write/moderate anything (unchanged, still out of scope).
 - `push-send`'s service-role recipient derivation (above) is the only place `class_id` → recipient `user_id`s crosses the RLS boundary for the push path — matches ADR-0028/0031's "never trust the caller for who gets notified."
 
 ### pgTAP adversarial test plan (the merge gate — §11.3/§12.4, `/test`-stage obligation)

@@ -55,4 +55,9 @@ describe('isBlockedPiiPath', () => {
     expect(isBlockedPiiPath('public/enrollment-template.csv')).toBe(false);
     expect(isBlockedPiiPath('public/other-enrollment.csv')).toBe(true);
   });
+  it('does not block a source module or its test file just because it is named roster*/enrollment* (PR #49 false positive)', () => {
+    expect(isBlockedPiiPath('lib/attendance/rosterMap.ts')).toBe(false);
+    expect(isBlockedPiiPath('lib/attendance/__tests__/rosterMap.test.ts')).toBe(false);
+    expect(isBlockedPiiPath('lib/enrollment/enrollmentHelpers.ts')).toBe(false);
+  });
 });

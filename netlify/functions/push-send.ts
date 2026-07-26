@@ -92,7 +92,7 @@ async function dispatchClassUpdate(client: SupabaseClient, classUpdateId: string
   if (!classUpdate) return json(200, { status: 'noop', recipients: 0, sent: 0, cleaned_up: 0 });
 
   const posterUserId = classUpdate['posted_by'] as string;
-  // Same notification-spam guard as the message branch, applied to class_updates.posted_by (ADR-0031).
+  // Same notification-spam guard as the message branch, applied to class_updates.posted_by (ADR-0033).
   if (posterUserId !== callerUserId) return json(403, { reason: "caller is not the class update's poster" });
 
   const classId = classUpdate['class_id'] as string;

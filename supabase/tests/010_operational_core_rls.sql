@@ -1,15 +1,15 @@
 begin;
-select plan(14);
+select plan(16);
 
 -- Fixture: 2 centers so cross-scope leakage has somewhere real to leak from.
 insert into centers (id, name) values
   ('11111111-1111-1111-1111-111111111111', 'Center A'),
   ('22222222-2222-2222-2222-222222222222', 'Center B');
 
-insert into sessions (id, center_id, name, start_date, end_date) values
-  ('a1111111-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'A-Session-1', '2026-01-01', '2026-06-01'),
-  ('a1111111-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'A-Session-2', '2026-01-01', '2026-06-01'),
-  ('b2222222-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'B-Session-1', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('a1111111-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'A-Session-1', '2026-01-01', '2026-06-01', 0, '09:00', '10:30'),
+  ('a1111111-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'A-Session-2', '2026-01-01', '2026-06-01', 0, '12:00', '13:30'),
+  ('b2222222-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'B-Session-1', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 
 insert into classes (id, session_id, name, grade_band) values
   ('c1111111-0000-0000-0000-000000000001', 'a1111111-0000-0000-0000-000000000001', 'A1 Grade3', 'Grade3'),
@@ -77,6 +77,14 @@ select is(
 select is(
   (select count(*) from enrollments)::int, 1,
   'teacher sees only enrollments in their own class (join-path check)'
+);
+select is(
+  (select count(*) from sessions)::int, 1,
+  'teacher sees exactly their own class''s session, via classes.session_id (date-nav clamp bound)'
+);
+select ok(
+  not exists (select 1 from sessions where id = 'a1111111-0000-0000-0000-000000000002'::uuid),
+  'teacher does not see the sibling session, even though it shares the same center'
 );
 
 -- Positive: Coordinator (session scope) sees both classes in their session, not the sibling session's.

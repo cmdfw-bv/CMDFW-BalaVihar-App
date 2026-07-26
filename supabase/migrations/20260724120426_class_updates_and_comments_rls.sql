@@ -1,5 +1,5 @@
 -- Teacher: class-update-and-home-feed (issue #21) — RLS + grants for class_updates/comments.
--- Verbatim from the signed-off /design's RLS SQL (ADR-0030), with author_role pinned in each
+-- Verbatim from the signed-off /design's RLS SQL (ADR-0032), with author_role pinned in each
 -- comments insert policy (plan-level addition, not a design-stage decision).
 --
 -- Scope model (§5.4): Teacher=class, Student=self, Parent=own-children. Oversight (extended
@@ -127,7 +127,7 @@ using (
   )
 );
 
--- oversight (ADR-0030, extended during /design — decision #2): full read, public and private,
+-- oversight (ADR-0032, extended during /design — decision #2): full read, public and private,
 -- same plain scope-based pattern as class_updates' own oversight policies just above. Because
 -- Coordinator/BV Coordinator/Admin now carry a genuine class_updates SELECT grant, this
 -- subquery resolves correctly through their own class_updates policy — no bypass function

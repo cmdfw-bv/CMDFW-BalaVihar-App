@@ -100,6 +100,8 @@ Additions from the full feature set at POC scale: **$0** — AI drafting and Sup
 
 ## 5. Thinnest end-to-end POC slice (proves all 6 personas)
 
+**Pilot target confirmed 2026-07-24: Frisco center, F3 session (Sunday, 2:00–3:30PM)** — see `1_GREENFIELD_POC_PROPOSAL.md` §2 row 10 / §9a for the full 3-center, 8-session catalog and ADR-0031 for the resulting schema addition (`sessions.day_of_week`/`start_time`/`end_time`).
+
 1. **Admin** provisions users for one center (CSV enrollment import) and assigns roles.
 2. **Teacher** marks attendance + posts a class update.
 3. **Student & Parent** receive a **PWA push notification** ("New update in your class"), open the app, see it, and comment.
@@ -115,7 +117,7 @@ Additions from the full feature set at POC scale: **$0** — AI drafting and Sup
 
 ## 6. Open items
 
-1. **Schema design:** define the canonical relational model (centers → sessions → classes → enrollments → attendance → students → families) plus the privacy/multi-role/push additions described in `1_GREENFIELD_POC_PROPOSAL.md §10`.
+1. **Schema design:** define the canonical relational model (centers → sessions → classes → enrollments → attendance → students → families) plus the privacy/multi-role/push additions described in `1_GREENFIELD_POC_PROPOSAL.md §10`. **Resolved** via `core-schema-and-rls` (Built, 73/73). **Amended 2026-07-24 (ADR-0031):** `sessions` needs `day_of_week`/`start_time`/`end_time` — the real center/session catalog (§9a of doc 1) showed every session has a fixed weekly meeting slot, which the original schema didn't capture. New migration + pgTAP pending before `/deploy-staging`; blocks `attendance-ui`'s `/migration` stage until it lands (its date-default logic depends on these columns).
 2. **Synthetic seed:** generate realistic test data from scratch for POC testing (no reuse of any prior scratch data).
 3. ~~**Which member/enrollment system?** Determines CSV-only vs API sync and field mapping.~~ **Resolved 2026-06-20:** **CSV-only for the POC** (matches the §5 thinnest slice); member-system API sync is deferred. Schema is designed for CSV enrollment import now.
 4. **Chat governance:** who-may-chat-whom **resolved** by ADR-0015; message **moderation/report** + **retention** are **deferred post-pilot** under interim safeguards (ADR-0017 — adult-presence oversight via the participant ladder, no open student DMs, messages purged at pilot close). Revisit before any rollout / go-live.
