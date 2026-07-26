@@ -25,8 +25,9 @@ declare
   d date;
 begin
   insert into centers (id, name) values (v_center_id, 'Frisco');
-  insert into sessions (id, center_id, name, start_date, end_date) values
-    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24');
+  -- ADR-0031: Frisco F3 is the confirmed pilot session, Sundays 2:00-3:30PM (day_of_week 0=Sunday).
+  insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 0, '14:00', '15:30');
 
   -- 13 classes spanning Shishu Vihaar (KG) through Gr12, all within the single F3 session.
   for i in 1..v_grade_count loop
@@ -113,4 +114,26 @@ begin
     (v_multirole_user_id, 'teacher', 'class', v_class_ids[1]),
     (v_multirole_user_id, 'coordinator', 'session', v_session),
     (v_multirole_user_id, 'bv_coordinator', 'org', null);
+
+  -- ADR-0031 / doc 1 §9a: the real center/session catalog beyond the pilot slice
+  -- (Frisco F3 above). Names + schedule shape only (real business data, not PII;
+  -- doc 1 §9a) — no classes/families/students here, since only Frisco F3 is the
+  -- POC pilot target (doc 1 §4/§9) and gets full population.
+  declare
+    v_saaket_id uuid := gen_random_uuid();
+    v_chitrakoot_id uuid := gen_random_uuid();
+  begin
+    insert into centers (id, name) values
+      (v_saaket_id, 'Saaket'),
+      (v_chitrakoot_id, 'Chitrakoot');
+
+    insert into sessions (center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+      (v_saaket_id, 'S4', '2026-01-11', '2026-05-24', 5, '18:45', '20:15'),
+      (v_saaket_id, 'S1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_saaket_id, 'S2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
+      (v_center_id, 'F1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_center_id, 'F2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
+      (v_chitrakoot_id, 'C1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_chitrakoot_id, 'C2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30');
+  end;
 end $$;

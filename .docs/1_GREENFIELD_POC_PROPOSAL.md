@@ -28,6 +28,7 @@
 | 7 | **Budget:** ~$0 POC; scale on proven value; cost visibility required. |
 | 8 | **Backend:** re-evaluated from scratch (below). |
 | 9 | **POC personas:** Student, Parent, Teacher, Coordinator (session), BV Coordinator (org), Admin. Defer: Substitute, Volunteer. |
+| 10 | **Confirmed 2026-07-24 — real center/session catalog:** 3 centers (Saaket, Frisco, Chitrakoot), 8 sessions total, each meeting on **one fixed weekday at one fixed time** (see §9a). **Pilot POC targets Frisco F3 (Sunday, 2:00–3:30PM)** — the "single-session pilot" in row 4 is now this specific session, not a placeholder. Drives ADR-0031 (session weekly-schedule schema fields). |
 
 ## 3. Constraints (the decisive new dimension) and their stack implications
 
@@ -128,7 +129,7 @@ Scored against §5 criteria; the two highest-weighted (per-row access for minors
 
 **Netlify free-tier credit caveat (validated 2026-06-13):** Free = **300 credits/mo** (20/GB bandwidth · 10/GB-hour compute · 2/10k requests; production deploys also cost credits). **At the limit the site is _paused_ until the next billing cycle** (alerts at 50/75/100%; re-enable only by upgrading). At pilot scale this is **unlikely to trigger** — Netlify serves only the cached static shell while data traffic rides Supabase (not counted) — but the pause is a **full-outage** mechanism. **Mitigations:** keep dev/staging/prod as **one project with deploy contexts** (shared pool, no cross-project pause); enable usage alerts; pre-plan **Netlify Personal ($9/mo, 1,000 credits)** as insurance / for rollout. *Cloudflare Pages (free, unlimited bandwidth, no pause) was considered but rejected: its functions run on global edge (no US-residency pin) and it has only 2 env scopes (breaks clean dev/staging/prod).*
 
-## 9. Thinnest POC slice (one center, one session, all 6 personas)
+## 9. Thinnest POC slice (Frisco center, F3 session, all 6 personas)
 
 1. **Admin** provisions users (CSV import) + assigns roles.
 2. **Teacher** marks attendance + posts a class update.
@@ -143,9 +144,27 @@ Scored against §5 criteria; the two highest-weighted (per-row access for minors
 
 **Explicit POC non-goals** (so a passing POC isn't mistaken for launch-ready): scale/peak load · **native** builds & native push (FCM/APNs) · member-system **API** sync (POC uses CSV import) · gamification/social/AI features.
 
+## 9a. Real center/session catalog (confirmed 2026-07-24)
+
+Every session meets on exactly one fixed weekday at one fixed time — no session has more than one weekly meeting slot.
+
+| Center | Session | Day | Time |
+|---|---|---|---|
+| Saaket | S4 | Friday | 6:45–8:15PM |
+| Saaket | S1 | Sunday | 9:00–10:30AM |
+| Saaket | S2 | Sunday | 12:00–1:30PM |
+| Frisco | F1 | Sunday | 9:00–10:30AM |
+| Frisco | **F2** | Sunday | 12:00–1:30PM |
+| Frisco | **F3 (pilot target)** | Sunday | 2:00–3:30PM |
+| Chitrakoot | C1 | Sunday | 9:00–10:30AM |
+| Chitrakoot | C2 | Sunday | 12:00–1:30PM |
+
+This is real business data, not synthetic — the schema (ADR-0031) stores it as `sessions.day_of_week`/`start_time`/`end_time`; any non-prod seed data reuses these center/session *names and schedule shape* (not PII) per `core-schema-and-rls`'s synthetic-seed constraint.
+
 ## 10. Data-model additions (privacy, multi-role, and push)
 
 Beyond the obvious relational core (centers → sessions → classes → enrollments → attendance → students → families), the constraints add:
+- **`sessions.day_of_week`/`start_time`/`end_time`** (ADR-0031) — each session meets on one fixed weekday at one fixed time (§9a); needed so "current class meeting date" can be derived correctly instead of assuming every day is a meeting day.
 - **`user_roles`** (user_id, role, scope_type: org/center/session/class, scope_id) — **many roles per user**, each scoped; supports the Parent→Teacher→Coordinator→BV Coordinator span. The **active role** is set into the JWT by the Postgres auth hook and drives every RLS policy.
 - **`consents`** (subject, type: parental/media, granted_by, granted_at, revoked_at).
 - **`audit_log`** (actor, action, target_table, target_id, at) — for access to minors' records.
