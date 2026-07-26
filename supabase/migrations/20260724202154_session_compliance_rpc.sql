@@ -23,6 +23,10 @@ declare
   v_role text := auth.jwt()->>'active_role';
   v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
   v_authorized boolean := false;
+  -- Defensive clamp: a caller-supplied 0/negative p_window_size would otherwise silently
+  -- collapse every class's window to empty (rendering an honest-looking "—" that actually masks
+  -- real non-compliance); an absurdly large value is capped to bound how far back this scans.
+  v_window_size int := greatest(1, least(p_window_size, 52));
 begin
   if v_role in ('bv_coordinator','admin') then
     v_authorized := true;
@@ -49,7 +53,7 @@ begin
       where c.session_id = p_session_id and cm.status = 'scheduled'
         and cm.meeting_date < (now() at time zone 'America/Chicago')::date
     ) cm
-    where rn <= p_window_size
+    where rn <= v_window_size
   ),
   per_date as (
     select

@@ -84,11 +84,25 @@ begin
         end
       );
 
-      insert into enrollments (student_id, class_id, session_id, status)
-      values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active');
+      -- enrolled_at is pinned to the session's own start_date (well before any class_meetings
+      -- date) rather than left at its now()-at-seed-time default — otherwise, whenever this
+      -- seed is actually run, every student reads as enrolled *after* the compliance dashboard's
+      -- trailing window, so attendance_rate renders as an honest "—" for every class instead of
+      -- exercising the dashboard's primary content state.
+      insert into enrollments (student_id, class_id, session_id, status, enrolled_at)
+      values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active', (select start_date from sessions where id = v_session));
 
-      -- 4 weeks of Tuesday attendance, mixed present/absent.
-      for d in select generate_series('2026-01-13'::date, '2026-02-03'::date, '7 days')::date loop
+      -- Seed attendance + class_updates for each class's own last 4 completed scheduled
+      -- meetings (derived from class_meetings/current_date, not a hardcoded calendar range) —
+      -- so get_session_compliance_for_staff's trailing window always has real data to render,
+      -- regardless of how long ago F3's fixed Jan-May date range is relative to whenever this
+      -- seed actually runs.
+      for d in
+        select meeting_date from class_meetings
+        where class_id = v_class_id and status = 'scheduled' and meeting_date < current_date
+        order by meeting_date desc
+        limit 4
+      loop
         insert into attendance (enrollment_id, class_meeting_date, status, marked_by)
         select e.id, d, case when (i + j) % 5 = 0 then 'absent' else 'present' end,
                (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)

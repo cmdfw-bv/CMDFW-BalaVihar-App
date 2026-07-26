@@ -18,6 +18,7 @@ alter table class_meetings enable row level security;
 -- Teacher/Coordinator/BV Coordinator/Admin only; Parent/Student have no documented need to see
 -- the meeting calendar this pass (resolved at /plan, not specified in the design's RLS matrix).
 grant select on class_meetings to authenticated;
+revoke insert, update, delete on class_meetings from authenticated, anon;
 
 create policy class_meetings_teacher_select on class_meetings for select
 using (
@@ -52,6 +53,7 @@ alter table class_updates enable row level security;
 -- (Task 13, SECURITY DEFINER, bypasses RLS by design), never a direct grant. Teacher's write
 -- RPC, once refined, is the only thing that will ever need a policy or grant here.
 grant select on class_updates to authenticated;
+revoke insert, update, delete on class_updates from authenticated, anon;
 
 create or replace function generate_class_meetings_for_session(p_session_id uuid)
 returns void

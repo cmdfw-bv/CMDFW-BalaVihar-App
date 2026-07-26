@@ -34,8 +34,8 @@
 **Files:**
 - Modify: `vitest.config.ts`
 
-- [ ] **Step 1** Add `'features/**/__tests__/**/*.test.ts'` to the `test.include` array (currently `lib/**`, `components/**`, `netlify/functions/__tests__/**`, `.claude/hooks/__tests__/**`, `scripts/__tests__/**` — this is the first feature built under `features/`, so the glob doesn't exist yet).
-- [ ] **Step 2** `npm run test` → confirm it still runs clean (zero new tests yet, no regression in existing suites).
+- [x] **Step 1** Add `'features/**/__tests__/**/*.test.ts'` to the `test.include` array (currently `lib/**`, `components/**`, `netlify/functions/__tests__/**`, `.claude/hooks/__tests__/**`, `scripts/__tests__/**` — this is the first feature built under `features/`, so the glob doesn't exist yet).
+- [x] **Step 2** `npm run test` → confirm it still runs clean (zero new tests yet, no regression in existing suites).
 
 ## Task 2: `ComplianceBar` — additive `placeholder` prop (honest `—`, no new component)
 
@@ -45,7 +45,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
 - Modify: `components/dashboard/ComplianceBar.logic.ts`, `components/dashboard/ComplianceBar.tsx`
 - Modify: `components/dashboard/__tests__/ComplianceBar.logic.test.ts`
 
-- [ ] **Step 1 (RED):** add to `ComplianceBar.logic.test.ts`:
+- [x] **Step 1 (RED):** add to `ComplianceBar.logic.test.ts`:
   ```typescript
   describe('placeholder rendering', () => {
     it('a placeholder bar never derives a tone from value', () => {
@@ -55,7 +55,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
   ```
   Run `npm run test` → RED (extra `placeholder` arg doesn't exist on `complianceTone` yet; `'placeholder'` isn't a `ComplianceTone` member).
 
-- [ ] **Step 2 (GREEN):** in `ComplianceBar.logic.ts`, add a fourth tone-like state without disturbing the existing 3-tone contract other tests assert on:
+- [x] **Step 2 (GREEN):** in `ComplianceBar.logic.ts`, add a fourth tone-like state without disturbing the existing 3-tone contract other tests assert on:
   ```typescript
   export type ComplianceTone = "success" | "warning" | "danger" | "info";
   export type ComplianceDisplayState = ComplianceTone | "placeholder";
@@ -67,8 +67,8 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
   ```
   (Keep `complianceTone` itself unchanged — existing tests/consumers are untouched; `complianceDisplayState` is the new entry point `ComplianceBar.tsx` calls.)
 
-- [ ] **Step 3:** in `ComplianceBar.tsx`, add `placeholder?: boolean` to `ComplianceBarProps`. When `true`: render the figure as `—` (mono, `theme.colors.ink4`, same font size as the normal figure — matches `CenterRollupRow.jsx`'s `span` for its placeholder figure) instead of `${value}${suffix}`/`display`; the track's fill uses `theme.colors.line2` (neutral, matches `CenterRollupRow`'s `placeholder ? "var(--line-2)" : c"`) instead of a tone color, at a fixed low width (or `0`, matching the reference's `pct = placeholder ? 0 : ...`) rather than deriving from `value`. `note` still renders if passed (e.g., no note needed when placeholder — the calling screen passes none).
-- [ ] **Step 4:** rerun `npm run test` → GREEN, and confirm the full existing `ComplianceBar.logic.test.ts` suite (4 pre-existing describe blocks) still passes unchanged.
+- [x] **Step 3:** in `ComplianceBar.tsx`, add `placeholder?: boolean` to `ComplianceBarProps`. When `true`: render the figure as `—` (mono, `theme.colors.ink4`, same font size as the normal figure — matches `CenterRollupRow.jsx`'s `span` for its placeholder figure) instead of `${value}${suffix}`/`display`; the track's fill uses `theme.colors.line2` (neutral, matches `CenterRollupRow`'s `placeholder ? "var(--line-2)" : c"`) instead of a tone color, at a fixed low width (or `0`, matching the reference's `pct = placeholder ? 0 : ...`) rather than deriving from `value`. `note` still renders if passed (e.g., no note needed when placeholder — the calling screen passes none).
+- [x] **Step 4:** rerun `npm run test` → GREEN, and confirm the full existing `ComplianceBar.logic.test.ts` suite (4 pre-existing describe blocks) still passes unchanged.
 
 ## Task 3: `features/coordinator/compliance-dashboard/rollup.ts` — pure classification logic
 
@@ -79,7 +79,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
 **Interfaces:**
 - Produces: `ComplianceRow` (mirrors the RPC's return columns), `classifyClass(row): ClassBand`, `computeRollup(rows): RollupCounts` — consumed by `ComplianceDashboardScreen.tsx` (Task 7).
 
-- [ ] **Step 1 (RED):** write `rollup.test.ts` first:
+- [x] **Step 1 (RED):** write `rollup.test.ts` first:
   ```typescript
   import { describe, it, expect } from 'vitest';
   import { classifyClass, computeRollup, type ComplianceRow } from '../rollup';
@@ -112,7 +112,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
   ```
   Run `npm run test` → RED (module doesn't exist).
 
-- [ ] **Step 2 (GREEN):** write `rollup.ts`:
+- [x] **Step 2 (GREEN):** write `rollup.ts`:
   ```typescript
   export interface ComplianceRow {
     class_id: string;
@@ -151,7 +151,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
     return counts;
   }
   ```
-- [ ] **Step 3:** rerun `npm run test` → GREEN.
+- [x] **Step 3:** rerun `npm run test` → GREEN.
 
 ## Task 4: `features/coordinator/compliance-dashboard/api.ts` — RPC wrapper
 
@@ -162,7 +162,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
 **Interfaces:**
 - Produces: `getSessionCompliance(client, sessionId, windowSize?): Promise<ComplianceRow[]>` — the **only** function in this feature that touches `supabase`.
 
-- [ ] **Step 1 (RED):** `api.test.ts`, mocking a minimal Supabase client shape (matches this repo's existing pattern of injecting the client rather than importing the singleton — see `netlify/functions/lib/db-ops.ts`'s injectable-client convention, applied client-side here):
+- [x] **Step 1 (RED):** `api.test.ts`, mocking a minimal Supabase client shape (matches this repo's existing pattern of injecting the client rather than importing the singleton — see `netlify/functions/lib/db-ops.ts`'s injectable-client convention, applied client-side here):
   ```typescript
   import { describe, it, expect, vi } from 'vitest';
   import { getSessionCompliance } from '../api';
@@ -195,7 +195,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
   ```
   Run `npm run test` → RED.
 
-- [ ] **Step 2 (GREEN):** `api.ts`:
+- [x] **Step 2 (GREEN):** `api.ts`:
   ```typescript
   import type { SupabaseClient } from '@supabase/supabase-js';
   import type { ComplianceRow } from './rollup';
@@ -213,7 +213,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
     return (data ?? []) as ComplianceRow[];
   }
   ```
-- [ ] **Step 3:** rerun `npm run test` → GREEN.
+- [x] **Step 3:** rerun `npm run test` → GREEN.
 
 ## Task 5: `features/coordinator/compliance-dashboard/viewState.ts` — pure state derivation
 
@@ -224,7 +224,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
 **Interfaces:**
 - Produces: `deriveDashboardViewState(input): DashboardViewState` — resolves deferred mechanic #2 above; consumed by the hook (Task 6).
 
-- [ ] **Step 1 (RED):** `viewState.test.ts`:
+- [x] **Step 1 (RED):** `viewState.test.ts`:
   ```typescript
   import { describe, it, expect } from 'vitest';
   import { deriveDashboardViewState } from '../viewState';
@@ -257,7 +257,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
   ```
   Run `npm run test` → RED.
 
-- [ ] **Step 2 (GREEN):** `viewState.ts`:
+- [x] **Step 2 (GREEN):** `viewState.ts`:
   ```typescript
   import type { ComplianceRow } from './rollup';
 
@@ -288,7 +288,7 @@ Per the design's CenterRollupRow cross-reference: the honest-placeholder visual 
     };
   }
   ```
-- [ ] **Step 3:** rerun `npm run test` → GREEN.
+- [x] **Step 3:** rerun `npm run test` → GREEN.
 
 ## Task 6: `features/coordinator/compliance-dashboard/useSessionCompliance.ts` — hook wiring
 
@@ -297,7 +297,7 @@ Native/`expo-router`-dependent wiring — not runnable under vitest's Node envir
 **Files:**
 - Create: `features/coordinator/compliance-dashboard/useSessionCompliance.ts`
 
-- [ ] **Step 1:** implement:
+- [x] **Step 1:** implement:
   ```typescript
   import { useCallback, useEffect, useRef, useState } from 'react';
   import { Platform } from 'react-native';
@@ -344,20 +344,20 @@ Native/`expo-router`-dependent wiring — not runnable under vitest's Node envir
     return { ...derived, rollup: computeRollup(derived.rows), retry: fetchOnce };
   }
   ```
-- [ ] **Step 2:** `npm run typecheck` → zero errors (this file has no vitest coverage; typecheck is the only automated gate until Task 11's manual pass).
+- [x] **Step 2:** `npm run typecheck` → zero errors (this file has no vitest coverage; typecheck is the only automated gate until Task 11's manual pass).
 
 ## Task 7: `ComplianceDashboardScreen.tsx` — composition
 
 **Files:**
 - Create: `features/coordinator/compliance-dashboard/ComplianceDashboardScreen.tsx`
 
-- [ ] **Step 1:** compose per the design section:
+- [x] **Step 1:** compose per the design section:
   - Top row: three `StatTile`s (`Fully compliant` / `At-risk` / `Non-compliant`) fed by `rollup`, mono value (not `display`) per the design's explicit call-out.
   - `StateView` wraps the per-class content: `state={viewState}`, `emptyText="No classes in this session yet."`, `errorText="Couldn't load the compliance dashboard."`, `onRetry={retry}`.
   - Inside `StateView`'s content branch: if `showRefreshErrorBanner`, an inline banner (`Card` with `tone="danger"` or equivalent existing tone — check `Card.logic.ts`'s `CardTone` union at build time) reading "Showing last-loaded data — refresh failed." above the class list, never replacing it (AC7, deferred mechanic #2).
   - One `Card` per class: class name as a header `Text`; two `ComplianceBar`s — `label="Attendance submission"` / `label="Class updates posted"` — each either normal (`value=attendance_rate`/`update_rate`, `note` = `"${x} of ${n} meetings ${fully marked|updated}"` computed from `window_start`/`window_end` if a precise "x of n" count is derivable, else a simpler date-range note — confirm exact `note` wording against the live `ComplianceBar` reference at `/build`, spec doesn't mandate exact copy) or `placeholder` (Task 2's new prop) when the corresponding rate is `null`.
   - Loading state: `StateView`'s built-in `"loading"` branch (spinner) is a reasonable interim; the design calls for "skeleton cards" specifically — if skeleton loading isn't already a `StateView` capability, a simple row of 2–3 low-opacity placeholder `Card`s is an acceptable additive variant, confirmed at `/build` against the design's DoD, not over-engineered here as a new shared component.
-- [ ] **Step 2:** breakpoints/touch targets/tabular numerics are inherited for free from `StatTile`/`ComplianceBar`/`Card` (already Sankalp-DoD-compliant) — no new styling in this file beyond layout (`View`/flex wrapping), confirmed visually at `/build` (Task 11).
+- [x] **Step 2:** breakpoints/touch targets/tabular numerics are inherited for free from `StatTile`/`ComplianceBar`/`Card` (already Sankalp-DoD-compliant) — no new styling in this file beyond layout (`View`/flex wrapping), confirmed visually at `/build` (Task 11).
 
 ## Task 8: Role-branch `app/(tabs)/dashboard.tsx`
 
@@ -366,7 +366,7 @@ The `dashboard` tab is shared by `coordinator`, `bv_coordinator`, and `admin` (`
 **Files:**
 - Modify: `app/(tabs)/dashboard.tsx`
 
-- [ ] **Step 1:**
+- [x] **Step 1:**
   ```tsx
   import { View, Text } from "react-native";
   import { useRoleGuard } from "../../lib/auth/useRoleGuard";
@@ -388,12 +388,12 @@ The `dashboard` tab is shared by `coordinator`, `bv_coordinator`, and `admin` (`
   }
   ```
   (`ComplianceDashboardScreen` takes `sessionId` as a prop rather than calling `useSession()` itself — keeps the screen component pure/testable-by-inspection and matches AC9: no session picker, the active-role's own `scopeId` is the only session this screen ever sees.)
-- [ ] **Step 2:** `npm run typecheck` → zero errors.
+- [x] **Step 2:** `npm run typecheck` → zero errors.
 
 ## Task 9: Full unit-test regression
 
-- [ ] **Step 1:** `npm run test` → full suite green, including Tasks 1–5's new files and Task 2's extended `ComplianceBar.logic.test.ts`.
-- [ ] **Step 2:** `npm run lint` → zero errors.
+- [x] **Step 1:** `npm run test` → full suite green, including Tasks 1–5's new files and Task 2's extended `ComplianceBar.logic.test.ts`.
+- [x] **Step 2:** `npm run lint` → zero errors.
 
 ## Task 10: Spec + index bookkeeping
 
@@ -401,8 +401,8 @@ The `dashboard` tab is shared by `coordinator`, `bv_coordinator`, and `admin` (`
 - Modify: `.docs/specs/coordinator/_index.md`
 - Modify: `.docs/specs/coordinator/compliance-dashboard.md`
 
-- [ ] **Step 1:** `_index.md`'s row status → `` `/plan` ✓ — ready for `/migration` + `/build` `` (or `Built` once Task 11 below is done and verified).
-- [ ] **Step 2:** add a `Sign-off` checkbox to `compliance-dashboard.md` for this plan, mirroring `core-schema-and-rls.md`'s own convention.
+- [x] **Step 1:** `_index.md`'s row status → `` `/plan` ✓ — ready for `/migration` + `/build` `` (or `Built` once Task 11 below is done and verified).
+- [x] **Step 2:** add a `Sign-off` checkbox to `compliance-dashboard.md` for this plan, mirroring `core-schema-and-rls.md`'s own convention.
 
 ## Task 11: Manual `/build` verification (not automatable — RN/Docker/browser required)
 

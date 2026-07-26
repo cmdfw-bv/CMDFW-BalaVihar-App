@@ -61,6 +61,7 @@ export default function ComplianceDashboardScreen({ sessionId }: ComplianceDashb
             {rows.map((row) => (
               <Card key={row.class_id} style={styles.classCard}>
                 <Text style={styles.className}>{row.class_name}</Text>
+                <Text style={styles.enrolledCaption}>{row.enrolled_count} enrolled</Text>
                 <ComplianceBar
                   label="Attendance submission"
                   value={row.attendance_rate ?? 0}
@@ -111,6 +112,14 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fonts.display,
     fontSize: theme.type.scale.h3,
     color: theme.colors.ink,
+  },
+  // CenterRollupRow.tsx's muted mono-caption precedent (marked/enrolled counts) — the RPC
+  // already returns enrolled_count, this just stops it being dead payload the UI never renders.
+  enrolledCaption: {
+    fontFamily: theme.fonts.mono,
+    fontSize: theme.type.scale.eyebrow,
+    color: theme.colors.ink4,
+    fontVariant: ["tabular-nums" as const],
   },
   secondBar: {
     marginTop: theme.space["3"],

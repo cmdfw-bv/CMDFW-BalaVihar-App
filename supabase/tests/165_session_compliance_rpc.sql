@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(22);
 
 insert into centers (id, name) values ('c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Center');
 -- Sundays: Jan4, Jan11, Jan18 — window_size=2 keeps the last two (Jan11, Jan18).
@@ -154,6 +154,15 @@ select is(
 select is(
   (select count(*) from audit_log where actor_role = 'coordinator' and action = 'read' and target_table = 'attendance' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
   1, 'exactly one audit_log read row per successful call (never per-student — AC8, no student-identifying data returned)');
+
+-- p_window_size defensive clamp: a caller-supplied 0 (or negative) must not silently collapse
+-- every class's window to empty — which would render every rate as an honest-looking "—" and
+-- mask real non-compliance rather than error or degrade visibly. Clamped up to at least 1:
+-- Class A's single most-recent scheduled date (Jan18: both students have an attendance row,
+-- present or absent) is still fully "submitted" -> 100.0, not null.
+select is(
+  (select attendance_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 0) where class_id = 'cc650000-0000-0000-0000-00000000000a'),
+  100.0, 'p_window_size=0 is clamped to at least 1, not silently collapsed to an empty window');
 
 select tests.clear_authentication();
 
