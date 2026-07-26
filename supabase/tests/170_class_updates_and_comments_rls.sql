@@ -2,9 +2,9 @@ begin;
 select plan(25);
 
 insert into centers (id, name) values ('cd888888-0000-0000-0000-000000000001', 'Plan Center');
-insert into sessions (id, center_id, name, start_date, end_date) values
-  ('cd888888-0000-0000-0000-000000000011', 'cd888888-0000-0000-0000-000000000001', 'Session One', '2026-01-01', '2026-06-01'),
-  ('cd888888-0000-0000-0000-000000000012', 'cd888888-0000-0000-0000-000000000001', 'Session Two', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('cd888888-0000-0000-0000-000000000011', 'cd888888-0000-0000-0000-000000000001', 'Session One', '2026-01-01', '2026-06-01', 0, '09:00', '10:30'),
+  ('cd888888-0000-0000-0000-000000000012', 'cd888888-0000-0000-0000-000000000001', 'Session Two', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band) values
   ('cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000011', 'Class A', 'HS9-12'),
   ('cd888888-0000-0000-0000-000000000022', 'cd888888-0000-0000-0000-000000000012', 'Class B', 'HS9-12');

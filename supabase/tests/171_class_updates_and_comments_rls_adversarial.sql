@@ -1,5 +1,5 @@
 -- Adversarial RLS suite for class_updates/comments + resolve_parent_family_label RPC
--- (issue #21 red-team pass, run against 160's already-passing suite). Goes beyond 160's
+-- (issue #21 red-team pass, run against 170's already-passing suite). Goes beyond 170's
 -- positive/negative shape checks: direct ID-targeting (IDOR) across sessions/classes,
 -- insert-path impersonation/scope-spoofing, write-grant absence for every role, anon/zero-role
 -- access, enrollment-status-aware RPC scoping, and a genuine (not synthetic) multi-role
@@ -8,9 +8,9 @@ begin;
 select plan(47);
 
 insert into centers (id, name) values ('ce777777-0000-0000-0000-000000000001', 'Adversarial Center');
-insert into sessions (id, center_id, name, start_date, end_date) values
-  ('ce777777-0000-0000-0000-000000000011', 'ce777777-0000-0000-0000-000000000001', 'Adv Session One', '2026-01-01', '2026-06-01'),
-  ('ce777777-0000-0000-0000-000000000012', 'ce777777-0000-0000-0000-000000000001', 'Adv Session Two', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('ce777777-0000-0000-0000-000000000011', 'ce777777-0000-0000-0000-000000000001', 'Adv Session One', '2026-01-01', '2026-06-01', 0, '09:00', '10:30'),
+  ('ce777777-0000-0000-0000-000000000012', 'ce777777-0000-0000-0000-000000000001', 'Adv Session Two', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band) values
   ('ce777777-0000-0000-0000-000000000021', 'ce777777-0000-0000-0000-000000000011', 'Adv Class A', 'HS9-12'),
   ('ce777777-0000-0000-0000-000000000022', 'ce777777-0000-0000-0000-000000000012', 'Adv Class B', 'HS9-12'),
