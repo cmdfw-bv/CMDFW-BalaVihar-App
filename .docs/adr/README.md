@@ -39,6 +39,10 @@ Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requireme
 | [ADR-0029](0029-sankalp-component-kit-single-owner-full-library.md) | Sankalp component kit ships as one System-owned unit — full-library exception to §12.12 per-capability ownership (presentational porting only; data-wiring stays with each owning persona) | Closed | 2026-07-18 |
 | [ADR-0030](0030-teacher-roster-enrollment-id-direct-read.md) | Teacher attendance roster resolves `enrollment_id` via direct `enrollments` read (ADR-0019/ADR-0021 addendum) — no RPC/schema change | Closed | 2026-07-23 |
 | [ADR-0031](0031-session-weekly-schedule-fields.md) | Sessions carry a fixed weekly schedule (`day_of_week`/`start_time`/`end_time`) — core-schema-and-rls amendment; supersedes attendance-ui's raw-`today` date default | Closed | 2026-07-24 |
+| [ADR-0037](0037-enrollment-withdrawal-conversational-access.md) | Enrollment withdrawal revokes participation and future content, not history — writes revoked, reads time-bounded to the enrollment period on conversational surfaces (resolves issue #58) | Closed | 2026-07-29 |
+
+<!-- ADR-0032/0033 arrive with PR #48 (issue #21); ADR-0034/0035/0036 with PR #50 (issue #23).
+     This branch is cut from main, so those rows are absent here and fill in as those PRs merge. -->
 
 ## How to read an ADR
 
