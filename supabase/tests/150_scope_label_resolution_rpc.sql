@@ -6,8 +6,8 @@ select gen_random_uuid() as v_center \gset
 select gen_random_uuid() as v_session \gset
 select gen_random_uuid() as v_class \gset
 insert into centers (id, name) values (:'v_center'::uuid, 'Brampton');
-insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday)
-  values (:'v_session'::uuid, :'v_center'::uuid, 'Sunday AM', '2026-01-11', '2026-05-24', 0);
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values (:'v_session'::uuid, :'v_center'::uuid, 'Sunday AM', '2026-01-11', '2026-05-24', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band)
   values (:'v_class'::uuid, :'v_session'::uuid, 'Junior A', 'Gr3');
 

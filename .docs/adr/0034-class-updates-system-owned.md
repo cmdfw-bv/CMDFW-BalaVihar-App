@@ -1,4 +1,8 @@
-# ADR-0030: `class_updates` is a System-owned schema addition, not Coordinator-owned or Teacher-gated
+# ADR-0034: `class_updates` is a System-owned schema addition, not Coordinator-owned or Teacher-gated
+
+> **Renumbered 0030 → 0034 before merge (ADR-0036).** `main` already owned ADR-0030/0031 via #49, and issue #21 owns 0032/0033. This ADR was an unmerged draft when renumbered, so it never entered the record under its original number.
+>
+> **The "minimum shape" paragraph below is superseded by [ADR-0036](0036-class-updates-shape-reconciliation.md)** — under this ADR's own Consequences clause, Teacher's write requirements (body, homework, threaded comments) needed a shape this ADR did not anticipate. **The ownership decision below stands unchanged.**
 
 **Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum, detailed at `/design`) · consumed by Coordinator → `compliance-dashboard` (`.docs/specs/coordinator/compliance-dashboard.md`) and, later, Teacher's not-yet-refined "post class update" item.

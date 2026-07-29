@@ -9,8 +9,8 @@ insert into students (id, family_id, first_name, last_name, grade_level) values
   ('5f111111-0000-0000-0000-000000000001', 'ff111111-0000-0000-0000-000000000001', 'Wrt', 'Rpc', 'Grade5');
 
 insert into centers (id, name) values ('cf111111-0000-0000-0000-000000000001', 'Write RPC Center');
-insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday)
-  values ('af111111-0000-0000-0000-000000000001', 'cf111111-0000-0000-0000-000000000001', 'Write-RPC-Session', '2026-01-01', '2026-06-01', 0);
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values ('af111111-0000-0000-0000-000000000001', 'cf111111-0000-0000-0000-000000000001', 'Write-RPC-Session', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band)
   values ('cf222222-0000-0000-0000-000000000001', 'af111111-0000-0000-0000-000000000001', 'Write RPC Class', 'Grade5');
 insert into enrollments (id, student_id, class_id, session_id, status)

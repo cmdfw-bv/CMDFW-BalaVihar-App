@@ -61,7 +61,7 @@ On screen focus (mount or tab/window refocus — not Realtime, AC7), the client 
 
 ### Data & RLS impact
 This item requires a small, additive schema addendum to the System-owned `core-schema-and-rls.md` (per ADR-0030/ADR-0031's consequences), coordinated here and specified in full in that file's new **"Design addendum — ADR-0030 → ADR-0031"** section:
-- `sessions.meeting_weekday` (new column) and `class_meetings` (new table, System-owned, ADR-0031) — the session's expected-meeting calendar.
+- `sessions.day_of_week` (ADR-0031, existing column — ADR-0036 supersedes this item's proposed `meeting_weekday`) and `class_meetings` (new table, System-owned, ADR-0035) — the session's expected-meeting calendar.
 - `class_updates` (new table, System-owned, ADR-0030) — minimum shape (`class_id`, `meeting_date`, `posted_by`, `posted_at`); Teacher's write path is a future consumer, not built this pass.
 - A new `SECURITY DEFINER` RPC, `get_session_compliance_for_staff`, is this dashboard's **only** data-access path — no direct client `SELECT` on `class_meetings`/`class_updates`/`attendance`/`enrollments` (matches ADR-0019's existing staff-read posture). Scope-checked against the caller's active role (`coordinator` + `scope_id = p_session_id`, or org-scoped `bv_coordinator`/`admin` for the future org-wide-metrics item); a denied call logs one `audit_log` row (`action='denied', target_table='sessions'`) and a successful call logs exactly **one** `audit_log` row (`action='read', target_table='attendance'`) per call — one row per call, not per underlying student/attendance row, since this RPC never returns student-identifying data (a deliberate, documented deviation from the per-row audit granularity `get_class_attendance_for_staff` uses, justified by AC8 — no student-level data ever crosses this boundary).
 - **Roster approximation (human-confirmed this pass):** the attendance-submission rate's per-date "expected" roster uses `enrollments.status='active' and enrolled_at <= meeting_date` — precise for new enrollments, an accepted lenient approximation for withdrawals (see Edge cases). No new column added to `enrollments`.
@@ -83,7 +83,7 @@ No new component is needed — the screen composes entirely from three already-p
 - **Teacher's `class_updates` write RPC** (ADR-0030) — not built this pass; this item is read-only (AC6).
 - **Manual per-date `class_meetings` edit UI** (ADR-0031) — cancellations enter only via the CSV skip-dates seam.
 - **Retrofitting `mark_attendance_for_staff` to validate against `class_meetings`** (ADR-0031, explicitly out of scope there).
-- **Session/class-creation UI** (Admin, unrefined backlog item) — `sessions.meeting_weekday` is set via seed/migration for POC; `generate_class_meetings_for_session` is written to also serve that future item without a rewrite.
+- **Session/class-creation UI** (Admin, unrefined backlog item) — `sessions.day_of_week` is set via seed/migration for POC; `generate_class_meetings_for_session` is written to also serve that future item without a rewrite.
 - **Precise historical roster reconstruction** for withdrawn students — accepted approximation, see Edge cases; no `enrollments.status_changed_at` column added.
 - **BV Coordinator's org-wide-metrics item** — a separate, not-yet-refined item; may reuse this shape later but doesn't consume this spec (see header).
 

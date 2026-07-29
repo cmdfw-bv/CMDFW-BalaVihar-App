@@ -1,21 +1,18 @@
 begin;
-select plan(12);
+select plan(11);
 
 insert into centers (id, name) values ('c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Center');
-insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
-  ('a6000000-0000-0000-0000-000000000001', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-A', '2026-01-04', '2026-01-25', 0),
-  ('a6000000-0000-0000-0000-000000000002', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-B', '2026-01-04', '2026-01-25', 0);
+-- ADR-0036: session weekday comes from ADR-0031's day_of_week (0=Sunday), not a second column.
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('a6000000-0000-0000-0000-000000000001', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-A', '2026-01-04', '2026-01-25', 0, '09:00', '10:30'),
+  ('a6000000-0000-0000-0000-000000000002', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-B', '2026-01-04', '2026-01-25', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band) values
   ('cc600000-0000-0000-0000-000000000001', 'a6000000-0000-0000-0000-000000000001', 'Meetings Class A', 'Gr3'),
   ('cc600000-0000-0000-0000-000000000002', 'a6000000-0000-0000-0000-000000000002', 'Meetings Class B (sibling session)', 'Gr3');
 
--- meeting_weekday is a required column now — confirms the straight NOT NULL add (no pilot data predates it).
-select throws_ok(
-  $$insert into sessions (center_id, name, start_date, end_date) values ('c6000000-0000-0000-0000-000000000001', 'No Weekday', '2026-01-01', '2026-02-01')$$,
-  '23502',
-  null,
-  'sessions.meeting_weekday is NOT NULL'
-);
+-- ADR-0036: the session-weekday NOT NULL assertion that lived here was dropped — it covered the
+-- superseded `meeting_weekday`, and `day_of_week`'s NOT NULL is already proven by ADR-0031's own
+-- 160_session_weekly_schedule.sql (col_not_null). Duplicating it here would assert nothing new.
 
 select tests.create_supabase_user('meetings-coordinator@test.local') as v_coordinator \gset
 select tests.create_supabase_user('meetings-coordinator-sibling@test.local') as v_coordinator_sibling \gset

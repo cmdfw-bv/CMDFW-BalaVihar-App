@@ -1,8 +1,12 @@
--- ADR-0031: sessions.meeting_weekday + class_meetings (expected-meeting-date calendar).
--- Pre-pilot POC — no existing session rows to backfill, so this ships as a straight NOT NULL add.
-alter table sessions add column meeting_weekday smallint not null default 0;
-alter table sessions alter column meeting_weekday drop default;
-alter table sessions add constraint sessions_meeting_weekday_range check (meeting_weekday between 0 and 6);
+-- ADR-0035: class_meetings (expected-meeting-date calendar).
+--
+-- ADR-0036: this migration originally added `sessions.meeting_weekday`. That column duplicated
+-- `sessions.day_of_week`, which ADR-0031 had already migrated, seeded for all 8 sessions of the
+-- doc 1 §9a catalog, and pgTAP-covered (160_session_weekly_schedule.sql) — same type, same
+-- 0=Sunday convention, same meaning. Two columns for one fact diverge silently: this branch's
+-- seed set F3 to weekday 2 (Tuesday) against a Sunday catalog, which would have generated
+-- Tuesday meetings while teachers marked attendance on Sundays, reporting every class in the
+-- session as 0% compliant. `sessions.day_of_week` is the single source of truth.
 
 create table if not exists class_meetings (
   id uuid primary key default gen_random_uuid(),
@@ -85,7 +89,7 @@ begin
   for v_d in
     select generate_series(v_session.start_date, v_session.end_date, interval '1 day')::date
   loop
-    if extract(dow from v_d) = v_session.meeting_weekday then
+    if extract(dow from v_d) = v_session.day_of_week then
       insert into class_meetings (class_id, meeting_date)
       select c.id, v_d from classes c where c.session_id = p_session_id
       on conflict (class_id, meeting_date) do nothing;

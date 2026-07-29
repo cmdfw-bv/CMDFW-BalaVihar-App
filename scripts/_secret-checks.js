@@ -19,7 +19,7 @@ function hasServiceRoleKey(text) {
   return false;
 }
 
-const PII_PATH_RE = /\.(csv|xlsx?|vcf)$|(^|\/)enrollment[^/]*$|(^|\/)roster[^/]*$|(^|\/)\.env(\.|$)/i;
+const PII_PATH_RE = /\.(csv|xlsx?|vcf)$|(^|\/)enrollment[^/]*\.(csv|xlsx?|vcf)$|(^|\/)roster[^/]*\.(csv|xlsx?|vcf)$|(^|\/)\.env(\.|$)/i;
 const ENV_EXAMPLE_RE = /(^|\/)\.env\.example$/;
 const SEED_DIR_RE = /^supabase\/seed\//;
 const ALLOWLISTED_PII_PATHS = new Set([

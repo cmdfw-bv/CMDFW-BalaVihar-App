@@ -3,9 +3,10 @@ select plan(22);
 
 insert into centers (id, name) values ('c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Center');
 -- Sundays: Jan4, Jan11, Jan18 — window_size=2 keeps the last two (Jan11, Jan18).
-insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
-  ('a6500000-0000-0000-0000-000000000001', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Session', '2026-01-01', '2026-01-18', 0),
-  ('a6500000-0000-0000-0000-000000000002', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Sibling Session', '2026-01-01', '2026-01-18', 0);
+-- ADR-0036: session weekday comes from ADR-0031's day_of_week (0=Sunday), not a second column.
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('a6500000-0000-0000-0000-000000000001', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Session', '2026-01-01', '2026-01-18', 0, '09:00', '10:30'),
+  ('a6500000-0000-0000-0000-000000000002', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Sibling Session', '2026-01-01', '2026-01-18', 0, '09:00', '10:30');
 
 insert into classes (id, session_id, name, grade_band) values
   ('cc650000-0000-0000-0000-00000000000a', 'a6500000-0000-0000-0000-000000000001', 'Class A (full compliance)', 'Gr3'),

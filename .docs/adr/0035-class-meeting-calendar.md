@@ -1,4 +1,8 @@
-# ADR-0031: Explicit class-meeting calendar is the source of truth for expected meeting dates (System-owned)
+# ADR-0035: Explicit class-meeting calendar is the source of truth for expected meeting dates (System-owned)
+
+> **Renumbered 0031 → 0035 before merge (ADR-0036).** `main` already owned ADR-0030/0031 via #49, and issue #21 owns 0032/0033. This ADR was an unmerged draft when renumbered, so it never entered the record under its original number.
+>
+> **Amended by [ADR-0036](0036-class-updates-shape-reconciliation.md):** this ADR's `sessions.meeting_weekday` column is not created. `sessions.day_of_week` (ADR-0031, already migrated/seeded/tested) is the single source of truth for session weekday, and `generate_class_meetings_for_session` reads it. The `class_meetings` calendar decision itself stands unchanged.
 
 **Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum, detailed at `/design`) · consumed by Coordinator → `compliance-dashboard` (`.docs/specs/coordinator/compliance-dashboard.md`) and, later, any Teacher/System item computing an "expected meeting dates" denominator.
@@ -25,6 +29,6 @@ This matters because the compliance dashboard's core purpose is to catch a class
 
 ### Consequences
 
-- `/design` for `compliance-dashboard.md` (coordinating the same System-side addendum ADR-0030 requires) must specify `class_meetings`' exact columns, the generation mechanism (a callable RPC invoked at session creation, vs. a one-time migration-time function — pick one), its RLS (session-scoped read, matching `classes`/`sessions`' existing posture), and how the new session-scoped aggregate RPC (flagged in the brief's second open item — replacing N per-class `get_class_attendance_for_staff` calls) joins against `class_meetings` to compute both metrics' denominators, honoring the mid-window-roster-change edge case already specified (AC/edge cases in the brief) on a per-date basis.
+- `/design` for `compliance-dashboard.md` (coordinating the same System-side addendum ADR-0034 requires) must specify `class_meetings`' exact columns, the generation mechanism (a callable RPC invoked at session creation, vs. a one-time migration-time function — pick one), its RLS (session-scoped read, matching `classes`/`sessions`' existing posture), and how the new session-scoped aggregate RPC (flagged in the brief's second open item — replacing N per-class `get_class_attendance_for_staff` calls) joins against `class_meetings` to compute both metrics' denominators, honoring the mid-window-roster-change edge case already specified (AC/edge cases in the brief) on a per-date basis.
 - The CSV-import skip-dates extension is a small addition to the existing import function/spec (ADR-0022), not a new external processor or new residency/PII surface.
 - **Residual risk:** a session's meeting weekday changing mid-session (a one-off day-of-week move) is not modeled — flagged as a future edge case if it surfaces at pilot, not solved speculatively here (mirrors ADR-0018's own precedent for deferring unmodeled real-world complexity rather than over-building for it).

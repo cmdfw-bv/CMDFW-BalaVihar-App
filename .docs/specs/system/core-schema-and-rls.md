@@ -1,8 +1,10 @@
 # System — Core schema & RLS foundation
 
-> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)**, **ADR-0020 (superseded same day by ADR-0021)**, **ADR-0021 (Teacher attendance-write RPC, new)**, **ADR-0027 (role-switcher label active-role-agnostic self-scope read, new — ADR-0019 addendum)**, **ADR-0030 (`class_updates` System-owned, new)**, **ADR-0031 (`class_meetings` calendar System-owned, new)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
+> **owner:** System · **consumers:** all 6 personas + every later System item that touches data (auth-hook wiring, notifications, chat, CSV import) · **scope:** infra / data-layer — RLS-on, no auth-hook wiring · **governing ADR:** ADR-0003 (access-control-rls), ADR-0004 (multipersona-auth-hook — consumed, not implemented here), ADR-0015 (chat-access-model), ADR-0016 (notification-preferences), ADR-0017 (chat-governance-deferred), **ADR-0018 (family/household model, new)**, **ADR-0019 (minors'-record read-audit, new)**, **ADR-0020 (superseded same day by ADR-0021)**, **ADR-0021 (Teacher attendance-write RPC, new)**, **ADR-0027 (role-switcher label active-role-agnostic self-scope read, new — ADR-0019 addendum)**, **ADR-0031 (session weekly-schedule fields, new)**, **ADR-0034 (`class_updates` System-owned, new)**, **ADR-0035 (`class_meetings` calendar System-owned, new)**, **ADR-0036 (`class_updates` shape reconciliation + single session-weekday column, new)** · **covers:** doc 2 §6 open items 1–2 (canonical schema, synthetic seed); doc 3 §6 (data layer & migrations), §5.4 (scope model), §11.2 (consent/audit/retention); doc 1 §10 (data-model additions)
 
-**Stage:** Built — tested, full suite green (73/73; verified live 2026-07-09). `/refine` ✓ → `/architect` ✓ (ADR-0018, ADR-0019, ADR-0021, ADR-0027 addendum) → `/design` ✓ → `/plan` ✓ → `/build` ✓ → `/test` ✓ → next is `/deploy-staging`. **Addendum in flight:** `class_meetings`/`class_updates`/`sessions.meeting_weekday` (ADR-0030/ADR-0031, `/design` ✓ — see bottom of file), signed off 2026-07-24 → `/plan` ✓ (Tasks 12–14 appended to `core-schema-and-rls.plan.md`) → `/migration` ✓ (2026-07-24; 192/192 pgTAP passing, full suite incl. `160_class_meetings_schema.sql`/`165_session_compliance_rpc.sql`) — ready for `/build`.
+**Stage:** Built — tested, full suite green (73/73; verified live 2026-07-09). `/refine` ✓ → `/architect` ✓ (ADR-0018, ADR-0019, ADR-0021, ADR-0027 addendum) → `/design` ✓ → `/plan` ✓ → `/build` ✓ → `/test` ✓ → next is `/deploy-staging`. **Amendment migrated (ADR-0031, 2026-07-24):** `sessions` gains `day_of_week`/`start_time`/`end_time` (`supabase/migrations/20260724120000_session_weekly_schedule_fields.sql`, not-null + weekday check constraint, add→backfill→not-null shape) with matching pgTAP coverage (`supabase/tests/160_session_weekly_schedule.sql`) proving the constraint and that `sessions_*_select` RLS is unaffected. Seed data (`supabase/seed/seed.sql`) now carries the full doc 1 §9a catalog (3 centers, 8 sessions, real names/schedule shape — only Frisco F3 gets full class/family/student population as the POC pilot target). Verified locally via `supabase db reset` + `supabase test db`: 20/20 test files, 178/178 assertions green.
+
+**Addendum in flight (ADR-0034/ADR-0035, reconciled by ADR-0036):** `class_meetings` + `class_updates` for `coordinator/compliance-dashboard`, `/design` ✓ — see bottom of file — signed off 2026-07-24 → `/plan` ✓ (Tasks 12–14 appended to `core-schema-and-rls.plan.md`) → `/migration` ✓ (2026-07-24), pgTAP `180_class_meetings_schema.sql`/`181_session_compliance_rpc.sql`. **ADR-0036 rework in progress:** `sessions.meeting_weekday` dropped in favour of ADR-0031's `day_of_week`; `class_updates`' canonical shape and its `meeting_date` column are still to be reconciled against issue #21 once that PR lands — **pgTAP counts from the 2026-07-24 pass are superseded and must be re-established at `/test`.**
 
 ---
 
@@ -16,6 +18,7 @@
 - **Full §6.2 table set, in one item.** Mirrors repository-bootstrap's precedent of being intentionally the largest foundational option — every table in doc 3 §6.2 ships together: the canonical core, `user_roles`, `consents`, `audit_log`, `push_subscriptions`, and the chat tables (`conversations`, `conversation_participants`, `messages`), plus retention fields. Splitting these into separate System items was considered and rejected — the tables are small enough, and cross-referencing scope rules across them (e.g. audit_log reading user_roles' scope) is simpler done once.
 - **Family model = household unit.** A `families` record is a household: **one family has multiple parent/guardian users and multiple enrolled students.** Each student belongs to exactly one family. This does **not** model split-custody/joint-guardianship across two households — if that surfaces as a real pilot need, it's a follow-up migration, not solved speculatively here.
 - **Retention policy value is explicitly not finalized here.** Doc 3 §11.2 requires org + legal sign-off before the retention window/deletion-job behavior is set. This item ships the **schema fields** (e.g. a retention/deletion-eligibility marker per PII-bearing table) and the **column-level hook** for a scheduled job to key off — not the finalized policy value or the job itself.
+- **Sessions carry a fixed weekly schedule (ADR-0031 amendment).** Real center/session data confirmed each named session (e.g. "Frisco F3") meets on exactly one fixed weekday at one fixed time — not modeled by the original `start_date`/`end_date` term range. `sessions` gains `day_of_week smallint not null check (between 0 and 6)` (0=Sunday, matching `extract(dow from ...)`), `start_time time not null`, `end_time time not null`. Lives on `sessions`, not `classes`, since every class in a session shares the same schedule in the real data — see ADR-0031 for the options considered and why per-class duplication was rejected.
 
 ### Acceptance criteria
 1. **Canonical operational core** exists as migrations: `centers → sessions → classes → enrollments → attendance → students → families`, with foreign keys expressing the hierarchy (a class belongs to a session belongs to a center; an enrollment links a student to a class; attendance links to an enrollment) and RLS **on** every table.
@@ -27,8 +30,9 @@
 7. **Chat durability tables** — `conversations`, `conversation_participants`, `messages` — per ADR-0015/0016/0017: `conversation_participants` carries member **role** and grade-band-derived membership, plus `notify_level` (`all|mentions|muted`) and a per-user `notification_default`; `messages` carries mention-target columns (`@Parents`/`@Students`/`@individual`). RLS mirrors channel access and **enforces no open student-to-student DMs**.
 8. **Retention fields.** PII-bearing tables carry the schema-level hook (marker/column) a scheduled deletion job will later key off — value/job behavior explicitly deferred (see decisions above).
 9. **RLS proven, not assumed.** An adversarial pgTAP suite exercises role × scope combinations (Parent/Student/Teacher/Coordinator/BV Coordinator/Admin, each at its correct scope from doc 3 §5.4) against every table above, using simulated JWT claims, and proves **no cross-scope leakage** — especially of minors' records. This suite is the merge gate (constitution rule #4; doc 3 §11.3/§12).
-10. **Synthetic seed only.** `supabase/seed/` ships realistic **synthetic** POC data generated from scratch (doc 2 §6 open item 2); `db reset` re-applies migrations + seed cleanly (repository-bootstrap's existing acceptance criterion 5). **No real minors' data in any non-prod environment, ever.**
+10. **Synthetic seed only.** `supabase/seed/` ships realistic **synthetic** POC data generated from scratch (doc 2 §6 open item 2); `db reset` re-applies migrations + seed cleanly (repository-bootstrap's existing acceptance criterion 5). **No real minors' data in any non-prod environment, ever.** Post-ADR-0031, the seed's *shape* matches the real catalog (3 centers, 8 sessions with correct `day_of_week`/`start_time`/`end_time`) as synthetic rows — center/session names may be reused (not PII), no real student/family data.
 11. **Migrations are the only path.** Every table/policy above lands as a timestamped SQL migration in `supabase/migrations/` (doc 3 §6.1) — nothing hand-applied via Studio.
+12. **Session weekly schedule (ADR-0031).** `sessions.day_of_week`/`start_time`/`end_time` exist, are `not null` with the weekday check constraint, and are populated for every seeded session; no RLS/grant change needed (same `sessions_*_select` policies already cover the new columns since they're plain additional columns on an already-scoped table).
 
 ### Edge cases
 - **Cross-scope leakage via joins.** A Teacher (class scope) or Parent (own-children scope) must not reach another class's/family's rows even by joining through session/center — this is exactly what the adversarial suite (#9) must catch, not just direct-table selects.
@@ -85,7 +89,7 @@ All six POC personas' feature UoWs (every table they read/write). The auth-hook 
 | Table | Key columns | Notes |
 |---|---|---|
 | `centers` | `id, name, created_at` | Root of the hierarchy. |
-| `sessions` | `id, center_id→centers, name, start_date, end_date, created_at` | A term (e.g. "2026-Fall") at a center. |
+| `sessions` | `id, center_id→centers, name, start_date, end_date, day_of_week, start_time, end_time, created_at` | A term (e.g. "2026-Fall") at a center, meeting on one fixed weekday/time (ADR-0031 addendum — `day_of_week` 0=Sunday..6=Saturday). |
 | `classes` | `id, session_id→sessions, name/grade_band, created_at` | e.g. "Grade 3", "HS Gr9-12". |
 | `families` | `id, label, created_at` | Household unit (ADR-0018). `label` is a display name only, no PII requirement. |
 | `family_members` | `id, family_id→families, user_id→auth.users, relationship, created_at`, unique(`family_id,user_id`) | Multiple guardians per household (ADR-0018). |
@@ -285,18 +289,20 @@ Everything already listed in the item's "Out of scope" section above; this adden
 
 ---
 
-## Design addendum — ADR-0030 → ADR-0031 (`class_meetings`, `class_updates`, `sessions.meeting_weekday`, 2026-07-24)
+## Design addendum — ADR-0034 → ADR-0035, reconciled by ADR-0036 (`class_meetings`, `class_updates`, 2026-07-24)
+
+> **ADR-0036:** `sessions.meeting_weekday` is **not** created — it duplicated ADR-0031's `sessions.day_of_week`, which already holds the doc 1 §9a catalog. Rows referencing it below are superseded.
 
 **Stage:** 1 — Design (third addendum to this already-Built item, same pattern as the ADR-0021 addendum above: folded into this spec per each ADR's Consequences, no new System backlog item). Coordinated with `.docs/specs/coordinator/compliance-dashboard.md`'s own `/design` pass, which specifies the consuming RPC's client usage and screen in detail — this section is the schema/RPC/RLS side of the same design pass.
 
-**Why here, not a new item:** ADR-0030 (`class_updates`) and ADR-0031 (`class_meetings`, `sessions.meeting_weekday`) both concluded these are System-owned — one persona (Teacher, eventually) writes, a different persona (Coordinator, now) reads, the same shape as the existing `attendance` pattern this item already owns.
+**Why here, not a new item:** ADR-0034 (`class_updates`) and ADR-0035 (`class_meetings`) both concluded these are System-owned — one persona (Teacher, eventually) writes, a different persona (Coordinator, now) reads, the same shape as the existing `attendance` pattern this item already owns.
 
 ### Table catalog additions
 
 | Table/column | Definition | Notes |
 |---|---|---|
-| `sessions.meeting_weekday` | `smallint not null, check (meeting_weekday between 0 and 6)` (0=Sunday..6=Saturday, Postgres `extract(dow from ...)` convention) | Set at session creation. No pilot data predates this column (pre-pilot POC), so this ships as a straight `not null` add — no nullable-then-backfill step needed. |
-| `class_meetings` (new) | `id uuid pk, class_id→classes, meeting_date date, status enum('scheduled','cancelled') default 'scheduled', created_at`, unique(`class_id, meeting_date`) | ADR-0031: one row per class × expected meeting date, generated (not hand-entered) — see RPC below. Cancellations flip `status`, never delete, so "scheduled then cancelled" stays distinguishable from "never scheduled." |
+| ~~`sessions.meeting_weekday`~~ | **Superseded by ADR-0036 — not created.** | Duplicated ADR-0031's `sessions.day_of_week` (same type, same 0=Sunday convention, already migrated/seeded/pgTAP-covered and holding the doc 1 §9a catalog). `generate_class_meetings_for_session` reads `sessions.day_of_week`. |
+| `class_meetings` (new) | `id uuid pk, class_id→classes, meeting_date date, status enum('scheduled','cancelled') default 'scheduled', created_at`, unique(`class_id, meeting_date`) | ADR-0035: one row per class × expected meeting date, generated (not hand-entered) — see RPC below. Cancellations flip `status`, never delete, so "scheduled then cancelled" stays distinguishable from "never scheduled." |
 | `class_updates` (new) | `id uuid pk, class_id→classes, meeting_date date, posted_by→auth.users, posted_at timestamptz`, unique(`class_id, meeting_date`) | ADR-0030's minimum shape, plus `meeting_date` (added at this pass to match a posted update against a specific `class_meetings` row for the rate calculation — ADR-0030 explicitly left exact columns to `/design`). One class-wide update per date, not per-student. Teacher's write RPC (once that item is refined) is a future consumer of this table, not built this pass. |
 
 ### Generation mechanism (ADR-0031's open choice, resolved here)
@@ -334,7 +340,7 @@ begin
   for v_d in
     select generate_series(v_session.start_date, v_session.end_date, interval '1 day')::date
   loop
-    if extract(dow from v_d) = v_session.meeting_weekday then
+    if extract(dow from v_d) = v_session.day_of_week then
       insert into class_meetings (class_id, meeting_date)
       select c.id, v_d from classes c where c.session_id = p_session_id
       on conflict (class_id, meeting_date) do nothing;

@@ -25,8 +25,11 @@ declare
   d date;
 begin
   insert into centers (id, name) values (v_center_id, 'Frisco');
-  insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
-    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 2);
+  -- ADR-0031: Frisco F3 is the confirmed pilot session, Sundays 2:00-3:30PM (day_of_week 0=Sunday).
+  -- ADR-0036: this branch's superseded `meeting_weekday` value (2 = Tuesday) contradicted the
+  -- doc 1 §9a catalog; `day_of_week` is the single source of truth for session weekday.
+  insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 0, '14:00', '15:30');
 
   -- 13 classes spanning Shishu Vihaar (KG) through Gr12, all within the single F3 session.
   for i in 1..v_grade_count loop
@@ -40,7 +43,7 @@ begin
       values (v_teacher_user_id, 'teacher', 'class', v_class_id);
   end loop;
 
-  -- ADR-0031: generate the session's expected-meeting-date calendar for all 13 classes now
+  -- ADR-0035: generate the session's expected-meeting-date calendar for all 13 classes now
   -- that they all exist. generate_class_meetings_for_session is role-gated (SECURITY DEFINER,
   -- checks auth.jwt() same as under real RLS) even when called from a seed script, so a
   -- throwaway authenticated context is required here — no audit_log row is written on a
@@ -108,7 +111,8 @@ begin
                (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
         from enrollments e where e.student_id = v_student_id and e.class_id = v_class_id;
 
-        -- ADR-0030: one class_updates row per class per Tuesday (class-wide, not per-student) —
+        -- ADR-0034: one class_updates row per class per scheduled meeting date (class-wide, not
+        -- per-student; F3 meets Sundays per ADR-0031's day_of_week, not the superseded Tuesday) —
         -- skipped for classes divisible by 3 (by position in v_class_ids) to produce a deliberate
         -- mix of fully-compliant / partial / non-compliant classes for compliance-dashboard demo
         -- data. ON CONFLICT guards against duplicate inserts across the per-student loop this is
@@ -150,4 +154,26 @@ begin
     (v_multirole_user_id, 'teacher', 'class', v_class_ids[1]),
     (v_multirole_user_id, 'coordinator', 'session', v_session),
     (v_multirole_user_id, 'bv_coordinator', 'org', null);
+
+  -- ADR-0031 / doc 1 §9a: the real center/session catalog beyond the pilot slice
+  -- (Frisco F3 above). Names + schedule shape only (real business data, not PII;
+  -- doc 1 §9a) — no classes/families/students here, since only Frisco F3 is the
+  -- POC pilot target (doc 1 §4/§9) and gets full population.
+  declare
+    v_saaket_id uuid := gen_random_uuid();
+    v_chitrakoot_id uuid := gen_random_uuid();
+  begin
+    insert into centers (id, name) values
+      (v_saaket_id, 'Saaket'),
+      (v_chitrakoot_id, 'Chitrakoot');
+
+    insert into sessions (center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+      (v_saaket_id, 'S4', '2026-01-11', '2026-05-24', 5, '18:45', '20:15'),
+      (v_saaket_id, 'S1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_saaket_id, 'S2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
+      (v_center_id, 'F1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_center_id, 'F2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
+      (v_chitrakoot_id, 'C1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
+      (v_chitrakoot_id, 'C2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30');
+  end;
 end $$;

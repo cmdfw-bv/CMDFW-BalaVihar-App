@@ -9,9 +9,9 @@ insert into centers (id, name) values
   ('a0000000-0000-0000-0000-000000000001', 'Adv Center A'),
   ('b0000000-0000-0000-0000-000000000002', 'Adv Center B');
 
-insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
-  ('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Adv Sess A', '2026-01-01', '2026-06-01', 0),
-  ('b1000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', 'Adv Sess B', '2026-01-01', '2026-06-01', 0);
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
+  ('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Adv Sess A', '2026-01-01', '2026-06-01', 0, '09:00', '10:30'),
+  ('b1000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', 'Adv Sess B', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 
 insert into classes (id, session_id, name, grade_band) values
   ('c1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'Adv Class A', 'Grade3'),
