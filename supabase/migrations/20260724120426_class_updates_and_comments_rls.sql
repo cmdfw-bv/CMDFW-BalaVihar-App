@@ -61,6 +61,10 @@ using (auth.jwt()->>'active_role' in ('bv_coordinator','admin'));
 -- Parent of an enrolled student in p_class_id? A Teacher has no personal SELECT rights into an
 -- arbitrary family's family_members row, so a plain (non-bypassing) subquery would always read
 -- as false here — this stops a Teacher's client from privately messaging an unrelated user_id.
+-- SECURITY DEFINER + granted to `authenticated` means this is a directly callable RPC, not just
+-- an internal policy helper — the WITH CHECK above always passes the caller's own scope_id as
+-- p_class_id, but the function itself must not trust that; it needs its own auth.jwt() gate
+-- (mirrors resolve_parent_family_label's pattern exactly, issue #52).
 create or replace function public.is_parent_of_class(p_user_id uuid, p_class_id uuid)
 returns boolean language sql stable security definer set search_path = public
 as $$
@@ -69,6 +73,13 @@ as $$
     join students s on s.id = e.student_id
     join family_members fm on fm.family_id = s.family_id
     where e.class_id = p_class_id and fm.user_id = p_user_id
+  )
+  and (
+    (auth.jwt()->>'active_role' = 'teacher' and (auth.jwt()->>'scope_id')::uuid = p_class_id)
+    or (auth.jwt()->>'active_role' = 'coordinator' and exists (
+      select 1 from classes c where c.id = p_class_id and c.session_id = (auth.jwt()->>'scope_id')::uuid
+    ))
+    or auth.jwt()->>'active_role' in ('bv_coordinator', 'admin')
   );
 $$;
 revoke execute on function public.is_parent_of_class(uuid, uuid) from public, anon;

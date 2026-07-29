@@ -5,7 +5,7 @@
 -- access, enrollment-status-aware RPC scoping, and a genuine (not synthetic) multi-role
 -- active-role-switch scenario where the same account has real, disjoint data in both scopes.
 begin;
-select plan(47);
+select plan(52);
 
 insert into centers (id, name) values ('ce777777-0000-0000-0000-000000000001', 'Adversarial Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -429,6 +429,50 @@ select is(
 select is(
   (select count(*) from comments where id = 'ce777777-0000-0000-0000-000000000061'::uuid)::int, 1,
   'CONTROL: same substitute-Teacher scope DOES see the public comment on Class A (proves the prior denial was private-thread-specific, not a general scope failure)'
+);
+select tests.clear_authentication();
+
+-- =====================================================================================
+-- ATTACK GROUP 8 (issue #52): is_parent_of_class is a directly-callable SECURITY DEFINER RPC
+-- granted to `authenticated`, not just an internal policy helper reached only via a pre-scoped
+-- WITH CHECK — it must carry its own auth.jwt() scope gate (mirroring
+-- resolve_parent_family_label's pattern), not rely on every caller pre-scoping p_class_id.
+-- =====================================================================================
+
+select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000021'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_2'::uuid, 'ce777777-0000-0000-0000-000000000022'::uuid),
+  false,
+  'ATTACK 8a DENY: Teacher A (scoped to Class A) cannot use is_parent_of_class as a cross-class oracle against Class B, even though v_parent_2 genuinely is a parent there'
+);
+select is(
+  is_parent_of_class(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid),
+  true,
+  'CONTROL: Teacher A asking about their OWN class (Class A) for its real parent still resolves true'
+);
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_coordinator_2'::uuid, 'coordinator', 'session', 'ce777777-0000-0000-0000-000000000012'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid),
+  false,
+  'ATTACK 8b DENY: Coordinator of Session Two (owns Class B) cannot query Class A, which belongs to Session One'
+);
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_coordinator_1'::uuid, 'coordinator', 'session', 'ce777777-0000-0000-0000-000000000011'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid),
+  true,
+  'CONTROL: Coordinator of Session One (owns Class A) legitimately resolves true for their own session'
+);
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_outsider'::uuid, 'student', 'class', 'ce777777-0000-0000-0000-000000000021'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid),
+  false,
+  'ATTACK 8c DENY: a Student (no role match in the function''s auth.jwt() gate at all) gets false regardless of scope_id'
 );
 select tests.clear_authentication();
 

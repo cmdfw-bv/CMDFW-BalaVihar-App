@@ -369,7 +369,17 @@ Reviewer: ssrinivas90, at `635d76f`. **No Critical findings** — the RLS policy
 reviewed adversarially and found sound, with no cross-scope or cross-family leakage.
 
 Eight Important items were raised; seven were fixed on 2026-07-28 (see `UAT.md`'s sign-off row for
-the verification detail). The eighth is deferred by human decision:
+the verification detail). The eighth is deferred by human decision (below).
+
+**Also closed here: the reviewer's Minor #2** — `is_parent_of_class` was `SECURITY DEFINER`, granted
+to `authenticated`, with no internal authorization gate, making it a directly-callable cross-scope
+oracle for `(user_id, class_id)` pairs. The same weakness was independently found by an
+RLS-adversarial audit on the (now-abandoned) `integrate-four-issues-e2e` branch and filed as
+**issue #52**; that fix was cherry-picked here (`7712727`) rather than re-derived. The function now
+carries the same `auth.jwt()` gate as `resolve_parent_family_label` (teacher own-class, coordinator
+own-session, bv_coordinator/admin org-wide), proven by `171`'s new Attack Group 8 — 5 direct-RPC
+assertions whose three DENY cases were confirmed failing against the un-gated function before the
+fix was accepted.
 
 ### Open question → `/architect`: does withdrawal revoke access to conversational content?
 
