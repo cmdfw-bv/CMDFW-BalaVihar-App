@@ -12,6 +12,7 @@ import StateView from "../../../../components/core/StateView";
 import { fetchClassUpdateById, type ClassUpdateRow } from "../api/classUpdates";
 import { fetchComments, insertComment, resolveParentFamilyLabel, type CommentRow } from "../api/comments";
 import { groupCommentsForViewer } from "../logic/threadAssembly";
+import { resolveLabelsForKeys } from "../logic/parentLabels";
 
 type ScreenState = "loading" | "error" | "content";
 type ViewerRole = "student" | "parent" | "teacher";
@@ -70,8 +71,8 @@ export default function ClassUpdateDetailScreen() {
     const missing = privateKeys.filter((k) => !parentLabels.has(k));
     if (missing.length === 0) return;
     (async () => {
-      const entries = await Promise.all(
-        missing.map(async (parentUserId) => [parentUserId, await resolveParentFamilyLabel(supabase, parentUserId, update.class_id)] as const)
+      const entries = await resolveLabelsForKeys(missing, (parentUserId) =>
+        resolveParentFamilyLabel(supabase, parentUserId, update.class_id)
       );
       setParentLabels((prev) => new Map([...prev, ...entries]));
     })();

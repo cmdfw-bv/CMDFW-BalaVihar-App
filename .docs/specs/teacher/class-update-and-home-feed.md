@@ -2,7 +2,7 @@
 
 > **owner:** Teacher · **consumers:** Student (own class, read + comment), Parent (each child's class, read + comment), Coordinator/BV Coordinator/Admin (oversight read of class updates + all comments, public and private, ADR-0032 extended during `/design`), System (`notifications-infra` — `push-send` second caller, ADR-0033) · **scope:** Teacher=class (post, own class only) · Student=self (read/comment, own class) · Parent=own-children (read/comment, each enrolled child's class) · Coordinator=session / BV Coordinator·Admin=org (oversight read — class updates + all comments, ADR-0032 extended) — §5.4 · **governing ADR:** ADR-0032 (comment privacy — column-flag RLS + scope-derived oversight), ADR-0033 (`push-send` discriminated event reference, ADR-0028 addendum) · **covers:** doc 2 Teacher POC-core "post class update (+ optional homework)"; doc 2 Student/Parent POC-core "home feed" + "two-way comments (public + private)"; doc 1 §5 thinnest-slice step 2–3 (Teacher posts, Student/Parent receive push + comment); doc 3 §6.2 (new table, flagged not yet in the canonical list); GitHub issue #21
 
-**Stage:** Refined ✓ → `/architect` ✓ (ADR-0032, ADR-0033) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/170_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → next `/test`.
+**Stage:** Refined ✓ → `/architect` ✓ (ADR-0032, ADR-0033) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/170_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → `/test` ✓ (2026-07-25, two GREEN gate passes after an initial NOT-GREEN one — see the `UAT.md` sign-off log) → PR #48 opened → **code review 2026-07-29 (ssrinivas90): no Critical findings; 8 Important, fixes applied 2026-07-28** (see Review follow-ups below) → next: re-review, then `/deploy-staging`.
 
 ---
 
@@ -359,6 +359,48 @@ Design references (local mirror confirmed current against the components' own `.
 
 ### Out of scope (unchanged from refine, confirmed still correct)
 Comment moderation, class roster screen, announcements, structured homework/assignment tracking, and the `push-send` function's shared phases (owned by `notifications-infra`) — all as stated in the refine brief above. A dedicated Coordinator/BV Coordinator/Admin oversight *browsing* screen (its own nav entry, filters, etc.) is still a future item's decision — out of this item's scope. **Amended (code review, PR #48):** oversight roles already land on `class-update-and-home-feed`'s own `/feed` → detail route today (`ROLE_TABS` grants them `feed`), so `ClassUpdateDetailScreen` reuses the Teacher-shaped read-only thread breakdown for them (their `comments_coordinator_select`/`comments_org_select` policies grant the same public+private read as Teacher) with no `CommentComposer` rendered, rather than leaving the existing unchecked-role-cast bug that gave them a broken, silently-failing composer.
+
+---
+
+## Review follow-ups (PR #48 code review, 2026-07-29)
+
+Reviewer: ssrinivas90, at `635d76f`. **No Critical findings** — the RLS policy set, the
+`is_parent_of_class` helper, and `resolve_parent_family_label`'s minors'-data posture were all
+reviewed adversarially and found sound, with no cross-scope or cross-family leakage.
+
+Eight Important items were raised; seven were fixed on 2026-07-28 (see `UAT.md`'s sign-off row for
+the verification detail). The eighth is deferred by human decision:
+
+### Open question → `/architect`: does withdrawal revoke access to conversational content?
+
+**Deferred deliberately (human decision, 2026-07-28) — not an oversight, and not fixed in PR #48.**
+Tracked as **[issue #58](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/58)**.
+
+This item's RLS policies and `is_parent_of_class` join `enrollments` **without** filtering
+`status`, so a withdrawn student's family keeps read + comment access to that class's feed and
+their private thread. Two things in this same feature disagree with that: `resolve_parent_family_label`
+(`20260724120526_…sql:23`) and `push-send`'s `dispatchClassUpdate` (`push-send.ts`) both filter
+`status = 'active'` — so a withdrawn family can still read and post, but the Teacher's thread card
+can no longer resolve their label and falls back to the generic "Private thread".
+
+The repo has **two competing precedents**, and picking between them is an org-wide convention call,
+not a #21 call:
+
+- **Reference/operational tables** — `classes_parent_select`/`classes_student_select`
+  (`20260709032818_…sql`) join `enrollments` unfiltered. A withdrawn family can still see *that the
+  class exists*. This item currently matches this precedent.
+- **Conversational content** — chat actively **revokes** on withdrawal:
+  `20260709043451_chat_sync_triggers.sql:76` deletes the student and their parents from
+  `conversation_participants` the moment an enrollment flips to `withdrawn` (ADR-0015).
+
+`class_updates`/`comments` are conversational content, which argues for the chat precedent — but
+changing it would also touch the org-wide `classes_*_select` convention, and the tradeoff is real in
+both directions (filtering costs a withdrawn parent access to the private-thread history they
+themselves wrote; not filtering leaves a minors'-data retention exposure under §12.1 #6).
+
+**`/architect` owns the decision** and, if it changes the convention, the resulting ADR + migration.
+Until then this feature's unfiltered behavior stands as-is and is documented here rather than
+silently inconsistent.
 
 ---
 

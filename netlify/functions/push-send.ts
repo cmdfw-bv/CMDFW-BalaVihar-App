@@ -15,11 +15,29 @@ interface PushSendRequestBody {
   class_update_id?: string;
 }
 
+class QueryError extends Error {
+  constructor(
+    readonly table: string,
+    readonly cause: { message: string; code?: string }
+  ) {
+    super(`${table}: ${cause.message}`);
+    this.name = 'QueryError';
+  }
+}
+
+// Every service-role read goes through here. Discarding `error` and letting `data` fall through as
+// null is what made issue #47 invisible: a missing grant returned 200 {"recipients":0} and nothing
+// was logged. Unwrapping centrally means a new query can't silently reintroduce that failure mode.
+function unwrap<T>(table: string, res: { data: T | null; error: { message: string; code?: string } | null }): T | null {
+  if (res.error) throw new QueryError(table, res.error);
+  return res.data;
+}
+
 async function fanOut(client: SupabaseClient, recipientIds: string[], payload: { title: string }) {
-  const { data: subscriptions } = await client
-    .from('push_subscriptions')
-    .select('id, endpoint, p256dh_key, auth_key')
-    .in('user_id', recipientIds);
+  const subscriptions = unwrap(
+    'push_subscriptions',
+    await client.from('push_subscriptions').select('id, endpoint, p256dh_key, auth_key').in('user_id', recipientIds)
+  );
 
   configureVapid(
     process.env['VAPID_SUBJECT'] ?? '',
@@ -44,11 +62,10 @@ async function fanOut(client: SupabaseClient, recipientIds: string[], payload: {
 }
 
 async function dispatchMessage(client: SupabaseClient, messageId: string, callerUserId: string) {
-  const { data: message } = await client
-    .from('messages')
-    .select('id, conversation_id, sender_user_id, mention_targets')
-    .eq('id', messageId)
-    .maybeSingle();
+  const message = unwrap<Record<string, unknown>>(
+    'messages',
+    await client.from('messages').select('id, conversation_id, sender_user_id, mention_targets').eq('id', messageId).maybeSingle()
+  );
   if (!message) return json(200, { status: 'noop', recipients: 0, sent: 0, cleaned_up: 0 });
 
   // push-send runs service-role and bypasses RLS entirely — nothing else stops an
@@ -56,21 +73,23 @@ async function dispatchMessage(client: SupabaseClient, messageId: string, caller
   // they didn't send. Design sign-off, 2026-07-21: required, not optional hardening.
   if (message['sender_user_id'] !== callerUserId) return json(403, { reason: 'caller is not the message sender' });
 
-  const { data: conversation } = await client
-    .from('conversations')
-    .select('kind')
-    .eq('id', message['conversation_id'])
-    .maybeSingle();
+  const conversation = unwrap<Record<string, unknown>>(
+    'conversations',
+    await client.from('conversations').select('kind').eq('id', message['conversation_id']).maybeSingle()
+  );
   if (!conversation) return json(200, { status: 'noop', recipients: 0, sent: 0, cleaned_up: 0 });
 
-  const { data: participants } = await client
-    .from('conversation_participants')
-    .select('user_id, participant_role, notify_level')
-    .eq('conversation_id', message['conversation_id']);
+  const participants = unwrap<ConversationParticipant[]>(
+    'conversation_participants',
+    await client
+      .from('conversation_participants')
+      .select('user_id, participant_role, notify_level')
+      .eq('conversation_id', message['conversation_id'])
+  );
 
   const senderUserId = message['sender_user_id'] as string;
   const mentionTargets = (message['mention_targets'] ?? []) as string[];
-  const recipientIds = ((participants ?? []) as ConversationParticipant[])
+  const recipientIds = (participants ?? [])
     .filter((cp) => isRecipient(cp, senderUserId, mentionTargets))
     .map((cp) => cp.user_id);
 
@@ -84,11 +103,10 @@ async function dispatchMessage(client: SupabaseClient, messageId: string, caller
 }
 
 async function dispatchClassUpdate(client: SupabaseClient, classUpdateId: string, callerUserId: string) {
-  const { data: classUpdate } = await client
-    .from('class_updates')
-    .select('id, class_id, posted_by')
-    .eq('id', classUpdateId)
-    .maybeSingle();
+  const classUpdate = unwrap<Record<string, unknown>>(
+    'class_updates',
+    await client.from('class_updates').select('id, class_id, posted_by').eq('id', classUpdateId).maybeSingle()
+  );
   if (!classUpdate) return json(200, { status: 'noop', recipients: 0, sent: 0, cleaned_up: 0 });
 
   const posterUserId = classUpdate['posted_by'] as string;
@@ -96,21 +114,26 @@ async function dispatchClassUpdate(client: SupabaseClient, classUpdateId: string
   if (posterUserId !== callerUserId) return json(403, { reason: "caller is not the class update's poster" });
 
   const classId = classUpdate['class_id'] as string;
-  const { data: enrollments } = await client
-    .from('enrollments')
-    .select('student_id')
-    .eq('class_id', classId)
-    .eq('status', 'active');
-  const studentIds = ((enrollments ?? []) as Array<{ student_id: string }>).map((e) => e.student_id);
+  const enrollments = unwrap<Array<{ student_id: string }>>(
+    'enrollments',
+    await client.from('enrollments').select('student_id').eq('class_id', classId).eq('status', 'active')
+  );
+  const studentIds = (enrollments ?? []).map((e) => e.student_id);
 
   if (studentIds.length === 0) return json(200, { status: 'dispatched', recipients: 0, sent: 0, cleaned_up: 0 });
 
-  const { data: students } = await client.from('students').select('user_id, family_id').in('id', studentIds);
-  const studentRows = (students ?? []) as Array<{ user_id: string | null; family_id: string }>;
+  const students = unwrap<Array<{ user_id: string | null; family_id: string }>>(
+    'students',
+    await client.from('students').select('user_id, family_id').in('id', studentIds)
+  );
+  const studentRows = students ?? [];
   const familyIds = Array.from(new Set(studentRows.map((s) => s.family_id)));
 
-  const { data: familyMembers } = await client.from('family_members').select('user_id').in('family_id', familyIds);
-  const parentUserIds = ((familyMembers ?? []) as Array<{ user_id: string }>).map((fm) => fm.user_id);
+  const familyMembers = unwrap<Array<{ user_id: string }>>(
+    'family_members',
+    await client.from('family_members').select('user_id').in('family_id', familyIds)
+  );
+  const parentUserIds = (familyMembers ?? []).map((fm) => fm.user_id);
 
   const recipientIds = mergeClassUpdateRecipients([...studentRows.map((s) => s.user_id), ...parentUserIds], posterUserId);
   if (recipientIds.length === 0) return json(200, { status: 'dispatched', recipients: 0, sent: 0, cleaned_up: 0 });
@@ -148,7 +171,25 @@ export const handler: Handler = async (event: HandlerEvent, _ctx: HandlerContext
   if (hasMessage && !UUID_RE.test(message_id!)) return json(422, { reason: 'message_id must be a valid UUID' });
   if (hasClassUpdate && !UUID_RE.test(class_update_id!)) return json(422, { reason: 'class_update_id must be a valid UUID' });
 
-  return hasMessage
-    ? dispatchMessage(client, message_id!, callerUserId)
-    : dispatchClassUpdate(client, class_update_id!, callerUserId);
+  try {
+    return await (hasMessage
+      ? dispatchMessage(client, message_id!, callerUserId)
+      : dispatchClassUpdate(client, class_update_id!, callerUserId));
+  } catch (err) {
+    if (err instanceof QueryError) {
+      // Structured so a recurrence of issue #47 is greppable in function logs rather than
+      // indistinguishable from a genuine zero-recipient dispatch.
+      console.error(
+        JSON.stringify({
+          event: 'push_dispatch_failed',
+          table: err.table,
+          code: err.cause.code ?? null,
+          message: err.cause.message,
+          ...(hasMessage ? { message_id } : { class_update_id }),
+        })
+      );
+      return json(500, { status: 'error', reason: 'dispatch query failed' });
+    }
+    throw err;
+  }
 };

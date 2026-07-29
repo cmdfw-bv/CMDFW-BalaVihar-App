@@ -1,8 +1,8 @@
 import "../../../../lib/unistyles";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { supabase } from "../../../../lib/supabase";
 import { useSession } from "../../../../lib/auth/SessionProvider";
 import FeedCard from "../../../../components/feed/FeedCard";
@@ -33,9 +33,14 @@ export default function HomeFeedScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Refetch on focus, not just on mount: posting returns here via router.back(), which leaves this
+  // screen mounted — a mount-only effect would send the Teacher back to a feed missing the update
+  // they just posted. The `load` guard above keeps the refetch from flashing a full-screen spinner.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const hasContent = updates.length > 0;
 
