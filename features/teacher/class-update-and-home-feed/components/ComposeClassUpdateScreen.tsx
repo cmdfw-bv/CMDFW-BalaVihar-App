@@ -9,7 +9,7 @@ import Field from "../../../../components/core/Field";
 import Button from "../../../../components/core/Button";
 import { insertClassUpdate } from "../api/classUpdates";
 import { triggerClassUpdatePush } from "../api/pushTrigger";
-import { buildClassUpdatePayload } from "../logic/classUpdatePayload";
+import { buildClassUpdatePayload, CLASS_UPDATE_BODY_MAX, CLASS_UPDATE_HOMEWORK_MAX } from "../logic/classUpdatePayload";
 
 type ScreenState = "form" | "submitting" | "error";
 
@@ -58,6 +58,7 @@ export default function ComposeClassUpdateScreen() {
         as="textarea"
         value={body}
         onChangeText={setBody}
+        maxLength={CLASS_UPDATE_BODY_MAX}
         placeholder="Share what your class covered today…"
       />
       <Field
@@ -66,6 +67,7 @@ export default function ComposeClassUpdateScreen() {
         as="textarea"
         value={homework}
         onChangeText={setHomework}
+        maxLength={CLASS_UPDATE_HOMEWORK_MAX}
         placeholder="e.g. Read chapter 3"
       />
       {state === "error" ? <Text style={styles.error}>{errorMessage}</Text> : null}

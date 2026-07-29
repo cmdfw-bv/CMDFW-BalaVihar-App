@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(31);
 
 insert into centers (id, name) values ('cd888888-0000-0000-0000-000000000001', 'Plan Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -190,6 +190,52 @@ select is(
   'post-switch: same account as an unrelated Parent role sees zero rows immediately — no stale Teacher-scope leak'
 );
 select tests.clear_authentication();
+
+-- =====================================================================================
+-- Length caps (PR #48 code review, Minor #7) and FK-action honesty (Minor #1).
+-- The caps are enforced in the DB, not only in the composer, because a direct PostgREST
+-- call ignores the client bound. Values must match classUpdatePayload.ts /
+-- CommentComposer.logic.ts exactly.
+-- =====================================================================================
+
+select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'cd888888-0000-0000-0000-000000000021'::uuid);
+
+select lives_ok(
+  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5000))$$,
+  'a class_update body exactly at the 5000-char cap is accepted'
+);
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5001))$$,
+  '23514',
+  null,
+  'a class_update body one char over the cap is rejected by class_updates_body_len'
+);
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body, homework) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'fine', repeat('y', 2001))$$,
+  '23514',
+  null,
+  'homework one char over the 2000-char cap is rejected by class_updates_homework_len'
+);
+select throws_ok(
+  $$insert into comments (class_update_id, author_user_id, author_role, body) values ('cd888888-0000-0000-0000-000000000051'::uuid, auth.uid(), 'teacher', repeat('z', 2001))$$,
+  '23514',
+  null,
+  'a comment body one char over the 2000-char cap is rejected by comments_body_len'
+);
+select tests.clear_authentication();
+
+-- Minor #1: these columns are `not null`, so `on delete set null` could never fire — deleting the
+-- author raised a confusing 23502 instead. Now honestly `restrict`, which reports 23503.
+select is(
+  (select confdeltype from pg_constraint where conname = 'class_updates_posted_by_fkey'),
+  'r'::"char",
+  'class_updates.posted_by FK is ON DELETE RESTRICT, not the impossible SET NULL on a NOT NULL column'
+);
+select is(
+  (select confdeltype from pg_constraint where conname = 'comments_author_user_id_fkey'),
+  'r'::"char",
+  'comments.author_user_id FK is ON DELETE RESTRICT'
+);
 
 select * from finish();
 rollback;

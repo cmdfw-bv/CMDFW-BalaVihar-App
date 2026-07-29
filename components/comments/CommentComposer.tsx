@@ -3,7 +3,7 @@ import * as React from "react";
 import { View, Text, TextInput, Pressable, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { buildCommentPayload } from "./CommentComposer.logic";
+import { buildCommentPayload, COMMENT_BODY_MAX } from "./CommentComposer.logic";
 
 // Matches design/sankalp/bv-connect/components/comments/CommentComposer.jsx — comment input
 // row with an explicit public/private visibility toggle. This component never calls Supabase or
@@ -55,6 +55,7 @@ export default function CommentComposer({ canPrivate = true, placeholder = "Add 
           placeholder={placeholder}
           onChangeText={setValue}
           multiline
+          maxLength={COMMENT_BODY_MAX}
           style={styles.input}
         />
         <Pressable

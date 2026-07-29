@@ -381,6 +381,28 @@ own-session, bv_coordinator/admin org-wide), proven by `171`'s new Attack Group 
 assertions whose three DENY cases were confirmed failing against the un-gated function before the
 fix was accepted.
 
+### Minor items — dispositions
+
+All nine Minor items were addressed on 2026-07-28. Seven were fixed outright (see `UAT.md`); two
+were resolved as deliberate non-fixes and are recorded here so the reasoning is inspectable:
+
+- **Minor #1 (self-contradictory FK action).** This feature's own two columns —
+  `class_updates.posted_by`, `comments.author_user_id`, plus `comments.target_parent_id` — were
+  corrected to `on delete restrict`, which is an honest statement of what already happened
+  (`not null` + `set null` raises 23502, so the delete was already blocked). `messages.sender_user_id`
+  carries the identical latent bug and was the convention this feature copied, but fixing it from
+  here would reach into the chat feature's schema from an issue #21 PR — split out as
+  **[issue #59](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/59)**.
+
+- **Minor #9 (existence oracle: 23503 vs 42501).** Accepted, not fixed. Inserting a comment against
+  a *nonexistent* `class_update_id` raises a foreign-key error, while an *existing but
+  out-of-scope* one raises an RLS error, so the two are distinguishable by an attacker enumerating
+  UUIDs. Closing it properly would mean routing all comment inserts through a `SECURITY DEFINER`
+  RPC purely to normalize the error code — a real architectural change, and one that would move
+  the insert path off the plain-RLS posture ADR-0032 deliberately chose. What leaks is only whether
+  a random UUID exists, not any content, scope, or relationship; v4 UUIDs are not enumerable in
+  practice. Judged not worth the structural cost, and recorded rather than silently accepted.
+
 ### Open question → `/architect`: does withdrawal revoke access to conversational content?
 
 **Deferred deliberately (human decision, 2026-07-28) — not an oversight, and not fixed in PR #48.**

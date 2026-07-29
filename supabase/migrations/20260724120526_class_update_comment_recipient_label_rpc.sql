@@ -31,5 +31,8 @@ as $$
   limit 1;
 $$;
 
-revoke all on function public.resolve_parent_family_label(uuid, uuid) from public;
+-- `from public, anon` matches is_parent_of_class's sibling revoke exactly. Adversarial test 5d
+-- already proves anon can't execute this today, so this is consistency/defense-in-depth rather
+-- than a live hole — but the two functions should not differ in how they lock down (review Minor #3).
+revoke all on function public.resolve_parent_family_label(uuid, uuid) from public, anon;
 grant execute on function public.resolve_parent_family_label(uuid, uuid) to authenticated;

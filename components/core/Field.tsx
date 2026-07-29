@@ -22,6 +22,8 @@ export interface FieldProps {
   placeholder?: string;
   value?: string;
   onChangeText?: (text: string) => void;
+  /** Hard character cap on the input. Callers pass the same number their DB check constraint uses. */
+  maxLength?: number;
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
@@ -37,6 +39,7 @@ export default function Field({
   placeholder,
   value,
   onChangeText,
+  maxLength,
   children,
   style,
   inputStyle,
@@ -63,6 +66,7 @@ export default function Field({
           placeholder={placeholder}
           multiline={meta.multiline}
           onChangeText={onChangeText}
+          maxLength={maxLength}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={[styles.control(meta, focused), styles.controlText, inputStyle]}

@@ -13,6 +13,7 @@ import { fetchClassUpdateById, type ClassUpdateRow } from "../api/classUpdates";
 import { fetchComments, insertComment, resolveParentFamilyLabel, type CommentRow } from "../api/comments";
 import { groupCommentsForViewer } from "../logic/threadAssembly";
 import { resolveLabelsForKeys } from "../logic/parentLabels";
+import { formatPostedAt } from "../logic/formatPostedAt";
 
 type ScreenState = "loading" | "error" | "content";
 type ViewerRole = "student" | "parent" | "teacher";
@@ -79,7 +80,11 @@ export default function ClassUpdateDetailScreen() {
   }, [groupingRole, update, groups, parentLabels]);
 
   async function send(targetParentId: string | null, isPrivate: boolean, body: string) {
-    if (!session) return;
+    // Throw rather than return: a bare `return` resolves onSend, and CommentComposer treats a
+    // resolved promise as success — it would clear the typed text as though the comment had been
+    // posted. Throwing routes into the composer's existing error path, which preserves the text
+    // and re-enables send (review Minor #8).
+    if (!session) throw new Error("cannot send a comment without a session");
     await insertComment(supabase, {
       classUpdateId: id,
       authorUserId: session.user.id,
@@ -106,7 +111,7 @@ export default function ClassUpdateDetailScreen() {
         body={update.body}
         homework={update.homework ?? undefined}
         tag={update.homework ? "Homework" : undefined}
-        time={new Date(update.created_at).toLocaleDateString()}
+        time={formatPostedAt(update.created_at)}
       />
 
       {allEmpty ? <Text style={styles.emptyComments}>No comments yet</Text> : null}
@@ -123,7 +128,7 @@ export default function ClassUpdateDetailScreen() {
               author: { role: c.author_role },
               body: c.body,
               isPrivate: c.is_private,
-              time: new Date(c.created_at).toLocaleDateString(),
+              time: formatPostedAt(c.created_at),
             }))}
           >
             {canComment ? (

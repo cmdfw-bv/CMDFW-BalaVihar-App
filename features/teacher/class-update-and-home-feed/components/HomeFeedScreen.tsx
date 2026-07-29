@@ -9,6 +9,7 @@ import FeedCard from "../../../../components/feed/FeedCard";
 import Button from "../../../../components/core/Button";
 import StateView from "../../../../components/core/StateView";
 import { fetchClassUpdatesFeed, fetchCommentCounts, type ClassUpdateRow } from "../api/classUpdates";
+import { formatPostedAt } from "../logic/formatPostedAt";
 
 type ScreenState = "loading" | "empty" | "error" | "content";
 
@@ -79,7 +80,7 @@ export default function HomeFeedScreen() {
               body={u.body}
               homework={u.homework ?? undefined}
               tag={u.homework ? "Homework" : undefined}
-              time={new Date(u.created_at).toLocaleDateString()}
+              time={formatPostedAt(u.created_at)}
               comments={counts.get(u.id) ?? 0}
               onOpen={() => router.push(`/class-update/${u.id}`)}
             />

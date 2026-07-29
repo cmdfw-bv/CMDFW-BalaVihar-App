@@ -39,11 +39,19 @@ function mapClassUpdateRow(row: RawClassUpdateRow): ClassUpdateRow {
 // client-branched). The classes/sessions/centers nested select is readable per-viewer because
 // it's the same class_id they already have class_updates visibility into (classes_*_select
 // policies mirror the same scoping — core-schema-and-rls).
+// Explicit ceiling rather than an implicit one: without a limit, PostgREST's own `db-max-rows`
+// would silently truncate the feed at whatever the server is configured for, with no signal here.
+// Stating it in the query makes the bound visible and keeps the newest-first ordering meaningful.
+// Ample at pilot scale (one session's classes); real pagination is a follow-up if a class ever
+// accumulates more than this (review Minor #4).
+export const FEED_PAGE_LIMIT = 200;
+
 export async function fetchClassUpdatesFeed(supabase: SupabaseClient): Promise<ClassUpdateRow[]> {
   const { data, error } = await supabase
     .from('class_updates')
     .select(CLASS_UPDATE_COLUMNS)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(FEED_PAGE_LIMIT);
   if (error) throw error;
   return ((data ?? []) as unknown as RawClassUpdateRow[]).map(mapClassUpdateRow);
 }
@@ -78,12 +86,34 @@ export async function insertClassUpdate(
 // Design decision #3: a live, RLS-filtered count — not a denormalized counter. Counting the
 // filtered rows client-side after one query (rather than one count(*) call per feed card)
 // keeps this a single round trip; RLS has already dropped anything this viewer can't see.
-export async function fetchCommentCounts(supabase: SupabaseClient, classUpdateIds: string[]): Promise<Map<string, number>> {
+// Ceiling note (review Minor #4): this tallies client-side over the returned rows, so a truncated
+// response yields *undercounted* badges rather than an error — silently wrong, not loudly wrong.
+// The limit is stated explicitly so the truncation point is this constant rather than whatever
+// PostgREST's `db-max-rows` happens to be, and `truncated` is surfaced so a caller can tell the
+// difference between "12 comments" and "at least 12". At pilot scale (one session of classes,
+// FEED_PAGE_LIMIT updates) this bound is not reachable in practice; per-card count queries or a
+// denormalized counter are the follow-up if it ever is.
+export const COMMENT_COUNT_SCAN_LIMIT = 5000;
+
+export async function fetchCommentCounts(
+  supabase: SupabaseClient,
+  classUpdateIds: string[]
+): Promise<Map<string, number>> {
   if (classUpdateIds.length === 0) return new Map();
-  const { data, error } = await supabase.from('comments').select('class_update_id').in('class_update_id', classUpdateIds);
+  const { data, error } = await supabase
+    .from('comments')
+    .select('class_update_id')
+    .in('class_update_id', classUpdateIds)
+    .limit(COMMENT_COUNT_SCAN_LIMIT);
   if (error) throw error;
+  const rows = (data ?? []) as Array<{ class_update_id: string }>;
+  if (rows.length === COMMENT_COUNT_SCAN_LIMIT) {
+    console.warn(
+      `fetchCommentCounts hit COMMENT_COUNT_SCAN_LIMIT (${COMMENT_COUNT_SCAN_LIMIT}); comment counts may be undercounted`
+    );
+  }
   const counts = new Map<string, number>();
-  for (const row of (data ?? []) as Array<{ class_update_id: string }>) {
+  for (const row of rows) {
     counts.set(row.class_update_id, (counts.get(row.class_update_id) ?? 0) + 1);
   }
   return counts;
