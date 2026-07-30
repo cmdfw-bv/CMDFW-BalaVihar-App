@@ -8,6 +8,13 @@ process.stdin.on("end", () => {
   try {
     const d = JSON.parse(raw || "{}");
     const ti = d.tool_input || {};
+
+    // Local dev secrets are allowed in gitignored .env files (e.g. .env, .env.local) —
+    // but NOT .env.example, which is a committed template and must stay secret-free.
+    const filePath = typeof ti.file_path === "string" ? ti.file_path : "";
+    const fileName = filePath.split("/").pop() || "";
+    if (/^\.env(\..+)?$/.test(fileName) && fileName !== ".env.example") process.exit(0);
+
     const parts = [];
     if (typeof ti.content === "string") parts.push(ti.content);
     if (typeof ti.new_string === "string") parts.push(ti.new_string);

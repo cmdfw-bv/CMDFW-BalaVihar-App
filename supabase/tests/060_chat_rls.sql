@@ -2,8 +2,8 @@ begin;
 select plan(13);
 
 insert into centers (id, name) values ('c7777777-0000-0000-0000-000000000001', 'Chat Center');
-insert into sessions (id, center_id, name, start_date, end_date)
-  values ('a7777777-0000-0000-0000-000000000001', 'c7777777-0000-0000-0000-000000000001', 'Chat Session', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values ('a7777777-0000-0000-0000-000000000001', 'c7777777-0000-0000-0000-000000000001', 'Chat Session', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band)
   values ('c7777777-0000-0000-0000-000000000002', 'a7777777-0000-0000-0000-000000000001', 'Chat Class HS9', 'HS9-12');
 
