@@ -14,7 +14,7 @@ import { formatPostedAt } from "../logic/formatPostedAt";
 type ScreenState = "loading" | "empty" | "error" | "content";
 
 export default function HomeFeedScreen() {
-  const { activeRole } = useSession();
+  const { activeRole, scopeId } = useSession();
   const [state, setState] = useState<ScreenState>("loading");
   const [updates, setUpdates] = useState<ClassUpdateRow[]>([]);
   const [counts, setCounts] = useState<Map<string, number>>(new Map());
@@ -32,11 +32,18 @@ export default function HomeFeedScreen() {
       // populated `updates`, they stay rendered below; only the state flag flips.
       setState("error");
     }
-  }, []);
+    // Keyed on the session identity, not just `[]` (issue #60): what this query returns is decided
+    // entirely by the caller's JWT role+scope via RLS, so the active role IS an input to the fetch
+    // even though it appears nowhere in the query text. With `[]`, switching role re-rendered the
+    // nav and the scope chip but left the feed showing the previous role's rows until a manual
+    // reload — a Coordinator switching in saw "No updates yet" over their own session's updates.
+  }, [activeRole, scopeId]);
 
   // Refetch on focus, not just on mount: posting returns here via router.back(), which leaves this
   // screen mounted — a mount-only effect would send the Teacher back to a feed missing the update
   // they just posted. The `load` guard above keeps the refetch from flashing a full-screen spinner.
+  // Because `load`'s identity now changes with the active role, this also re-runs on a role switch,
+  // which does NOT unfocus or remount this screen and so fires no focus event of its own.
   useFocusEffect(
     useCallback(() => {
       load();

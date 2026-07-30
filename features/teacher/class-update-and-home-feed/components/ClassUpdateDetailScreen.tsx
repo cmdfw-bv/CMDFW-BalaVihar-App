@@ -26,7 +26,7 @@ const COMMENTABLE_ROLES: ReadonlySet<string> = new Set<ViewerRole>(["student", "
 
 export default function ClassUpdateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { session, activeRole } = useSession();
+  const { session, activeRole, scopeId } = useSession();
   const [state, setState] = useState<ScreenState>("loading");
   const [update, setUpdate] = useState<ClassUpdateRow | null>(null);
   const [comments, setComments] = useState<CommentRow[]>([]);
@@ -57,7 +57,12 @@ export default function ClassUpdateDetailScreen() {
     } catch {
       setState("error");
     }
-  }, [id]);
+    // `activeRole` is a fetch input for the same reason as HomeFeedScreen's (issue #60): both the
+    // class-update row and which comments come back are decided by the caller's JWT role+scope
+    // through RLS. Switching role with a detail open otherwise left the previous role's thread
+    // rendered — and the private/public grouping below is keyed off the role too, so the two
+    // would disagree.
+  }, [id, activeRole, scopeId]);
 
   useEffect(() => {
     load();
