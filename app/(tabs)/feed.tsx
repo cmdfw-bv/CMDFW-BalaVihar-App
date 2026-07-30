@@ -1,10 +1,7 @@
-import { View, Text } from "react-native";
 import { useRoleGuard } from "../../lib/auth/useRoleGuard";
+import HomeFeedScreen from "../../features/teacher/class-update-and-home-feed/components/HomeFeedScreen";
+
 export default function FeedScreen() {
   useRoleGuard("feed");
-  return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <Text>Feed — placeholder</Text>
-    </View>
-  );
+  return <HomeFeedScreen />;
 }
