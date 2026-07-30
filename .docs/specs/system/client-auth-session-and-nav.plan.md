@@ -1070,3 +1070,131 @@ after the desktop nav shell + scope-label work landed:
    implementing.**
 
 See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task-by-task plan.
+
+---
+
+## Amendment plan — issue #46: `/no-role` dead-end fix (2026-07-25)
+
+> Spec: [client-auth-session-and-nav.md § Amendment — issue #46](client-auth-session-and-nav.md#amendment--issue-46-no-role-is-a-dead-end-bug-fix) · no new ADR (Architect review recorded inline in the spec) · stage: `/plan` (this section) → `/build` → `/test` → `/deploy-staging`.
+
+### Shared seam
+
+**No migration this time — pure client-only change**, entirely inside `lib/auth/` (one new file) and `app/no-role.tsx` (append two lines to an existing component). Nothing to serialize against; the current branch (`mehtamaulik-creator/issue-46-no-role-screen`) already scopes this one item — no new worktree needed.
+
+**TDD boundary — same line this plan already drew at Stage 7/8 and Stage 4's platform branch:** `useAutoRefreshOnRegain` is 100% platform-wiring glue (`setInterval`, `AppState`/`visibilitychange`/`focus` listeners, calling `supabase.auth.refreshSession()`) — there is no pure/extractable logic inside it the way `navMap.ts` or `sessionDerivation.ts` had (confirmed against the Design spec's decision #1: "pure side effect, no return value, no local state"). Per the precedent this plan already established (`useRoleGuard.ts`, Stage 8: "needs a live router to verify" — no unit test), this hook is verified by hand at `/build`/`/test`, not via a RED→GREEN vitest test. Not a new deviation, not architecturally significant — matches the Design spec's own framing and the Architect review already recorded in the spec (no ADR).
+
+**Verify-at-build flag:** confirm `AppState.addEventListener('change', …)` (native) actually needs no explicit initial-state check beyond the interval (i.e., mounting while already backgrounded doesn't need a synchronous first call) — the spec's AC#2 only requires the interval *and* regained-focus triggers, not an on-mount fetch, so no extra branch is expected, but confirm the RN `AppState` API shape (`addEventListener` returns a subscription with `.remove()`, matching the web listener cleanup) against the installed Expo SDK version at implementation time.
+
+### Task list
+
+- [x] **G1 — implementation** `lib/auth/useAutoRefreshOnRegain.ts` (new file)
+  ```typescript
+  import { useEffect } from "react";
+  import { AppState, Platform } from "react-native";
+  import { supabase } from "../supabase";
+
+  // Pure side effect, no return value, no local state (Design spec, decision #1). Both triggers
+  // — the interval and "regained focus" — call the exact same one-line refreshSession(); errors
+  // are swallowed here, never surfaced (decision #3, AC#4), mirroring switchRole's existing
+  // no-op contract for switch_active_role.
+  export function useAutoRefreshOnRegain(intervalMs: number): void {
+    useEffect(() => {
+      const tick = () => {
+        void supabase.auth.refreshSession().catch(() => {});
+      };
+
+      const interval = setInterval(tick, intervalMs);
+
+      if (Platform.OS === "web") {
+        const onVisibility = () => {
+          if (document.visibilityState === "visible") tick();
+        };
+        document.addEventListener("visibilitychange", onVisibility);
+        window.addEventListener("focus", tick);
+        return () => {
+          clearInterval(interval);
+          document.removeEventListener("visibilitychange", onVisibility);
+          window.removeEventListener("focus", tick);
+        };
+      }
+
+      const subscription = AppState.addEventListener("change", (next) => {
+        if (next === "active") tick();
+      });
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
+    }, [intervalMs]);
+  }
+  ```
+  No RED step — pure platform-wiring glue, see Shared seam above. Verified by hand at `/build`: mount `/no-role`, confirm no console errors, confirm a manual `refreshSession()` call site still behaves (existing `switchRole` path untouched).
+
+- [x] **G2 — `app/no-role.tsx`** (append sign-out `Button` + the auto-refresh hook to the existing component; no other lines touched)
+  ```typescript
+  import "../lib/unistyles";
+  import { View, Text } from "react-native";
+  import { StyleSheet } from "react-native-unistyles";
+  import { useAutoRefreshOnRegain } from "../lib/auth/useAutoRefreshOnRegain";
+  import { useSession } from "../lib/auth/SessionProvider";
+  import Button from "../components/core/Button";
+
+  export default function NoRole() {
+    useAutoRefreshOnRegain(60_000);
+    const { signOut } = useSession();
+
+    return (
+      <View style={styles.container}>
+        <Text style={styles.text}>
+          Your account is set up but no role has been assigned yet — contact your Bala Vihar coordinator.
+        </Text>
+        <Button variant="primary" size="lg" onClick={() => { void signOut(); }}>
+          Sign out
+        </Button>
+      </View>
+    );
+  }
+
+  const styles = StyleSheet.create((theme) => ({
+    container: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.space.lg,
+      gap: theme.space.lg,
+    },
+    text: {
+      width: "100%",
+      maxWidth: theme.chrome.maxw,
+      fontFamily: theme.fonts.body,
+      fontSize: theme.type.body,
+      textAlign: "center",
+    },
+  }));
+  ```
+  Note: `gap: theme.space.lg` added to `container` (token-driven, per the design-system DoD — no hex/magic-number spacing introduced) to separate the message from the new button.
+
+- [x] **G3 — `npm run typecheck` + `npm run test`** confirm zero regressions (228+/228+ vitest still green — this amendment adds zero new test files, per the TDD-boundary call above; `npm run typecheck` clean against the two new/changed files).
+  Ran 2026-07-25: `npm run typecheck` → zero errors. `npm run test` → 379/379 vitest passing (58 files) — no new test files, no regressions, count is higher than the plan's "228+" baseline only because later, unrelated System items landed test files on this branch's base since the plan text was written.
+
+- [x] **G4 — manual `/build` walkthrough** (per Shared seam, this is where G1's wiring gets verified, no automated substitute):
+  1. Force a zero-role session locally (same method as UAT-9: delete a test account's `user_roles` row via `docker exec ... psql`, sign in) → confirm `/no-role` renders the message + a visible "Sign out" button, no console errors.
+  2. Click "Sign out" → confirm return to `/sign-in`, session cleared (matches AC#1).
+  3. While still on `/no-role` (fresh zero-role session), insert a `user_roles` row for that account directly in the DB, then blur/refocus the browser tab (or wait out one 60s interval tick) → confirm automatic navigation to `(tabs)` with no manual reload (AC#2/AC#3).
+  4. Confirm a tick that finds no role yet produces no visible change and no console error (AC#4) — e.g. observe an interval tick fire while the account is still role-less.
+  5. Confirm no regression to `sign-in.tsx` or any tab screen (AC#5) — quick pass over `feed`/role-switch still works as in the last `/test` UAT run.
+
+  **Run 2026-07-25, live against the local stack + real Mailpit magic-link emails** (fresh throwaway account `issue46-zero-role@bv-seed.test.local`, created via `tests.create_supabase_user`, no `user_roles` row — a genuine zero-role account, not a delete-then-restore against a seeded one, to avoid disturbing other seed fixtures). Local Supabase DB required a `db reset` first — `supabase migration list --local` showed this worktree's migrations weren't applied (shared-Docker-stack collision with another worktree, a known recurring issue); reset was confirmed with the human before running given the shared-container blast radius, then re-verified clean (169/169 pgTAP after reset).
+  1. **Pass** — signed in via real magic-link (Playwright + Mailpit API), landed on `/no-role`, screen showed the existing message plus the new "Sign out" button, zero console errors.
+  2. **Pass** — clicked "Sign out", returned to `/sign-in`.
+  3. **Pass** — signed in again (same account, still zero-role), landed on `/no-role`; granted a `parent`/`org` `user_roles` row via `docker exec ... psql` mid-session (same live browser session — see test-harness note below), dispatched a `visibilitychange`/`focus` event, and the app auto-navigated to `/feed` with the Parent tab set (Feed/Attendance/Chat) rendering live data, no manual reload, no console errors.
+  4. **Pass** (folded into step 3's wait window — an interval tick fired while still zero-role with no visible change/error before the grant landed).
+  5. **Pass** — no regressions surfaced in `npm run test`/typecheck (G3); did not re-walk the full UAT matrix since this amendment touches only `no-role.tsx` + one new hook, per Shared seam's stated blast radius.
+
+  **Test-harness note (not an app defect):** an early attempt split steps 3 into two separate Playwright process invocations, round-tripping the session via `storageState()` in between (to simulate the DB grant happening while the tab sits idle). That resumed on `/sign-in` instead of `/no-role` — traced to `storageState()` only persisting cookies/`localStorage`, not IndexedDB, and this app's web session adapter (`lib/auth/storage.ts`) keeps the AES-GCM decryption key in IndexedDB. A fresh context has no key, so the restored ciphertext fails to decrypt and the app correctly (and silently, per `storage.ts`'s existing "corrupt/undecryptable entry — treat as absent" contract) treats it as no session. Re-ran as one continuous browser session with the DB grant shelled out mid-script instead — confirmed the walkthrough passes as described above. No code changed as a result; noted here so a future `/test` pass doesn't waste time on the same false lead.
+
+- [x] **G5 — `/test` stage:** re-run the full automated suite (vitest/typecheck/pgTAP — pgTAP unaffected, no migration in this amendment) + a `playwright-cli` pass adding one new scenario to the existing `UAT.md` set (UAT-9 already covers reaching `/no-role`; add **UAT-9b**: sign-out from `/no-role`, and **UAT-9c**: auto-recovery after a mid-session role grant) before `/deploy-staging`.
+  Ran 2026-07-25: typecheck clean, vitest 379/379, pgTAP 19 files/169 assertions — all matching G3's baseline, zero regressions. `/rls-audit` not run (no migration/RLS change in this diff, per the Architect review already recorded in the spec). Design parity checked live (playwright-cli) at 360/768/1024/1440 against `app/no-role.tsx` — single centered empty state, token-driven styling, `Button`'s `theme.chrome.hitMin` (44px) satisfies the touch-target rule, no horizontal scroll; trivial parity since the screen has no separate mobile/desktop layout. UAT-9b and UAT-9c added to `UAT.md` and run live against a throwaway zero-role account (`issue46-test@bv-seed.test.local`, created via `tests.create_supabase_user`, deleted after) through a real magic-link (Mailpit): sign-out returns to `/sign-in` cleanly (UAT-9b); a `visibilitychange`/`focus` tick while still zero-role is a silent no-op, and granting a `user_roles` row mid-session then re-dispatching the same event auto-navigates to `/feed` with no manual reload (UAT-9c) — both Pass, 0 console errors throughout. Gate markers written (`.claude/.tests-passed`, `.claude/.rls-tests-passed`) — ready for `/deploy-staging`.
+
+### Out of scope (unchanged from spec)
+The seeded-student provisioning gap (issue #53) and any change to `sign-in.tsx`, tab screens, or the `signed-out`/`ready` status paths — no tasks above touch those.

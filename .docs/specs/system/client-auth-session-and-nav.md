@@ -168,3 +168,92 @@ No changes to `custom_access_token_hook`, `switch_active_role`, or any other exi
 ## Sign-off
 - [x] **Human sign-off on this design** (project owner, 2026-07-13) → ready for **`/plan`**.
 - [x] **Architect glance on the new `user_roles_self_select` migration** (Design decision #3) — reviewed 2026-07-13, **no new ADR**: narrow self-row `select`, precedented by `push_subscriptions_owner_all` (shape) and `switch_active_role` (ownership check), ADR-0019's self-access audit exemption applies, governing ADRs 0005/0014/0023 unchanged. Full reasoning recorded inline above decision #4.
+
+---
+
+## Amendment — issue #46: `/no-role` is a dead end (bug fix)
+
+**Stage:** Refined ✓ → Architect ✓ (no ADR — retry interval + `Button` reuse resolved inline) → Design ✓ → Human sign-off ✓ (2026-07-25) → next `/plan`.
+
+Found during manual walkthrough of `class-update-and-home-feed` (#21): `app/no-role.tsx` (AC#8 of the original item above) renders the zero-role empty state but offers no way off it — `app/_layout.tsx`'s `Stack.Protected` guards make `(auth)` unreachable once `status === "zero-role"`, so a user who lands here before their role grant lands (or after a mid-session revoke) is stuck until they manually clear browser site data. Root item is otherwise Built/ready-for-`/deploy-staging`; this amendment is a contained bug fix against that one screen, not a reopening of the whole item.
+
+### User story
+**As a** signed-in user whose JWT currently carries no `active_role` claim, **I want** a way to sign out from `/no-role`, and for the app to notice automatically once my role grant lands, **so that** a provisioning-timing gap never strands me on a dead-end screen.
+
+### Decisions captured during refine
+- **Both halves of the issue's suggested fix are in scope**: a sign-out control, *and* an automatic `refreshSession()` retry loop (interval + regained-focus) — confirmed with the human rather than shipping sign-out-only. The auto-refresh closes the loop for the common case (grant lands while the tab is just sitting open); sign-out remains the manual escape hatch for everything else (wrong account, grant taking longer than expected, revoke-with-no-replacement-role).
+- **The seeded-student `user_roles` gap** mentioned in the issue ("Related") is **out of scope for this item** — filed separately as [issue #53](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/53), mirroring how #32 was its own dedicated fix for the analogous parent-account gap. Keeps this amendment scoped to the client-side dead-end only.
+- **No new state machine.** `refreshSession()` already fires the existing `onAuthStateChange` → `TOKEN_REFRESHED` → full re-derivation path that `SessionProvider`/`sessionDerivation.ts` (Design, above) already implements — the auth hook auto-activates a single-role grant on next token mint (per `auth-hook-and-identity`), so a plain `refreshSession()` call is sufficient; no new client-side status or polling state is introduced beyond the timer/listener that triggers the call.
+- **Failures stay silent.** A `refreshSession()` call that doesn't yet find a role (still zero-role) or hits a network hiccup must not show an error banner or disrupt the screen — same silent-no-op contract this item's `switchRole` already follows for `switch_active_role`. The screen has one visible affordance (sign-out); the auto-refresh is invisible unless it succeeds.
+- **Scope stays this one screen.** No changes to `SessionProvider`'s public surface (`signOut` is already exposed, per Behavior above), no changes to the `signed-out`/`ready` paths, no RLS/migration impact.
+
+### Acceptance criteria
+1. `/no-role` renders a sign-out control (reusing `components/core/Button`, one primary action per view per the design-system DoD) that calls the existing `useSession().signOut()` and returns to `(auth)` sign-in.
+2. While `/no-role` is mounted, it automatically calls `supabase.auth.refreshSession()` on an interval, and again whenever the app/tab regains focus (`AppState` → `"active"` on native; `visibilitychange`/`focus` on web) — covering both "left the tab open" and "came back to it" recovery paths without a manual sign-out.
+3. If a refresh picks up a newly-granted role, the existing `TOKEN_REFRESHED` handler re-derives `status` to `"ready"` and the root `Stack.Protected` swap to `(tabs)` happens automatically — no manual reload, no special-case navigation call on this screen.
+4. A refresh that finds no role yet (or fails) leaves the screen exactly as-is — no error banner, no visible retry state, no console-visible crash.
+5. No behavior change to `signed-out` or `ready` statuses, `sign-in.tsx`, or any tab screen.
+
+### Edge cases
+- **Sign-out fires while an interval/focus refresh is in flight** — no race: `signOut()` ends the session, the next `onAuthStateChange` (`SIGNED_OUT`) re-derives status to `"signed-out"` regardless of what the in-flight `refreshSession()` resolves to.
+- **`refreshSession()` against an already-invalidated/long-idle session** — fails silently (AC#4); user remains on `/no-role` until they sign out or a valid refresh succeeds.
+- **Multiple tabs open on web** — each tab runs its own independent interval/focus listener; benign, since each just calls the same idempotent `refreshSession()`.
+- **Role revoked with no replacement while already on `/no-role`** (shouldn't normally occur — revoke-while-*inactive*-and-zero-role is a narrower case than the original item's "revoked while active" edge case) — no special-case needed, same silent no-op as above.
+
+### Priority
+**POC-core bug fix** — closes a real dead-end for any user hitting a provisioning-timing race; small, single-screen blast radius against an otherwise-Built item.
+
+### Consumers (cross-persona)
+Same as the root item — all 6 personas (anyone can transiently land on `zero-role`).
+
+### Access scope (§5.4)
+Unchanged — client UX only. `signOut()` and `refreshSession()` are both existing Supabase Auth client calls this item already uses elsewhere (`RoleSwitcher`'s `switchRole` already calls `refreshSession()`); no RLS/migration impact.
+
+### Explicitly out of scope
+- The seeded-student `user_roles` provisioning gap — [issue #53](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/53).
+- Any change to the sign-in screen, tab screens, or the `signed-out`/`ready` status paths.
+
+### Architect review
+- **No architecturally-significant decision → no ADR.** Contained client-only reuse of already-audited Supabase Auth calls (`signOut()`, `refreshSession()` — both already exercised elsewhere in this item, per `SessionProvider.tsx`); no new schema/RLS shape, no new external processor, no cross-scope access change, no minors'-data/residency impact. Governing ADRs 0005/0014/0019/0023 checked (all Closed) — none need superseding, this amendment doesn't change the mechanism any of them settled.
+- **Retry interval: 60s.** The focus-triggered refresh (AC#2) already handles the common "returned to the tab" recovery path immediately; the timer only serves the "left it open, walked away" case, where there's no urgency. 60s resolves that case within about a minute without adding unnecessary `refreshSession()`-driven refresh-token churn (relevant given the "multiple tabs" edge case above — each tab rotates the refresh token on its own call).
+- **AC#1's `components/core/Button` stands as written — no conflict with `RoleSwitcher`'s existing bespoke sign-out `Pressable`.** Different contexts: `RoleSwitcher`'s sign-out is a secondary affordance inside compact header chrome (a full pill button there would compete visually with the role-switcher trigger); `/no-role` is a full-screen empty state where sign-out is the view's one primary action — exactly the case `Button` (primary variant) is for, per the design-system DoD. `RoleSwitcher.tsx` is unchanged, out of scope.
+
+### Design (detailed spec)
+
+> **Design decisions captured this pass:**
+> 1. **Auto-refresh — new `lib/auth/useAutoRefreshOnRegain.ts` hook**, not an extension of `SessionProvider`'s public surface (ruled out during refine) and not inlined directly in `app/no-role.tsx`. Same shape as the existing `useRoleGuard.ts` — a small, standalone, screen-mounted hook. Signature: `useAutoRefreshOnRegain(intervalMs: number): void` — pure side effect, no return value, no local state.
+> 2. **One underlying call, two triggers.** Internally: `setInterval(() => { void supabase.auth.refreshSession().catch(() => {}); }, intervalMs)` (called with `60_000`, per the Architect review's interval decision above) plus a platform-branched "regained focus" listener firing the identical call — `AppState.addEventListener('change', (next) => { if (next === 'active') … })` on native, `document.addEventListener('visibilitychange', …)` + `window.addEventListener('focus', …)` on web, per AC#2's explicit native/web split. Both triggers call the exact same one-line `refreshSession().catch(() => {})` — no separate "reason" branching, since AC#4 requires identical silent-no-op handling regardless of what triggered the call.
+> 3. **Errors are swallowed at the call site, inside the hook — never surfaced.** `.catch(() => {})` on every `refreshSession()` call: no console output (AC#4 forbids console-visible noise), no error state, no out-of-cadence retry. Mirrors `SessionProvider.tsx`'s existing `switchRole` no-op contract for `switch_active_role`.
+> 4. **No dependency on `useSession()`/context for the refresh call itself** — the hook imports `supabase` directly (`lib/supabase.ts`, already the pattern every other `lib/auth/` module follows). `TOKEN_REFRESHED` reaches `SessionProvider` via its existing `onAuthStateChange` subscription regardless of which call site triggered the underlying refresh, so routing this through context would add indirection with no behavioral difference — confirmed against the refine-stage decision that `SessionProvider`'s public surface doesn't change.
+> 5. **Lifecycle is entirely `Stack.Protected`-driven — no manual teardown needed.** `app/no-role.tsx` only mounts while `status === "zero-role"`; the moment a refresh (interval- or focus-triggered) succeeds and flips `status` to `"ready"`, `Stack.Protected` swaps the screen out, unmounting it — the hook's `useEffect` cleanup (`clearInterval` + listener `.remove()`) runs automatically on that unmount, same as on `signOut()`'s swap to `"signed-out"`. No explicit "stop polling" call anywhere.
+> 6. **Sign-out control:** `components/core/Button` (`variant="primary"`, `size="lg"`, label "Sign out"), `onClick={() => { void signOut(); }}` from the existing `useSession()`. One primary action per view, per the design-system DoD — same component already used for `sign-in.tsx`'s submit action; `RoleSwitcher.tsx`'s bespoke sign-out `Pressable` is a different, unchanged context (Architect review above).
+
+### Behavior
+`app/no-role.tsx` (function component, unchanged file) adds two things to its existing render: a `useAutoRefreshOnRegain(60_000)` call at the top, and a `Button` below the existing message text, wired to `useSession().signOut()`.
+
+- **Steady state:** every 60s, and again immediately whenever the app/tab regains focus, the hook fires `supabase.auth.refreshSession()`. Nothing visible happens unless it succeeds *and* the new token carries an `active_role` claim.
+- **Recovery path:** a `refreshSession()` call picks up a newly-granted role → Supabase JS emits `TOKEN_REFRESHED` → `SessionProvider`'s existing `refresh()` (unchanged, `SessionProvider.tsx:45`) re-derives `status` → `"ready"` → root `Stack.Protected` (`app/_layout.tsx`) swaps `no-role` out for `(tabs)` → `useAutoRefreshOnRegain`'s effect cleanup fires on unmount, clearing the interval/listener. No code in `no-role.tsx` reacts to this directly — it's the same claims-re-derivation path AC#3 points to.
+- **No-op path:** a call that finds no role yet, or rejects (network hiccup, invalidated session), is caught and dropped inside the hook (decision #3) — the screen's render is untouched, no re-render is even triggered since the hook holds no state.
+- **Sign-out path:** button press → `signOut()` → `supabase.auth.signOut()` → `SIGNED_OUT` → `status` → `"signed-out"` → `Stack.Protected` swaps to `(auth)` → `no-role.tsx` unmounts → hook cleanup clears any in-flight interval/listener. If a `refreshSession()` call was in flight when sign-out fired, its eventual resolution (success or failure) is a no-op either way — the component that would have reacted to it is already gone (refine-stage edge case, restated here as: cleanup wins the race unconditionally, not "usually").
+
+### Data & RLS impact
+None. `signOut()` and `refreshSession()` are both existing Supabase Auth client calls, already exercised elsewhere in this item (`RoleSwitcher.switchRole` already calls `refreshSession()`; every screen's sign-out already calls `signOut()`) — no new migration, no new RLS policy, no change to `custom_access_token_hook` or any existing grant.
+
+### UI
+**Reference:** `components/core/Button.tsx` (ported from `design/sankalp/components/core/Button.jsx` / `.prompt.md`, already landed) — no new component, no DesignSync pull needed for this amendment.
+- `variant="primary"`, `size="lg"` — the screen's one primary action, per the design-system DoD ("one primary action per view"); no secondary/ghost buttons added, nothing competes with it.
+- `theme.chrome.hitMin` (Button's own `minHeight`) already clears the ≥44px touch-target rule — no override needed.
+- Existing `no-role.tsx` container/text styling (`theme.space.lg` padding, `theme.chrome.maxw` width cap, `theme.fonts.body`) is unchanged; the button is appended below the message using the same token-driven spacing (`theme.space.lg` gap), no hex literals introduced.
+- No new DoD state is introduced — this remains the same single "content" render the empty-state screen already was; the auto-refresh is invisible by design (decision #3 / AC#4), so there is no loading/error variant to draw for it.
+
+### Edge cases (design detail)
+Carried forward unchanged from Refined, above, with one implementation note:
+- **Unmount race is unconditional, not best-effort** — because the hook holds no local state (decision #1), there is no "setState after unmount" hazard to guard against; a `refreshSession()` promise that resolves after `no-role.tsx` has already unmounted (via sign-out or a successful earlier refresh) simply has no listener left to react to it.
+
+### Out of scope
+Unchanged from Refined, above — the seeded-student provisioning gap ([issue #53](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/53)) and any change to `sign-in.tsx`, tab screens, or the `signed-out`/`ready` status paths.
+
+### Sign-off
+- [x] Human sign-off on this refined scope (project owner, 2026-07-25).
+- [x] Architect review (2026-07-25) — no ADR; retry interval and Button-choice open questions resolved inline above → ready for **`/design`**.
+- [x] **Human sign-off on this design** (project owner, 2026-07-25) → ready for **`/plan`**.
