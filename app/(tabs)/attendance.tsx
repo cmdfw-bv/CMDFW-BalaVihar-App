@@ -11,21 +11,50 @@ import StateView from "../../components/core/StateView";
 import RoleBadge from "../../components/core/RoleBadge";
 import Button from "../../components/core/Button";
 
-// Two personas share this one route: Teacher marks a roster (issue #20), Parent reads their own
-// children's attendance (issue #22). They are split into sibling components rather than branched
-// inside one, so each owns its own hooks.
+// Three roles reach this route: `ROLE_TABS` (navMap.ts) grants `attendance` to student, parent and
+// teacher, and `useRoleGuard` only redirects a role that is *out* of scope for the tab — so all
+// three mount this screen. Each gets its own sibling component rather than a branch inside one, so
+// each owns its own hooks.
 //
 // Why the split matters, beyond rules-of-hooks: `useAttendanceRoster` calls
-// `get_class_roster_for_staff`, which is role-gated and writes an `action='denied'` audit_log row
-// for an unauthorized caller (20260709040853_audit_log_and_staff_rpcs.sql:99). Branching *after*
-// the hook would make every Parent visit to this tab emit a denied audit row — audit noise on a
-// minors'-data governance surface, not just a wasted request.
+// `get_class_roster_for_staff`, which authorizes only teacher/coordinator/bv_coordinator/admin and
+// writes an `action='denied'` audit_log row for anyone else
+// (20260709040853_audit_log_and_staff_rpcs.sql). Branching *after* the hook would make every
+// non-staff visit to this tab emit a denied audit row — audit noise on a minors'-data governance
+// surface, not just a wasted request.
+//
+// An exhaustive `switch` rather than `if (parent) / else` (PR #51 review): the earlier `else`
+// silently caught **Student** and mounted the Teacher roster, tripping exactly the denied-audit
+// write this split exists to prevent — for the one role that was never considered. A switch forces
+// any future role added to `ROLE_TABS.attendance` to be handled deliberately instead of inheriting
+// whatever `else` happens to mean.
 export default function AttendanceScreen() {
   useRoleGuard("attendance");
   const { activeRole } = useSession();
 
-  if (activeRole === "parent") return <ParentAttendanceScreen />;
-  return <TeacherAttendanceScreen />;
+  switch (activeRole) {
+    case "parent":
+      return <ParentAttendanceScreen />;
+    case "teacher":
+      return <TeacherAttendanceScreen />;
+    // Student's own attendance view is not built yet (doc 2 Student backlog). Explicit placeholder
+    // rather than falling through to the Teacher roster, which would show a marking UI a Student
+    // can neither use nor populate — and would audit-log a denial on every visit.
+    case "student":
+      return <AttendancePlaceholder />;
+    default:
+      // Unreachable in practice — useRoleGuard redirects every other role off this tab — but the
+      // roster hook must not run for an unexpected role, so default to the inert screen.
+      return <AttendancePlaceholder />;
+  }
+}
+
+function AttendancePlaceholder() {
+  return (
+    <View style={styles.placeholder}>
+      <Text style={styles.placeholderText}>Attendance isn&apos;t available for your role yet.</Text>
+    </View>
+  );
 }
 
 function TeacherAttendanceScreen() {
@@ -80,5 +109,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: {
     flex: 1,
+  },
+  placeholder: {
+    flex: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    padding: theme.space["4"],
+  },
+  placeholderText: {
+    fontFamily: theme.fonts.body,
+    fontSize: theme.type.scale.sm,
+    color: theme.colors.ink3,
+    textAlign: "center" as const,
   },
 }));

@@ -92,7 +92,17 @@ None. Owner-only capability — Parent is both owner and sole consumer (per issu
 
 ### File / route changes
 - **New:** `lib/attendance/parent/{useChildrenAttendance,childAttendanceStats,ChildAttendanceRow,ParentAttendanceScreen}.ts(x)` + matching `__tests__/childAttendanceStats.test.ts`.
-- **Modified:** `app/(tabs)/attendance.tsx` — add the `activeRole === 'parent'` branch (decision #5); every other role keeps today's placeholder unchanged.
+- **Modified:** `app/(tabs)/attendance.tsx` — route on `activeRole` (decision #5).
+
+  **Corrected 2026-07-30 (PR #51 review):** the original wording — *"every other role keeps today's placeholder unchanged"* — stopped being true once #49 landed the Teacher roster on this same route. `ROLE_TABS` (`navMap.ts`) grants `attendance` to **student, parent and teacher**, and `useRoleGuard` only redirects roles that are *out* of scope, so all three mount this screen. The shipped shape is now an exhaustive `switch`:
+
+  | Role | Screen |
+  |---|---|
+  | Parent | `ParentAttendanceScreen` (this item) |
+  | Teacher | `TeacherAttendanceScreen` (issue #20) |
+  | Student | placeholder — **own attendance view not built yet** (doc 2 Student backlog) |
+
+  Student is handled explicitly rather than falling into an `else`: `useAttendanceRoster` calls `get_class_roster_for_staff`, which authorizes only teacher/coordinator/bv_coordinator/admin and writes an `action='denied'` audit_log row for anyone else — so an unhandled Student would emit a denied audit row on every visit to the tab, on a minors'-data governance surface. Verified live 2026-07-30: Student sees the placeholder, denied audit rows 0 before → 0 after.
 
 ### UI
 **No bv-connect screen reference** (decision #4) — composed from four already-referenced core primitives, each individually matched to its own source:
