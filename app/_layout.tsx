@@ -32,6 +32,10 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={status === "ready"}>
         <Stack.Screen name="(tabs)" />
+        {/* Compose/detail live outside (tabs) for their own header+back chrome, but they are
+            session-gated exactly like it — undeclared, a signed-out deep link to
+            /class-update/new would render the live compose form instead of routing to sign-in. */}
+        <Stack.Screen name="class-update" />
       </Stack.Protected>
     </Stack>
   );
