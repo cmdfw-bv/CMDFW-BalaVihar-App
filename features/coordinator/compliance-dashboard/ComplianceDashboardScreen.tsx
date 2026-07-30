@@ -1,6 +1,6 @@
 import "../../../lib/unistyles";
 import * as React from "react";
-import { View, Text } from "react-native";
+import { ScrollView, View, Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import StatTile from "../../../components/core/StatTile";
 import Card from "../../../components/core/Card";
@@ -32,7 +32,12 @@ export default function ComplianceDashboardScreen({ sessionId }: ComplianceDashb
   const { viewState, rows, rollup, showRefreshErrorBanner, retry } = useSessionCompliance(sessionId);
 
   return (
-    <View style={styles.wrap}>
+    // A session's class list is as long as the session has classes (13 for the F3 pilot), so the
+    // screen must scroll — a plain View clipped everything past the fold and made the lower
+    // classes unreachable (PR #50 review, found in live testing). `wrap` carries `flexGrow` and
+    // NOT `flex: 1`: `flex: 1` on a contentContainerStyle pins the content box to the viewport
+    // height, which silently defeats scrolling — the same shape of bug this is fixing.
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.wrap}>
       <View style={styles.statRow}>
         <StatTile label="Fully compliant" value={rollup.fullyCompliant} style={styles.statcell} />
         <StatTile label="At-risk" value={rollup.atRisk} style={styles.statcell} />
@@ -80,13 +85,16 @@ export default function ComplianceDashboardScreen({ sessionId }: ComplianceDashb
           </View>
         </StateView>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  wrap: {
+  scroll: {
     flex: 1,
+  },
+  wrap: {
+    flexGrow: 1,
     gap: theme.space["6"],
   },
   statRow: {
