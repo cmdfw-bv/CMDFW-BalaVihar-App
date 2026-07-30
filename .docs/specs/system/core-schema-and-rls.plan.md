@@ -2153,3 +2153,457 @@ git commit -m "fix: replace broken Teacher attendance-write RLS with mark_attend
 
 ## Addendum sign-off — Task 11 (ADR-0021, rewritten from the original ADR-0020 version)
 - [x] **Human sign-off on the rewritten Task 11** (2026-07-09, shree.srinivas@outlook.com) → ready for `/migration`/`/build` of just this task (Tasks 1–10 already built, tested, and pushed as `033ca8a`; Task 11 is the only remaining unbuilt task in this plan).
+
+---
+
+## Design addendum plan — Tasks 12–13 (ADR-0030 → ADR-0031, 2026-07-24)
+
+**Extends the "Design addendum — ADR-0030 → ADR-0031" section of `core-schema-and-rls.md`** (`class_meetings`, `class_updates`, `sessions.meeting_weekday`, `generate_class_meetings_for_session`, `get_session_compliance_for_staff`). Coordinated with `.docs/specs/coordinator/compliance-dashboard.plan.md`, which plans the consuming client screen — these two tasks are the shared, serialized seam (§12.6) that item's client work depends on; nothing in `features/coordinator/` can be built against real data until Task 13 lands (it can, and should, be built/unit-tested against a mocked RPC response in parallel — see that plan's note).
+
+**Branch/worktree:** same as Tasks 1–11 — pure migrations, done directly on this branch (`mehtamaulik-creator/issue-23-coordinator-compliance-dashboard`), not a separate worktree. Merge before the coordinator client feature's screen is wired to the real RPC.
+
+### Task 12: `sessions.meeting_weekday` + `class_meetings` + `generate_class_meetings_for_session` (ADR-0031)
+
+**Files:**
+- Create: `supabase/tests/160_class_meetings_schema.sql`
+- Create: `supabase/migrations/<ts>_class_meetings_schema.sql`
+
+**Interfaces:**
+- Produces: `class_meetings(id, class_id, meeting_date, status, created_at)`, `sessions.meeting_weekday`, `generate_class_meetings_for_session(p_session_id uuid) returns void` — Task 13's RPC and `supabase/seed/seed.sql` (Task 14 below) both consume these.
+
+- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/160_class_meetings_schema.sql`
+```sql
+begin;
+select plan(13);
+
+insert into centers (id, name) values ('c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Center');
+insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
+  ('a6000000-0000-0000-0000-000000000001', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-A', '2026-01-04', '2026-01-25', 0),
+  ('a6000000-0000-0000-0000-000000000002', 'c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Session-B', '2026-01-04', '2026-01-25', 0);
+insert into classes (id, session_id, name, grade_band) values
+  ('cc600000-0000-0000-0000-000000000001', 'a6000000-0000-0000-0000-000000000001', 'Meetings Class A', 'Gr3'),
+  ('cc600000-0000-0000-0000-000000000002', 'a6000000-0000-0000-0000-000000000002', 'Meetings Class B (sibling session)', 'Gr3');
+
+-- meeting_weekday is a required column now — confirms the straight NOT NULL add (no pilot data predates it).
+select throws_ok(
+  $$insert into sessions (center_id, name, start_date, end_date) values ('c6000000-0000-0000-0000-000000000001', 'No Weekday', '2026-01-01', '2026-02-01')$$,
+  '23502',
+  null,
+  'sessions.meeting_weekday is NOT NULL'
+);
+
+select tests.create_supabase_user('meetings-coordinator@test.local') as v_coordinator \gset
+select tests.create_supabase_user('meetings-coordinator-sibling@test.local') as v_coordinator_sibling \gset
+select tests.create_supabase_user('meetings-teacher@test.local') as v_teacher \gset
+
+-- Denied: teacher is not an authorized role for generation.
+select tests.authenticate_as(:'v_teacher'::uuid, 'teacher', 'class', 'cc600000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 0,
+  'teacher cannot generate class_meetings (denied, no rows written)');
+select is(
+  (select count(*) from audit_log where actor_role = 'teacher' and action = 'denied' and target_table = 'sessions' and target_id = 'a6000000-0000-0000-0000-000000000001')::int, 1,
+  'teacher''s denied generate call writes one audit_log row');
+
+-- Denied: coordinator scoped to a sibling session cannot generate for Session-A.
+select tests.authenticate_as(:'v_coordinator_sibling'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000002'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 0,
+  'sibling-session coordinator cannot generate for Session-A (still zero rows)');
+
+-- Positive: in-scope coordinator generates the full weekly series (4 Sundays: Jan4/11/18/25).
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 4,
+  'generate_class_meetings_for_session creates one row per Sunday in the session window');
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000002')::int, 0,
+  'sibling session''s class is untouched by Session-A''s generation call');
+select is(
+  (select count(*) from audit_log where actor_role = 'coordinator' and action = 'read')::int, 0,
+  'a successful generate call writes no audit_log row (organizational metadata, not a minor''s record)');
+
+-- Cancel one date (simulating the CSV skip-dates seam), then re-run: idempotent, cancelled row stays cancelled.
+update class_meetings set status = 'cancelled' where class_id = 'cc600000-0000-0000-0000-000000000001' and meeting_date = '2026-01-18';
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 4,
+  'idempotent re-run creates no duplicate rows');
+select is(
+  (select status from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001' and meeting_date = '2026-01-18'),
+  'cancelled',
+  'idempotent re-run does not reset an already-cancelled row back to scheduled');
+
+-- class_meetings RLS: teacher sees only their own class's rows.
+select tests.authenticate_as(:'v_teacher'::uuid, 'teacher', 'class', 'cc600000-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from class_meetings)::int, 4, 'teacher sees only their own class''s 4 rows');
+select tests.clear_authentication();
+
+-- class_meetings RLS: coordinator sees every class in their own session, not the sibling session's.
+insert into classes (id, session_id, name, grade_band) values ('cc600000-0000-0000-0000-000000000003', 'a6000000-0000-0000-0000-000000000001', 'Meetings Class A2', 'Gr4');
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from class_meetings)::int, 8, 'coordinator sees all classes'' rows in their own session, none from the sibling session');
+select tests.clear_authentication();
+
+-- class_updates: zero policies for any role — direct select always returns zero rows, even for the org roles.
+select tests.create_supabase_user('meetings-bvcoordinator@test.local') as v_bv \gset
+insert into class_updates (class_id, meeting_date, posted_by) values ('cc600000-0000-0000-0000-000000000001', '2026-01-11', :'v_teacher'::uuid);
+select tests.authenticate_as(:'v_bv'::uuid, 'bv_coordinator', 'org', null);
+select is((select count(*) from class_updates)::int, 0, 'class_updates has zero read policies — even org-scope roles get zero rows direct-select');
+select tests.clear_authentication();
+
+select * from finish();
+rollback;
+```
+Run: `npx supabase test db` → expected **RED**: `sessions.meeting_weekday` column doesn't exist (fixture inserts fail), `class_meetings`/`class_updates`/`generate_class_meetings_for_session` don't exist yet.
+
+- [x] **Step 2: Create the migration**
+```bash
+npx supabase migration new class_meetings_schema
+```
+
+- [x] **Step 3: Write it** `supabase/migrations/<ts>_class_meetings_schema.sql`
+```sql
+-- ADR-0031: sessions.meeting_weekday + class_meetings (expected-meeting-date calendar).
+-- Pre-pilot POC — no existing session rows to backfill, so this ships as a straight NOT NULL add.
+alter table sessions add column meeting_weekday smallint not null default 0;
+alter table sessions alter column meeting_weekday drop default;
+alter table sessions add constraint sessions_meeting_weekday_range check (meeting_weekday between 0 and 6);
+
+create table if not exists class_meetings (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  meeting_date date not null,
+  status text not null default 'scheduled' check (status in ('scheduled','cancelled')),
+  created_at timestamptz not null default now(),
+  unique (class_id, meeting_date)
+);
+alter table class_meetings enable row level security;
+
+-- Read posture mirrors classes'/sessions' existing organizational-metadata policies (no PII) —
+-- Teacher/Coordinator/BV Coordinator/Admin only; Parent/Student have no documented need to see
+-- the meeting calendar this pass (resolved at /plan, not specified in the design's RLS matrix).
+grant select on class_meetings to authenticated;
+
+create policy class_meetings_teacher_select on class_meetings for select
+using (
+  auth.jwt()->>'active_role' = 'teacher'
+  and class_meetings.class_id = (auth.jwt()->>'scope_id')::uuid
+);
+create policy class_meetings_coordinator_select on class_meetings for select
+using (
+  auth.jwt()->>'active_role' = 'coordinator'
+  and exists (
+    select 1 from classes c where c.id = class_meetings.class_id and c.session_id = (auth.jwt()->>'scope_id')::uuid
+  )
+);
+create policy class_meetings_org_select on class_meetings for select
+using (auth.jwt()->>'active_role' in ('bv_coordinator','admin'));
+
+-- No client write grant — only generate_class_meetings_for_session (below) and the future
+-- CSV skip-dates import (service-role) ever write to this table.
+
+create table if not exists class_updates (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  meeting_date date not null,
+  posted_by uuid not null references auth.users(id),
+  posted_at timestamptz not null default now(),
+  unique (class_id, meeting_date)
+);
+alter table class_updates enable row level security;
+
+-- ADR-0030: zero policies for any role this pass (same posture user_roles' write side had
+-- before user-role-approval existed) — Coordinator's read goes through get_session_compliance_for_staff
+-- (Task 13, SECURITY DEFINER, bypasses RLS by design), never a direct grant. Teacher's write
+-- RPC, once refined, is the only thing that will ever need a policy or grant here.
+grant select on class_updates to authenticated;
+
+create or replace function generate_class_meetings_for_session(p_session_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text := auth.jwt()->>'active_role';
+  v_scope_id uuid := nullif(auth.jwt()->>'scope_id','')::uuid;
+  v_authorized boolean := false;
+  v_session sessions%rowtype;
+  v_d date;
+begin
+  select * into v_session from sessions where id = p_session_id;
+
+  if v_role in ('bv_coordinator','admin') then
+    v_authorized := true;
+  elsif v_role = 'coordinator' then
+    v_authorized := (v_scope_id = p_session_id);
+  end if;
+
+  if not v_authorized or v_session.id is null then
+    insert into audit_log (actor_user_id, actor_role, action, target_table, target_id, target_student_id)
+    values (auth.uid(), v_role, 'denied', 'sessions', p_session_id, null);
+    return;
+  end if;
+
+  for v_d in
+    select generate_series(v_session.start_date, v_session.end_date, interval '1 day')::date
+  loop
+    if extract(dow from v_d) = v_session.meeting_weekday then
+      insert into class_meetings (class_id, meeting_date)
+      select c.id, v_d from classes c where c.session_id = p_session_id
+      on conflict (class_id, meeting_date) do nothing;
+    end if;
+  end loop;
+end;
+$$;
+
+revoke all on function generate_class_meetings_for_session(uuid) from public;
+grant execute on function generate_class_meetings_for_session(uuid) to authenticated;
+```
+
+- [x] **Step 4: Apply + rerun — expect GREEN**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: `160_class_meetings_schema.sql` — 12/12 passing (at `/migration`, the plan's assertion count was off by one — the file's actual, transcribed assertion list is 12; `plan(12)` matches it, no coverage was dropped).
+
+- [x] **Step 5: Full clean-reset + full-suite regression**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: every test file `000`–`160` passes — confirms the new NOT NULL column doesn't break any existing `sessions` insert (Task 9's seed inserts one — see Task 14 below, which must land in the same pass or the seed breaks `db reset`).
+
+### Task 13: `get_session_compliance_for_staff` (ADR-0030 + ADR-0031, consumed by `compliance-dashboard`)
+
+**Files:**
+- Create: `supabase/tests/165_session_compliance_rpc.sql`
+- Create: `supabase/migrations/<ts>_session_compliance_rpc.sql`
+
+**Interfaces:**
+- Produces: `get_session_compliance_for_staff(p_session_id uuid, p_window_size int default 4) returns table(class_id, class_name, enrolled_count, window_start, window_end, attendance_rate, update_rate)` — the **only** data-access path for `features/coordinator/compliance-dashboard/` (compliance-dashboard.plan.md).
+
+- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/165_session_compliance_rpc.sql`
+```sql
+begin;
+select plan(11);
+
+insert into centers (id, name) values ('c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Center');
+-- Sundays: Jan4, Jan11, Jan18 — window_size=2 keeps the last two (Jan11, Jan18).
+insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
+  ('a6500000-0000-0000-0000-000000000001', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Session', '2026-01-01', '2026-01-18', 0),
+  ('a6500000-0000-0000-0000-000000000002', 'c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Sibling Session', '2026-01-01', '2026-01-18', 0);
+
+insert into classes (id, session_id, name, grade_band) values
+  ('cc650000-0000-0000-0000-00000000000a', 'a6500000-0000-0000-0000-000000000001', 'Class A (full compliance)', 'Gr3'),
+  ('cc650000-0000-0000-0000-00000000000b', 'a6500000-0000-0000-0000-000000000001', 'Class B (partial + withdrawn)', 'Gr4'),
+  ('cc650000-0000-0000-0000-00000000000d', 'a6500000-0000-0000-0000-000000000001', 'Class D (zero-expected-date)', 'Gr5');
+
+select tests.create_supabase_user('compliance-coordinator@test.local') as v_coordinator \gset
+select tests.create_supabase_user('compliance-coordinator-sibling@test.local') as v_coordinator_sibling \gset
+select tests.create_supabase_user('compliance-teacher@test.local') as v_teacher \gset
+
+-- Generate the calendar for A/B/D before Class E exists (E deliberately gets no rows).
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6500000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6500000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+
+insert into classes (id, session_id, name, grade_band) values
+  ('cc650000-0000-0000-0000-00000000000e', 'a6500000-0000-0000-0000-000000000001', 'Class E (no calendar yet)', 'Gr6');
+
+-- Class A: 2 active students enrolled before the window, full attendance + full updates both dates.
+insert into families (id, label) values ('f6500000-0000-0000-0000-00000000000a', 'Family A');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-00000000000a', 'f6500000-0000-0000-0000-00000000000a', 'A1', 'Student', 'Gr3'),
+  ('56500000-0000-0000-0000-00000000000b', 'f6500000-0000-0000-0000-00000000000a', 'A2', 'Student', 'Gr3');
+insert into enrollments (id, student_id, class_id, session_id, status, enrolled_at) values
+  ('e6500000-0000-0000-0000-00000000000a', '56500000-0000-0000-0000-00000000000a', 'cc650000-0000-0000-0000-00000000000a', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-04'),
+  ('e6500000-0000-0000-0000-00000000000b', '56500000-0000-0000-0000-00000000000b', 'cc650000-0000-0000-0000-00000000000a', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-04');
+insert into attendance (enrollment_id, class_meeting_date, status, marked_by) values
+  ('e6500000-0000-0000-0000-00000000000a', '2026-01-11', 'present', :'v_teacher'::uuid),
+  ('e6500000-0000-0000-0000-00000000000b', '2026-01-11', 'present', :'v_teacher'::uuid),
+  ('e6500000-0000-0000-0000-00000000000a', '2026-01-18', 'present', :'v_teacher'::uuid),
+  ('e6500000-0000-0000-0000-00000000000b', '2026-01-18', 'absent', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by) values
+  ('cc650000-0000-0000-0000-00000000000a', '2026-01-11', :'v_teacher'::uuid),
+  ('cc650000-0000-0000-0000-00000000000a', '2026-01-18', :'v_teacher'::uuid);
+
+-- Class B: one active + one withdrawn student (roster approximation — withdrawn excluded from
+-- the ENTIRE window, not just post-withdrawal dates). Attendance submitted for Jan11 only.
+insert into families (id, label) values ('f6500000-0000-0000-0000-00000000000b', 'Family B');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-00000000000c', 'f6500000-0000-0000-0000-00000000000b', 'B1', 'Student', 'Gr4'),
+  ('56500000-0000-0000-0000-00000000000d', 'f6500000-0000-0000-0000-00000000000b', 'B2Withdrawn', 'Student', 'Gr4');
+insert into enrollments (id, student_id, class_id, session_id, status, enrolled_at) values
+  ('e6500000-0000-0000-0000-00000000000c', '56500000-0000-0000-0000-00000000000c', 'cc650000-0000-0000-0000-00000000000b', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-04'),
+  ('e6500000-0000-0000-0000-00000000000d', '56500000-0000-0000-0000-00000000000d', 'cc650000-0000-0000-0000-00000000000b', 'a6500000-0000-0000-0000-000000000001', 'withdrawn', '2026-01-04');
+insert into attendance (enrollment_id, class_meeting_date, status, marked_by) values
+  ('e6500000-0000-0000-0000-00000000000c', '2026-01-11', 'present', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by) values
+  ('cc650000-0000-0000-0000-00000000000b', '2026-01-18', :'v_teacher'::uuid);
+
+-- Class D: student enrolls mid-window (Jan15, between Jan11 and Jan18) — Jan11 has zero
+-- expected students (excluded from attendance's denominator entirely) but a class_updates
+-- row posted on Jan11 anyway still counts toward update_rate (that metric ignores roster).
+insert into families (id, label) values ('f6500000-0000-0000-0000-00000000000d', 'Family D');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-00000000000f', 'f6500000-0000-0000-0000-00000000000d', 'D1', 'Student', 'Gr5');
+insert into enrollments (id, student_id, class_id, session_id, status, enrolled_at) values
+  ('e6500000-0000-0000-0000-00000000000f', '56500000-0000-0000-0000-00000000000f', 'cc650000-0000-0000-0000-00000000000d', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-15');
+insert into class_updates (class_id, meeting_date, posted_by) values
+  ('cc650000-0000-0000-0000-00000000000d', '2026-01-11', :'v_teacher'::uuid);
+-- (no attendance row for D at all — Jan18 has expected_count=1 but zero submitted → attendance_rate 0.0)
+
+-- Class E: one active student, but generate_class_meetings_for_session never ran for it
+-- (created after the generation pass) — proves the "new class, no meetings yet" null placeholder.
+insert into families (id, label) values ('f6500000-0000-0000-0000-00000000000e', 'Family E');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('56500000-0000-0000-0000-000000000e1', 'f6500000-0000-0000-0000-00000000000e', 'E1', 'Student', 'Gr6');
+insert into enrollments (student_id, class_id, session_id, status, enrolled_at) values
+  ('56500000-0000-0000-0000-000000000e1', 'cc650000-0000-0000-0000-00000000000e', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-04');
+-- (deliberately: no generate_class_meetings_for_session call after this insert — Class E must
+-- end up with zero class_meetings rows, proving the "new class, no meetings yet" null placeholder)
+
+-- Positive case: Coordinator's own-session call.
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6500000-0000-0000-0000-000000000001'::uuid);
+
+select is(
+  (select attendance_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000a'),
+  100.0, 'Class A attendance_rate = 100.0 (both students, both dates, fully submitted)');
+select is(
+  (select update_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000a'),
+  100.0, 'Class A update_rate = 100.0');
+
+select is(
+  (select attendance_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000b'),
+  50.0, 'Class B attendance_rate = 50.0 (withdrawn student excluded from the whole window, only Jan11 submitted)');
+select is(
+  (select enrolled_count from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000b'),
+  1, 'Class B enrolled_count = 1 (withdrawn student not counted as currently enrolled)');
+
+select is(
+  (select attendance_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000d'),
+  0.0, 'Class D attendance_rate = 0.0 (Jan11 excluded from denominator — zero expected — Jan18 expected but not submitted)');
+select is(
+  (select update_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000d'),
+  50.0, 'Class D update_rate = 50.0 (Jan11''s update still counts toward update_rate despite zero expected roster that date)');
+
+select is(
+  (select attendance_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000e'),
+  null, 'Class E attendance_rate = null (no class_meetings rows yet — honest placeholder, never 0)');
+select is(
+  (select update_rate from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2) where class_id = 'cc650000-0000-0000-0000-00000000000e'),
+  null, 'Class E update_rate = null');
+
+select is(
+  (select count(*) from audit_log where actor_role = 'coordinator' and action = 'read' and target_table = 'attendance' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  1, 'exactly one audit_log read row per successful call (never per-student — AC8, no student-identifying data returned)');
+
+select tests.clear_authentication();
+
+-- Cross-scope: sibling-session coordinator gets nothing + one denied audit_log row.
+select tests.authenticate_as(:'v_coordinator_sibling'::uuid, 'coordinator', 'session', 'a6500000-0000-0000-0000-000000000002'::uuid);
+select is(
+  (select count(*) from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2))::int,
+  0, 'sibling-session coordinator gets zero rows');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  1, 'the cross-scope call writes exactly one denied audit_log row');
+
+select * from finish();
+rollback;
+```
+Run: `npx supabase test db` → expected **RED**: `get_session_compliance_for_staff` doesn't exist yet.
+
+- [x] **Step 2: Create the migration**
+```bash
+npx supabase migration new session_compliance_rpc
+```
+
+- [x] **Step 3: Write it** `supabase/migrations/<ts>_session_compliance_rpc.sql`
+
+Exact SQL is fully specified in `core-schema-and-rls.md`'s "Design addendum — ADR-0030 → ADR-0031" section, "New read RPC: `get_session_compliance_for_staff`" — transcribe verbatim (the spec disclaimer that "conceptual DDL may need adjustment at `/migration`" applies only if `supabase db reset` surfaces a real syntax error; no logic change expected).
+
+- [x] **Step 4: Apply + rerun — expect GREEN**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: `165_session_compliance_rpc.sql` — 11/11 passing.
+
+- [x] **Step 5: Full clean-reset + full-suite regression**
+```bash
+npx supabase db reset
+npx supabase test db
+```
+Expected: every test file `000`–`165` passes.
+
+### Task 14: Seed data — `meeting_weekday`, generated calendar, sample `class_updates`
+
+**Why this task exists:** `sessions.meeting_weekday` is `NOT NULL` (Task 12) — `supabase/seed/seed.sql`'s existing `insert into sessions (...)` (line 28) breaks `npm run db:reset` the instant Task 12 lands, unless updated in the same pass. This is a required fix, not optional polish.
+
+**Files:**
+- Modify: `supabase/seed/seed.sql`
+
+- [x] **Step 1: Add `meeting_weekday` to the session insert**
+The seed's existing 4-week attendance loop already steps by Tuesdays (`'2026-01-13'::date` stepping `7 days`) — `2026-01-13` is a Tuesday, so `meeting_weekday = 2` keeps the existing attendance fixture consistent with the new calendar:
+```sql
+insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
+  (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 2);
+```
+
+- [x] **Step 2: Generate the session's meeting calendar** (after all 13 classes are created, before the per-family loop)
+```sql
+perform generate_class_meetings_for_session(v_session);
+```
+(Called directly as the seed superuser — no role simulation needed; `generate_class_meetings_for_session`'s `v_authorized` check only matters under RLS-simulated roles, and seed data isn't RLS-tested.)
+
+- [x] **Step 3: Seed a mixed spread of `class_updates`** so the compliance dashboard has non-trivial demo data — extend the existing per-student attendance loop (which already inserts one `attendance` row per Tuesday per student) with one `class_updates` row per class per Tuesday, **skipped for classes where `i % 3 = 0`** to produce a deliberate mix of fully-compliant / partial / non-compliant classes for manual `/test`/demo verification:
+```sql
+-- Inside the same 4-Tuesday loop, once per class per date (not per student — class_updates
+-- is class-wide) — insert only for classes NOT divisible by 3 in the grade_bands index,
+-- guarded by ON CONFLICT so re-running the loop across multiple students in the same class
+-- doesn't duplicate the unique (class_id, meeting_date) row.
+insert into class_updates (class_id, meeting_date, posted_by)
+select v_class_id, d, (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
+where (array_position(v_class_ids, v_class_id)) % 3 <> 0
+on conflict (class_id, meeting_date) do nothing;
+```
+
+- [x] **Step 4: Known seed-data limitation — resolved as a PR #50 review fast-follow**
+`get_session_compliance_for_staff`'s window is "the last N scheduled `class_meetings` dates `<= current_date`," but the seed's `class_meetings` calendar runs every Tuesday from `2026-01-11` to `2026-05-24` (~19 dates) while `attendance`/`class_updates` were originally seeded only for the first 4 Tuesdays (`2026-01-13`–`2026-02-03`). Flagged here as out of scope, then hit exactly as predicted once real wall-clock time passed `2026-05-24` (confirmed during PR #50 review, 2026-07-26): the RPC's window landed on the last 4 Tuesdays before session end — dates with no seeded attendance/updates — so every class showed an honest `—`/`0%` instead of the varied mix this step intended. **Resolved:** `seed.sql`'s attendance/`class_updates` loop now derives its dates from `class_meetings`/`current_date` at seed-run time (`where meeting_date < current_date order by meeting_date desc limit 4`) instead of the fixed `2026-01-13`–`2026-02-03` literal range, and `enrollments.enrolled_at` is pinned to the session's own `start_date` instead of defaulting to `now()` — so the RPC's trailing window always lands on dates with real seeded data, regardless of when `db reset` is actually run.
+
+- [x] **Step 5: Reset + smoke-check**
+```bash
+npm run db:reset
+```
+Expected: clean reset, no constraint violations, `class_meetings` populated for all 13 classes, `class_updates` populated for ~9 of 13 classes' first-4-Tuesday dates.
+
+---
+
+### Self-Review addendum (Tasks 12–14 against ADR-0030/ADR-0031)
+
+- ADR-0031 AC (calendar generation, RLS, idempotency, skip-date-preserving re-run) → Task 12 ✓
+- ADR-0030 AC (`class_updates` System-owned, zero-policy posture) → Task 12 ✓
+- Session-wide aggregate RPC replacing N per-class calls; roster approximation; zero-expected-date denominator exclusion; per-call (not per-row) audit granularity (AC8) → Task 13 ✓
+- Seed doesn't break on the new NOT NULL column → Task 14 ✓
+- **Architectural flags:** none — both ADRs already recorded the significant decisions (System ownership, calendar source-of-truth); Tasks 12–14 are execution detail within that already-approved design, consistent with how Tasks 1–11 handled ADR-0018/0019/0021's already-recorded decisions.
+
+**Fixes made at `/migration` (execution detail, no architectural change):**
+- `sessions.meeting_weekday` NOT NULL broke six pre-existing pgTAP fixture files (`010`/`040`/`060`/`100`/`150`/`999`) that insert `sessions` directly, not just the seed the plan called out — all six updated to pass `meeting_weekday`.
+- `generate_class_meetings_for_session`, called directly from `seed.sql` with no simulated JWT, denies itself (its `v_authorized` check reads `auth.jwt()`, which is empty outside a real/simulated auth context) — the plan's "no role simulation needed" assumption didn't hold. Fixed by wrapping the seed's call in a throwaway `tests.authenticate_as(..., 'admin', 'org', null)` / `tests.clear_authentication()` pair (no audit_log row is written on a successful call, so a non-existent actor id is safe).
+- `get_session_compliance_for_staff`'s `returns table` column names (`class_id`, etc.) collided with same-named query columns inside the function body ("column reference is ambiguous") — fixed with `#variable_conflict use_column` as the function's first line.
+- `audit_log_coordinator_read` (Task 5's existing policy) had no clause for this RPC's audit-row shape (`target_table` in `('attendance','sessions')`, `target_student_id` null) — a Coordinator's own successful/denied compliance-dashboard reads were invisible to their own audit read, even though the `SECURITY DEFINER` insert itself succeeded. Extended the policy with a third OR-clause scoped to the caller's own `scope_id`, folded into the Task 13 migration.
+- `165_session_compliance_rpc.sql`'s per-class assertions each called the RPC independently (8 calls), then asserted "exactly one audit_log row" — inconsistent with the RPC's one-row-per-call design and with real client usage (one call per focus). Fixed by materializing one call into a temp table and asserting against it. Also fixed a malformed 11-hex-digit UUID literal in the Class E fixture.
+
+---
+
+## Sign-off — Tasks 12–14
+- [x] **Human sign-off on Tasks 12–14** (2026-07-24, mehta.maulik@gmail.com) → ready for `/migration` (already embedded — every task *is* a migration) → `/build`.

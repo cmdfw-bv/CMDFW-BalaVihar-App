@@ -26,6 +26,8 @@ declare
 begin
   insert into centers (id, name) values (v_center_id, 'Frisco');
   -- ADR-0031: Frisco F3 is the confirmed pilot session, Sundays 2:00-3:30PM (day_of_week 0=Sunday).
+  -- ADR-0036: this branch's superseded `meeting_weekday` value (2 = Tuesday) contradicted the
+  -- doc 1 §9a catalog; `day_of_week` is the single source of truth for session weekday.
   insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
     (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 0, '14:00', '15:30');
 
@@ -40,6 +42,15 @@ begin
     insert into user_roles (user_id, role, scope_type, scope_id)
       values (v_teacher_user_id, 'teacher', 'class', v_class_id);
   end loop;
+
+  -- ADR-0035: generate the session's expected-meeting-date calendar for all 13 classes now
+  -- that they all exist. generate_class_meetings_for_session is role-gated (SECURITY DEFINER,
+  -- checks auth.jwt() same as under real RLS) even when called from a seed script, so a
+  -- throwaway authenticated context is required here — no audit_log row is written on a
+  -- successful call, so a non-existent actor id is safe (the FK is only touched on denial).
+  perform tests.authenticate_as(gen_random_uuid(), 'admin', 'org', null);
+  perform generate_class_meetings_for_session(v_session);
+  perform tests.clear_authentication();
 
   -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 13 classes.
   for i in 1..20 loop
@@ -76,15 +87,53 @@ begin
         end
       );
 
-      insert into enrollments (student_id, class_id, session_id, status)
-      values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active');
+      -- enrolled_at is pinned to the session's own start_date (well before any class_meetings
+      -- date) rather than left at its now()-at-seed-time default — otherwise, whenever this
+      -- seed is actually run, every student reads as enrolled *after* the compliance dashboard's
+      -- trailing window, so attendance_rate renders as an honest "—" for every class instead of
+      -- exercising the dashboard's primary content state.
+      insert into enrollments (student_id, class_id, session_id, status, enrolled_at)
+      values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active', (select start_date from sessions where id = v_session));
 
-      -- 4 weeks of Tuesday attendance, mixed present/absent.
-      for d in select generate_series('2026-01-13'::date, '2026-02-03'::date, '7 days')::date loop
+      -- Seed attendance + class_updates for each class's own last 4 completed scheduled
+      -- meetings (derived from class_meetings/current_date, not a hardcoded calendar range) —
+      -- so get_session_compliance_for_staff's trailing window always has real data to render,
+      -- regardless of how long ago F3's fixed Jan-May date range is relative to whenever this
+      -- seed actually runs.
+      for d in
+        select meeting_date from class_meetings
+        where class_id = v_class_id and status = 'scheduled' and meeting_date < current_date
+        order by meeting_date desc
+        limit 4
+      loop
         insert into attendance (enrollment_id, class_meeting_date, status, marked_by)
         select e.id, d, case when (i + j) % 5 = 0 then 'absent' else 'present' end,
                (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
         from enrollments e where e.student_id = v_student_id and e.class_id = v_class_id;
+
+        -- ADR-0034/0036: one class_updates row per class per scheduled meeting date (class-wide,
+        -- not per-student; F3 meets Sundays per ADR-0031's day_of_week, not the superseded
+        -- Tuesday) — skipped for classes divisible by 3 (by position in v_class_ids) to produce a
+        -- deliberate mix of fully-compliant / partial / non-compliant classes for the
+        -- compliance-dashboard demo data.
+        --
+        -- ADR-0036 changed two things here. `body` is NOT NULL on the canonical table
+        -- (20260724120400), so it must be supplied. And the previous `on conflict
+        -- (class_id, meeting_date) do nothing` no longer works: that constraint belonged to the
+        -- superseded table shape, and the canonical table deliberately has no such unique
+        -- (several updates per meeting are allowed). Dropping the clause outright would insert
+        -- one duplicate row per student, since this sits inside the per-student loop — so the
+        -- same once-per-class-per-date guarantee is kept with an explicit NOT EXISTS instead.
+        if (array_position(v_class_ids, v_class_id)) % 3 <> 0 then
+          insert into class_updates (class_id, meeting_date, posted_by, body)
+          select
+            v_class_id, d,
+            (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1),
+            'Synthetic seed update for ' || to_char(d, 'Mon FMDD') || '.'
+          where not exists (
+            select 1 from class_updates cu where cu.class_id = v_class_id and cu.meeting_date = d
+          );
+        end if;
       end loop;
 
       insert into consents (student_id, consent_type, granted, granted_by) values

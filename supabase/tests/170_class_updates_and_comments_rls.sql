@@ -40,9 +40,9 @@ insert into enrollments (student_id, class_id, session_id, status) values
 
 -- Fixture rows inserted directly (bypasses RLS at setup time — same convention as
 -- 060_chat_rls.sql's own fixtures) so the read-side policies below have real rows to check.
-insert into class_updates (id, class_id, posted_by, body, homework) values
-  ('cd888888-0000-0000-0000-000000000051', 'cd888888-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Class A update', null),
-  ('cd888888-0000-0000-0000-000000000052', 'cd888888-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Class B update', null);
+insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
+  ('cd888888-0000-0000-0000-000000000051', 'cd888888-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Class A update', null, '2026-01-11'),
+  ('cd888888-0000-0000-0000-000000000052', 'cd888888-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Class B update', null, '2026-01-11');
 
 insert into comments (id, class_update_id, author_user_id, author_role, body, is_private, target_parent_id) values
   ('cd888888-0000-0000-0000-000000000061', 'cd888888-0000-0000-0000-000000000051', :'v_student_a1'::uuid, 'student', 'public comment on A', false, null),
@@ -57,14 +57,14 @@ select is((select count(*) from class_updates)::int, 1, 'Teacher sees exactly th
 -- proof doesn't leak an extra row into every class_updates count assertion below it.
 savepoint before_teacher_insert_check;
 select lives_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'another update')$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'another update', '2026-01-11')$$,
   'Teacher can insert a class_update into their own active-role class'
 );
 rollback to savepoint before_teacher_insert_check;
 
 -- (3) Teacher A cannot insert into a different class.
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000022'::uuid, auth.uid(), 'wrong class')$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000022'::uuid, auth.uid(), 'wrong class', '2026-01-11')$$,
   '42501', null, 'Teacher cannot insert a class_update into a class outside their active-role scope'
 );
 select tests.clear_authentication();
@@ -172,7 +172,17 @@ select tests.clear_authentication();
 
 -- (17)/(18) Admin: org-wide, both class_updates and every comment (public + private, both classes).
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
-select is((select count(*) from class_updates)::int, 2, 'Admin sees every class_update, org-wide');
+-- Scoped to this file's own two fixture classes rather than an absolute `count(*)` (ADR-0036).
+-- The unscoped version was correct when written — nothing seeded `class_updates` — but issue
+-- #23's seed now creates 36 rows of compliance demo data, so an absolute count reads 38 and the
+-- assertion fails for a reason unrelated to what it tests. Scoping keeps the actual claim intact
+-- (Admin reads updates from BOTH classes, i.e. across class scope, not just their own) while
+-- making it independent of seed volume.
+select is(
+  (select count(*) from class_updates
+     where class_id in ('cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000022'))::int,
+  2,
+  'Admin sees every class_update across both fixture classes, org-wide');
 select is((select count(*) from comments)::int, 3, 'Admin sees every comment (public and private) org-wide, both classes');
 select throws_ok(
   $$update class_updates set body = 'admin edit' where id = 'cd888888-0000-0000-0000-000000000051'::uuid$$,
@@ -201,17 +211,17 @@ select tests.clear_authentication();
 select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'cd888888-0000-0000-0000-000000000021'::uuid);
 
 select lives_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5000))$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5000), '2026-01-11')$$,
   'a class_update body exactly at the 5000-char cap is accepted'
 );
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5001))$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5001), '2026-01-11')$$,
   '23514',
   null,
   'a class_update body one char over the cap is rejected by class_updates_body_len'
 );
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body, homework) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'fine', repeat('y', 2001))$$,
+  $$insert into class_updates (class_id, posted_by, body, homework, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'fine', repeat('y', 2001), '2026-01-11')$$,
   '23514',
   null,
   'homework one char over the 2000-char cap is rejected by class_updates_homework_len'

@@ -54,10 +54,10 @@ insert into enrollments (student_id, class_id, session_id, status) values
   -- e.status = 'active' filter actually blocks a stale/withdrawn link, not just an absent one.
   ('ce777777-0000-0000-0000-000000000041', 'ce777777-0000-0000-0000-000000000023', 'ce777777-0000-0000-0000-000000000011', 'withdrawn');
 
-insert into class_updates (id, class_id, posted_by, body, homework) values
-  ('ce777777-0000-0000-0000-000000000051', 'ce777777-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Adv Class A update', null),
-  ('ce777777-0000-0000-0000-000000000052', 'ce777777-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Adv Class B update', null),
-  ('ce777777-0000-0000-0000-000000000053', 'ce777777-0000-0000-0000-000000000021', :'v_multirole'::uuid, 'Adv Class A update by multirole-as-teacher', null);
+insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
+  ('ce777777-0000-0000-0000-000000000051', 'ce777777-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Adv Class A update', null, '2026-01-11'),
+  ('ce777777-0000-0000-0000-000000000052', 'ce777777-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Adv Class B update', null, '2026-01-11'),
+  ('ce777777-0000-0000-0000-000000000053', 'ce777777-0000-0000-0000-000000000021', :'v_multirole'::uuid, 'Adv Class A update by multirole-as-teacher', null, '2026-01-11');
 
 insert into comments (id, class_update_id, author_user_id, author_role, body, is_private, target_parent_id) values
   ('ce777777-0000-0000-0000-000000000061', 'ce777777-0000-0000-0000-000000000051', :'v_student_1'::uuid, 'student', 'public comment on Adv A', false, null),
@@ -122,7 +122,7 @@ select tests.clear_authentication();
 -- Parent cannot post a class_update at all (no insert policy for parent on class_updates).
 select tests.authenticate_as(:'v_parent_1'::uuid, 'parent');
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'parent trying to post an announcement')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'parent trying to post an announcement', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_parent_1'::uuid),
   '42501', null, 'ATTACK 2a DENY: Parent cannot insert a class_update'
 );
@@ -131,7 +131,7 @@ select tests.clear_authentication();
 -- Student cannot post a class_update.
 select tests.authenticate_as(:'v_student_1'::uuid, 'student');
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'student trying to post an announcement')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'student trying to post an announcement', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_student_1'::uuid),
   '42501', null, 'ATTACK 2b DENY: Student cannot insert a class_update'
 );
@@ -140,7 +140,7 @@ select tests.clear_authentication();
 -- Coordinator (oversight is read-only) cannot post a class_update, even into their own session.
 select tests.authenticate_as(:'v_coordinator_1'::uuid, 'coordinator', 'session', 'ce777777-0000-0000-0000-000000000011'::uuid);
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'coordinator trying to post an announcement')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'coordinator trying to post an announcement', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_coordinator_1'::uuid),
   '42501', null, 'ATTACK 2c DENY: Coordinator cannot insert a class_update, oversight is read-only'
 );
@@ -155,7 +155,7 @@ select tests.clear_authentication();
 -- Admin (org oversight, read-only) cannot post a class_update or comment either.
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'admin trying to post an announcement')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'admin trying to post an announcement', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_admin'::uuid),
   '42501', null, 'ATTACK 2e DENY: Admin cannot insert a class_update, org oversight is read-only'
 );
@@ -165,7 +165,7 @@ select tests.clear_authentication();
 -- honestly as posted_by (scope-spoofing the class_id, not identity-spoofing).
 select tests.authenticate_as(:'v_teacher_b'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000022'::uuid);
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'teacher b cross-posting into class a')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'teacher b cross-posting into class a', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_teacher_b'::uuid),
   '42501', null, 'ATTACK 2f DENY: Teacher B cannot insert a class_update into Class A while scoped to Class B'
 );
@@ -183,7 +183,7 @@ select tests.clear_authentication();
 -- class (identity-spoofing, not just scope-spoofing).
 select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000021'::uuid);
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'teacher a spoofing posted_by as teacher b')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'teacher a spoofing posted_by as teacher b', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_teacher_b'::uuid),
   '42501', null, 'ATTACK 2h DENY: Teacher A cannot spoof posted_by to another user''s id on their own class''s update'
 );
@@ -338,9 +338,9 @@ select throws_ok(
   '42501', null, 'ATTACK 5b DENY: anon cannot select from comments at all (no grant)'
 );
 select throws_ok(
-  format($$insert into class_updates (class_id, posted_by, body) values (%L, %L, 'anon forging a class update')$$,
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values (%L, %L, 'anon forging a class update', '2026-01-11')$$,
     'ce777777-0000-0000-0000-000000000021'::uuid, :'v_teacher_a'::uuid),
-  '42501', null, 'ATTACK 5c DENY: anon cannot insert into class_updates (no grant)'
+  '42501', null, 'ATTACK 5c DENY: anon cannot insert into class_updates (no grant, meeting_date)'
 );
 select throws_ok(
   $$select public.resolve_parent_family_label('00000000-0000-0000-0000-000000000000'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid)$$,

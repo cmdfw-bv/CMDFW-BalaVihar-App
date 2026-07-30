@@ -13,6 +13,13 @@ export function complianceTone(value: number, explicit?: ComplianceTone): Compli
   return 'danger';
 }
 
+export type ComplianceDisplayState = ComplianceTone | "placeholder";
+
+export function complianceDisplayState(value: number, explicit?: ComplianceTone, placeholder?: boolean): ComplianceDisplayState {
+  if (placeholder) return "placeholder";
+  return complianceTone(value, explicit);
+}
+
 export function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
