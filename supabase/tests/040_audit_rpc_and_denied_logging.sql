@@ -9,8 +9,8 @@ insert into students (id, family_id, first_name, last_name, grade_level) values
   ('5e111111-0000-0000-0000-000000000001', 'fd111111-0000-0000-0000-000000000001', 'Aud', 'Ent', 'Grade6');
 
 insert into centers (id, name) values ('c9999999-0000-0000-0000-000000000001', 'Audit Fixture Center');
-insert into sessions (id, center_id, name, start_date, end_date)
-  values ('a3111111-0000-0000-0000-000000000001', 'c9999999-0000-0000-0000-000000000001', 'Audit-Session', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values ('a3111111-0000-0000-0000-000000000001', 'c9999999-0000-0000-0000-000000000001', 'Audit-Session', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band)
   values ('c3111111-0000-0000-0000-000000000001', 'a3111111-0000-0000-0000-000000000001', 'Audit Class In', 'Grade6');
 
@@ -111,8 +111,8 @@ select is((select count(*) from audit_log)::int, 6,
 -- connected to any existing audit_log row sees zero rows — proves the scoping
 -- actually excludes, not just includes.
 select tests.clear_authentication();
-insert into sessions (id, center_id, name, start_date, end_date)
-  values ('a3111111-0000-0000-0000-000000000099', 'c9999999-0000-0000-0000-000000000001', 'Audit-Session-Unrelated', '2026-01-01', '2026-06-01');
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values ('a3111111-0000-0000-0000-000000000099', 'c9999999-0000-0000-0000-000000000001', 'Audit-Session-Unrelated', '2026-01-01', '2026-06-01', 0, '09:00', '10:30');
 insert into classes (id, session_id, name, grade_band)
   values ('c3111111-0000-0000-0000-000000000099', 'a3111111-0000-0000-0000-000000000099', 'Audit Class Unrelated', 'Grade6');
 select tests.create_supabase_user('audit-coordinator-out@test.local') as v_coord_out \gset
