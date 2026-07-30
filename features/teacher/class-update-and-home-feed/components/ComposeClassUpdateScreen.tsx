@@ -1,6 +1,6 @@
 import "../../../../lib/unistyles";
 import { useEffect, useState } from "react";
-import { View, Text } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { router } from "expo-router";
 import { supabase } from "../../../../lib/supabase";
@@ -91,11 +91,21 @@ export default function ComposeClassUpdateScreen() {
         </Text>
       ) : (
         <Field label="Which class meeting?" as="select">
-          <SegmentedTabs
-            tabs={meetings.map((d) => ({ id: d, label: meetingDateLabel(d) }))}
-            value={meetingDate}
-            onChange={setMeetingDate}
-          />
+          {/*
+            Horizontally scrollable: SegmentedTabs lays its rail out as a non-wrapping flex row, so
+            at 360px the fourth date sits past the capsule's right edge and is unreachable. Found by
+            screenshot during the ADR-0036 live walk — page-level overflow reads 0 because the rail
+            clips it, so no automated breakpoint check flagged it (same shape as the #50 dashboard
+            scroll bug). Scoped here rather than adding flexWrap to SegmentedTabs, which is shared
+            with the home feed and the compliance dashboard.
+          */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <SegmentedTabs
+              tabs={meetings.map((d) => ({ id: d, label: meetingDateLabel(d) }))}
+              value={meetingDate}
+              onChange={setMeetingDate}
+            />
+          </ScrollView>
         </Field>
       )}
       <Field
