@@ -38,9 +38,9 @@ insert into attendance (enrollment_id, class_meeting_date, status, marked_by) va
   ('e6500000-0000-0000-0000-00000000000b', '2026-01-11', 'present', :'v_teacher'::uuid),
   ('e6500000-0000-0000-0000-00000000000a', '2026-01-18', 'present', :'v_teacher'::uuid),
   ('e6500000-0000-0000-0000-00000000000b', '2026-01-18', 'absent', :'v_teacher'::uuid);
-insert into class_updates (class_id, meeting_date, posted_by) values
-  ('cc650000-0000-0000-0000-00000000000a', '2026-01-11', :'v_teacher'::uuid),
-  ('cc650000-0000-0000-0000-00000000000a', '2026-01-18', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by, body) values
+  ('cc650000-0000-0000-0000-00000000000a', '2026-01-11', :'v_teacher'::uuid, 'Compliance-RPC fixture update'),
+  ('cc650000-0000-0000-0000-00000000000a', '2026-01-18', :'v_teacher'::uuid, 'Compliance-RPC fixture update');
 
 -- Class B: one active + one withdrawn student (roster approximation — withdrawn excluded from
 -- the ENTIRE window, not just post-withdrawal dates). Attendance submitted for Jan11 only.
@@ -53,8 +53,8 @@ insert into enrollments (id, student_id, class_id, session_id, status, enrolled_
   ('e6500000-0000-0000-0000-00000000000d', '56500000-0000-0000-0000-00000000000d', 'cc650000-0000-0000-0000-00000000000b', 'a6500000-0000-0000-0000-000000000001', 'withdrawn', '2026-01-04');
 insert into attendance (enrollment_id, class_meeting_date, status, marked_by) values
   ('e6500000-0000-0000-0000-00000000000c', '2026-01-11', 'present', :'v_teacher'::uuid);
-insert into class_updates (class_id, meeting_date, posted_by) values
-  ('cc650000-0000-0000-0000-00000000000b', '2026-01-18', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by, body) values
+  ('cc650000-0000-0000-0000-00000000000b', '2026-01-18', :'v_teacher'::uuid, 'Compliance-RPC fixture update');
 
 -- Class D: student enrolls mid-window (Jan15, between Jan11 and Jan18) — Jan11 has zero
 -- expected students (excluded from attendance's denominator entirely) but a class_updates
@@ -64,8 +64,8 @@ insert into students (id, family_id, first_name, last_name, grade_level) values
   ('56500000-0000-0000-0000-00000000000f', 'f6500000-0000-0000-0000-00000000000d', 'D1', 'Student', 'Gr5');
 insert into enrollments (id, student_id, class_id, session_id, status, enrolled_at) values
   ('e6500000-0000-0000-0000-00000000000f', '56500000-0000-0000-0000-00000000000f', 'cc650000-0000-0000-0000-00000000000d', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-15');
-insert into class_updates (class_id, meeting_date, posted_by) values
-  ('cc650000-0000-0000-0000-00000000000d', '2026-01-11', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by, body) values
+  ('cc650000-0000-0000-0000-00000000000d', '2026-01-11', :'v_teacher'::uuid, 'Compliance-RPC fixture update');
 -- (no attendance row for D at all — Jan18 has expected_count=1 but zero submitted → attendance_rate 0.0)
 
 -- Class E: one active student, but generate_class_meetings_for_session never ran for it

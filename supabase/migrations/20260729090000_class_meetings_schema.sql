@@ -42,22 +42,24 @@ using (auth.jwt()->>'active_role' in ('bv_coordinator','admin'));
 -- No client write grant — only generate_class_meetings_for_session (below) and the future
 -- CSV skip-dates import (service-role) ever write to this table.
 
-create table if not exists class_updates (
-  id uuid primary key default gen_random_uuid(),
-  class_id uuid not null references classes(id) on delete cascade,
-  meeting_date date not null,
-  posted_by uuid not null references auth.users(id),
-  posted_at timestamptz not null default now(),
-  unique (class_id, meeting_date)
-);
-alter table class_updates enable row level security;
-
--- ADR-0030: zero policies for any role this pass (same posture user_roles' write side had
--- before user-role-approval existed) — Coordinator's read goes through get_session_compliance_for_staff
--- (Task 13, SECURITY DEFINER, bypasses RLS by design), never a direct grant. Teacher's write
--- RPC, once refined, is the only thing that will ever need a policy or grant here.
-grant select on class_updates to authenticated;
-revoke insert, update, delete on class_updates from authenticated, anon;
+-- ADR-0036: this migration originally created its own `class_updates` here — a minimal
+-- (class_id, meeting_date, posted_by, posted_at) shape with zero RLS policies, per ADR-0034's
+-- "minimum shape needed to unblock Coordinator's read".
+--
+-- Issue #21 landed first (PR #48) with a table of the same name driven by real product
+-- requirements: body, homework, a `comments` child table (ADR-0032's privacy model), retention
+-- fields and length caps, plus 7 RLS policies. ADR-0034 anticipated exactly this — "unless its
+-- write requirements turn out to need a schema shape this ADR didn't anticipate" — and ADR-0036
+-- resolves it: **that table is canonical and lives in 20260724120400; this file no longer
+-- defines it.**
+--
+-- Leaving both definitions in place would not have failed loudly. Both used
+-- `create table if not exists`, so the earlier timestamp simply wins and the later one is a
+-- silent no-op — `db-and-rls` stays green while `get_session_compliance_for_staff` (plpgsql, so
+-- its body is not checked against the catalog at creation time) raises
+-- `column cu.meeting_date does not exist` at runtime, the first time a Coordinator opens the
+-- dashboard. The `meeting_date` this RPC needs is added to the canonical table by
+-- 20260729091000 instead.
 
 create or replace function generate_class_meetings_for_session(p_session_id uuid)
 returns void

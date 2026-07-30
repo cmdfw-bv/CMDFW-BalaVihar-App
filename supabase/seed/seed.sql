@@ -111,19 +111,28 @@ begin
                (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
         from enrollments e where e.student_id = v_student_id and e.class_id = v_class_id;
 
-        -- ADR-0034: one class_updates row per class per scheduled meeting date (class-wide, not
-        -- per-student; F3 meets Sundays per ADR-0031's day_of_week, not the superseded Tuesday) —
-        -- skipped for classes divisible by 3 (by position in v_class_ids) to produce a deliberate
-        -- mix of fully-compliant / partial / non-compliant classes for compliance-dashboard demo
-        -- data. ON CONFLICT guards against duplicate inserts across the per-student loop this is
-        -- nested inside (unique (class_id, meeting_date)).
+        -- ADR-0034/0036: one class_updates row per class per scheduled meeting date (class-wide,
+        -- not per-student; F3 meets Sundays per ADR-0031's day_of_week, not the superseded
+        -- Tuesday) — skipped for classes divisible by 3 (by position in v_class_ids) to produce a
+        -- deliberate mix of fully-compliant / partial / non-compliant classes for the
+        -- compliance-dashboard demo data.
+        --
+        -- ADR-0036 changed two things here. `body` is NOT NULL on the canonical table
+        -- (20260724120400), so it must be supplied. And the previous `on conflict
+        -- (class_id, meeting_date) do nothing` no longer works: that constraint belonged to the
+        -- superseded table shape, and the canonical table deliberately has no such unique
+        -- (several updates per meeting are allowed). Dropping the clause outright would insert
+        -- one duplicate row per student, since this sits inside the per-student loop — so the
+        -- same once-per-class-per-date guarantee is kept with an explicit NOT EXISTS instead.
         if (array_position(v_class_ids, v_class_id)) % 3 <> 0 then
-          insert into class_updates (class_id, meeting_date, posted_by)
-          values (
+          insert into class_updates (class_id, meeting_date, posted_by, body)
+          select
             v_class_id, d,
-            (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
-          )
-          on conflict (class_id, meeting_date) do nothing;
+            (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1),
+            'Synthetic seed update for ' || to_char(d, 'Mon FMDD') || '.'
+          where not exists (
+            select 1 from class_updates cu where cu.class_id = v_class_id and cu.meeting_date = d
+          );
         end if;
       end loop;
 

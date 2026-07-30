@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(14);
 
 insert into centers (id, name) values ('c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Center');
 -- ADR-0036: session weekday comes from ADR-0031's day_of_week (0=Sunday), not a second column.
@@ -78,11 +78,37 @@ select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', '
 select is((select count(*) from class_meetings)::int, 8, 'coordinator sees all classes'' rows in their own session, none from the sibling session');
 select tests.clear_authentication();
 
--- class_updates: zero policies for any role — direct select always returns zero rows, even for the org roles.
+-- ADR-0036: this block previously asserted `class_updates` had ZERO read policies, matching the
+-- minimal zero-policy table this migration used to define. That table is gone — issue #21's
+-- canonical `class_updates` (20260724120400) is authoritative and carries 7 policies, including
+-- class_updates_org_select. Both the old insert (which omitted the now-NOT NULL `body`) and the
+-- old assertion would fail against it, so both are replaced rather than renamed.
+--
+-- What this now covers is the seam ADR-0036 actually created: `meeting_date` (20260729091000)
+-- exists on the canonical table, is NOT NULL, and is plainly readable through that table's
+-- existing org policy — i.e. adding the column introduced no new access surface of its own.
 select tests.create_supabase_user('meetings-bvcoordinator@test.local') as v_bv \gset
-insert into class_updates (class_id, meeting_date, posted_by) values ('cc600000-0000-0000-0000-000000000001', '2026-01-11', :'v_teacher'::uuid);
+insert into class_updates (class_id, meeting_date, posted_by, body)
+values ('cc600000-0000-0000-0000-000000000001', '2026-01-11', :'v_teacher'::uuid, 'Meetings-schema fixture update');
+
+select has_column('public', 'class_updates', 'meeting_date', 'class_updates has meeting_date (ADR-0036)');
+select col_not_null('public', 'class_updates', 'meeting_date', 'class_updates.meeting_date is NOT NULL');
+
+-- meeting_date is a plain column on an already-policied table: an org-scope role reads it through
+-- class_updates_org_select, and gets the value it was written with (not null, not coerced).
 select tests.authenticate_as(:'v_bv'::uuid, 'bv_coordinator', 'org', null);
-select is((select count(*) from class_updates)::int, 0, 'class_updates has zero read policies — even org-scope roles get zero rows direct-select');
+select is(
+  (select meeting_date from class_updates where class_id = 'cc600000-0000-0000-0000-000000000001'),
+  '2026-01-11'::date,
+  'org-scope role reads class_updates.meeting_date through the canonical table''s existing policy'
+);
+select tests.clear_authentication();
+
+-- A role with no class_updates policy path still sees nothing — confirms adding meeting_date did
+-- not widen the table's read surface.
+select tests.create_supabase_user('meetings-outsider@test.local') as v_outsider \gset
+select tests.authenticate_as(:'v_outsider'::uuid, 'parent', 'org', null);
+select is((select count(*) from class_updates)::int, 0, 'an unrelated parent still reads zero class_updates rows after the meeting_date addition');
 select tests.clear_authentication();
 
 select * from finish();

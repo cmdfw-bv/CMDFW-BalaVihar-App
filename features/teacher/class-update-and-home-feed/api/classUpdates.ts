@@ -1,0 +1,145 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+export interface ClassUpdateRow {
+  id: string;
+  class_id: string;
+  posted_by: string;
+  body: string;
+  homework: string | null;
+  created_at: string;
+  classLabel: string;
+}
+
+interface RawClassUpdateRow {
+  id: string;
+  class_id: string;
+  posted_by: string;
+  body: string;
+  homework: string | null;
+  created_at: string;
+  classes: { name: string; sessions: { name: string; centers: { name: string } } } | null;
+}
+
+const CLASS_UPDATE_COLUMNS = 'id, class_id, posted_by, body, homework, created_at, classes(name, sessions(name, centers(name)))';
+
+function mapClassUpdateRow(row: RawClassUpdateRow): ClassUpdateRow {
+  return {
+    id: row.id,
+    class_id: row.class_id,
+    posted_by: row.posted_by,
+    body: row.body,
+    homework: row.homework,
+    created_at: row.created_at,
+    classLabel: row.classes ? `${row.classes.sessions.centers.name} · ${row.classes.sessions.name} · ${row.classes.name}` : '',
+  };
+}
+
+// RLS already scopes which rows come back per viewer (Student/Parent/Teacher/oversight) — this
+// query is identical for every role (§12.1 non-negotiable #1: access is DB-enforced, not
+// client-branched). The classes/sessions/centers nested select is readable per-viewer because
+// it's the same class_id they already have class_updates visibility into (classes_*_select
+// policies mirror the same scoping — core-schema-and-rls).
+// Explicit ceiling rather than an implicit one: without a limit, PostgREST's own `db-max-rows`
+// would silently truncate the feed at whatever the server is configured for, with no signal here.
+// Stating it in the query makes the bound visible and keeps the newest-first ordering meaningful.
+// Ample at pilot scale (one session's classes); real pagination is a follow-up if a class ever
+// accumulates more than this (review Minor #4).
+export const FEED_PAGE_LIMIT = 200;
+
+export async function fetchClassUpdatesFeed(supabase: SupabaseClient): Promise<ClassUpdateRow[]> {
+  const { data, error } = await supabase
+    .from('class_updates')
+    .select(CLASS_UPDATE_COLUMNS)
+    .order('created_at', { ascending: false })
+    .limit(FEED_PAGE_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as unknown as RawClassUpdateRow[]).map(mapClassUpdateRow);
+}
+
+// Detail screen needs exactly one row — filter server-side instead of refetching (and re-joining)
+// the whole feed and finding it client-side. maybeSingle() (not single()) so an out-of-scope/
+// nonexistent id resolves to null, matching fetchClassUpdatesFeed(...).find(...)'s prior behavior,
+// rather than throwing.
+export async function fetchClassUpdateById(supabase: SupabaseClient, id: string): Promise<ClassUpdateRow | null> {
+  const { data, error } = await supabase
+    .from('class_updates')
+    .select(CLASS_UPDATE_COLUMNS)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapClassUpdateRow(data as unknown as RawClassUpdateRow) : null;
+}
+
+export async function insertClassUpdate(
+  supabase: SupabaseClient,
+  params: { classId: string; postedBy: string; body: string; homework?: string; meetingDate: string }
+): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('class_updates')
+    .insert({ class_id: params.classId, posted_by: params.postedBy, body: params.body, homework: params.homework ?? null, meeting_date: params.meetingDate })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data as { id: string };
+}
+
+// Design decision #3: a live, RLS-filtered count — not a denormalized counter. Counting the
+// filtered rows client-side after one query (rather than one count(*) call per feed card)
+// keeps this a single round trip; RLS has already dropped anything this viewer can't see.
+// Ceiling note (review Minor #4): this tallies client-side over the returned rows, so a truncated
+// response yields *undercounted* badges rather than an error — silently wrong, not loudly wrong.
+// The limit is stated explicitly so the truncation point is this constant rather than whatever
+// PostgREST's `db-max-rows` happens to be, and `truncated` is surfaced so a caller can tell the
+// difference between "12 comments" and "at least 12". At pilot scale (one session of classes,
+// FEED_PAGE_LIMIT updates) this bound is not reachable in practice; per-card count queries or a
+// denormalized counter are the follow-up if it ever is.
+export const COMMENT_COUNT_SCAN_LIMIT = 5000;
+
+export async function fetchCommentCounts(
+  supabase: SupabaseClient,
+  classUpdateIds: string[]
+): Promise<Map<string, number>> {
+  if (classUpdateIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('comments')
+    .select('class_update_id')
+    .in('class_update_id', classUpdateIds)
+    .limit(COMMENT_COUNT_SCAN_LIMIT);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{ class_update_id: string }>;
+  if (rows.length === COMMENT_COUNT_SCAN_LIMIT) {
+    console.warn(
+      `fetchCommentCounts hit COMMENT_COUNT_SCAN_LIMIT (${COMMENT_COUNT_SCAN_LIMIT}); comment counts may be undercounted`
+    );
+  }
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.class_update_id, (counts.get(row.class_update_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+
+// ADR-0036 §3: the composer's meeting-date picker. `class_meetings` is the calendar of expected
+// meetings (ADR-0035), so it — not `today` — is the source of truth for what a Teacher can post
+// against. Scoped to the caller's own class by class_meetings_teacher_select; cancelled meetings
+// are excluded, and future dates are not offerable (you cannot report on a class that has not
+// happened). Newest first, so index 0 is the natural default.
+export const MEETING_PICKER_LIMIT = 4;
+
+export async function fetchRecentClassMeetings(
+  supabase: SupabaseClient,
+  classId: string,
+  todayIso: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('class_meetings')
+    .select('meeting_date')
+    .eq('class_id', classId)
+    .eq('status', 'scheduled')
+    .lte('meeting_date', todayIso)
+    .order('meeting_date', { ascending: false })
+    .limit(MEETING_PICKER_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as { meeting_date: string }[]).map((r) => r.meeting_date);
+}
