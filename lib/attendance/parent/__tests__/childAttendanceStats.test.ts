@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   computeAttendanceStats,
   mapEnrollmentRow,
+  mapEnrollmentRows,
+  buildChildrenQuery,
   sortChildrenByName,
   CHILDREN_ATTENDANCE_QUERY,
   type EnrollmentRow,
@@ -60,5 +62,75 @@ describe("CHILDREN_ATTENDANCE_QUERY (AC#7 — client query only ever requests th
   it('filters on status only — no family/user-id-shaped parameter anywhere in the query shape', () => {
     expect(CHILDREN_ATTENDANCE_QUERY.statusFilter).toBe('active');
     expect(CHILDREN_ATTENDANCE_QUERY.select).not.toMatch(/family|user_id|auth\.uid/i);
+  });
+});
+
+// PR #51 review, Important #1: PostgREST returns `null` for a to-one embed when the joined row is
+// filtered out (e.g. students_parent_select ever diverging from enrollments_parent_select). The
+// old code cast straight to a non-null shape and threw inside the hook's shared try, so ONE bad
+// row blanked every child behind a generic error. Degrade the row, not the batch.
+describe('mapEnrollmentRow — null embeds (PR #51 review Important #1)', () => {
+  const good = {
+    id: 'e1',
+    student: { id: 's1', first_name: 'Asha', last_name: 'Seed' },
+    class: { name: 'Gr9 Class', grade_band: 'Gr9' },
+    attendance: [{ status: 'present' as const }],
+  };
+
+  it('returns null for a row whose student embed is null, instead of throwing', () => {
+    expect(mapEnrollmentRow({ ...good, student: null } as never)).toBeNull();
+  });
+
+  it('returns null for a row whose class embed is null, instead of throwing', () => {
+    expect(mapEnrollmentRow({ ...good, class: null } as never)).toBeNull();
+  });
+
+  it('tolerates a null attendance embed as "no records yet", not an error', () => {
+    const out = mapEnrollmentRow({ ...good, attendance: null } as never);
+    expect(out).not.toBeNull();
+    expect(out?.percent).toBeNull();
+  });
+});
+
+describe('mapEnrollmentRows — one bad row must not blank the list', () => {
+  it('keeps every valid child when a sibling row has a null embed', () => {
+    const rows = [
+      { id: 'e1', student: { id: 's1', first_name: 'Asha', last_name: 'Seed' }, class: { name: 'Gr9 Class', grade_band: 'Gr9' }, attendance: [{ status: 'present' as const }] },
+      { id: 'e2', student: null, class: { name: 'Gr8 Class', grade_band: 'Gr8' }, attendance: [] },
+      { id: 'e3', student: { id: 's3', first_name: 'Bala', last_name: 'Seed' }, class: { name: 'Gr7 Class', grade_band: 'Gr7' }, attendance: [] },
+    ];
+    const out = mapEnrollmentRows(rows as never);
+    expect(out.map((c) => c.name)).toEqual(['Asha Seed', 'Bala Seed']);
+  });
+});
+
+// Important #3: the AC#7 guard previously asserted against the CHILDREN_ATTENDANCE_QUERY constant,
+// which the hook was free to ignore. Asserting against the builder the hook actually calls is what
+// makes this a guard rather than decoration. Shape guard only — RLS is the real boundary.
+describe('buildChildrenQuery (AC#7 — bound to the real call path)', () => {
+  function fakeClient() {
+    const calls: { fn: string; args: unknown[] }[] = [];
+    const chain: Record<string, (...a: unknown[]) => unknown> = {};
+    for (const fn of ['from', 'select', 'eq']) {
+      chain[fn] = (...args: unknown[]) => { calls.push({ fn, args }); return chain; };
+    }
+    return { chain, calls };
+  }
+
+  it('asks enrollments for the documented columns, filtered only on status', () => {
+    const { chain, calls } = fakeClient();
+    buildChildrenQuery(chain as never);
+    expect(calls.map((c) => c.fn)).toEqual(['from', 'select', 'eq']);
+    expect(calls[0].args[0]).toBe('enrollments');
+    expect(calls[2].args).toEqual(['status', 'active']);
+  });
+
+  it('never passes a family- or user-id-shaped filter', () => {
+    const { chain, calls } = fakeClient();
+    buildChildrenQuery(chain as never);
+    const flat = JSON.stringify(calls);
+    expect(flat).not.toMatch(/family/i);
+    expect(flat).not.toMatch(/user_id/i);
+    expect(flat).not.toMatch(/auth\.uid/i);
   });
 });

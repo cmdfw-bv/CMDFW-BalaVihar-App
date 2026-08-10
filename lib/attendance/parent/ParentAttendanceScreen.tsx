@@ -6,14 +6,17 @@ import { useChildrenAttendance } from './useChildrenAttendance';
 import { ChildAttendanceRow } from './ChildAttendanceRow';
 
 export function ParentAttendanceScreen() {
-  const { state, children, errorText, refetch } = useChildrenAttendance();
+  const { state, children, refetch } = useChildrenAttendance();
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <StateView
         state={state}
         emptyText="No children are actively enrolled this session."
-        errorText={errorText ?? 'Could not load attendance. Please try again.'}
+        // Fixed copy, never the database error text — see useChildrenAttendance's error branch
+        // (PR #51 review, Important #2). The hook no longer exposes an errorText field at all, so
+        // a future edit cannot reintroduce the disclosure by wiring one back through.
+        errorText="Could not load attendance. Please try again."
         onRetry={refetch}
       >
         {children.map((child) => (
