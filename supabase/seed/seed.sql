@@ -10,6 +10,7 @@ declare
   v_class_id uuid;
   v_family_id uuid;
   v_student_id uuid;
+  v_student_user_id uuid;
   v_parent_user_id uuid;
   v_teacher_user_id uuid;
   v_coordinator_user_id uuid;
@@ -64,17 +65,25 @@ begin
     for j in 1..(case when i <= 10 then 2 else 1 end) loop
       v_class_id := v_class_ids[1 + ((i + j) % v_grade_count)];
       v_student_id := gen_random_uuid();
+      -- Only Gr9-Gr12 students get a login (students.user_id) -- KG/Shishu Vihaar
+      -- through Gr8 have no login and can't be chat participants (§7 note).
+      v_student_user_id := case when (select grade_band from classes where id = v_class_id) in ('Gr9','Gr10','Gr11','Gr12')
+        then tests.create_supabase_user('student' || i || '_' || j || '@bv-seed.test.local')
+        else null
+      end;
       insert into students (id, family_id, first_name, last_name, grade_level, user_id)
       values (
         v_student_id, v_family_id, 'Student' || i || '_' || j, 'Seed',
         (select grade_band from classes where id = v_class_id),
-        -- Only Gr9-Gr12 students get a login (students.user_id) -- KG/Shishu Vihaar
-        -- through Gr8 have no login and can't be chat participants (§7 note).
-        case when (select grade_band from classes where id = v_class_id) in ('Gr9','Gr10','Gr11','Gr12')
-          then tests.create_supabase_user('student' || i || '_' || j || '@bv-seed.test.local')
-          else null
-        end
+        v_student_user_id
       );
+
+      -- #61/#53: a student with a login needs a matching 'student' role (scoped to their class,
+      -- mirroring the teacher grant above), or they land on /no-role and can't use the app.
+      if v_student_user_id is not null then
+        insert into user_roles (user_id, role, scope_type, scope_id)
+          values (v_student_user_id, 'student', 'class', v_class_id);
+      end if;
 
       insert into enrollments (student_id, class_id, session_id, status)
       values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active');
