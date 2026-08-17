@@ -1,5 +1,5 @@
 begin;
-select plan(2);
+select plan(3);
 
 -- Regression for #61 / #53: the seed creates Gr9-Gr12 student LOGINS (students.user_id) and their
 -- enrollments, but historically never inserted a matching 'student' user_roles row. Result: the
@@ -15,7 +15,7 @@ select isnt(
 );
 
 -- No seeded student with a login may be left without a matching 'student' role
--- (scoped to their class, mirroring the teacher/parent grants in seed.sql).
+-- (org-scoped, mirroring the parent grants in seed.sql and the production sweep).
 select is(
   (select count(*)
      from students s
@@ -24,6 +24,16 @@ select is(
     where ur.id is null)::int,
   0,
   'every seeded student login has a student role'
+);
+
+-- The grant must match ROLE_SCOPE_TYPE.student ('org'/null, role-tiering.ts) -- the same
+-- shape role-sweep.ts produces in production and user-role-grant.ts 422s anything else.
+-- (This is the assertion that catches the scope_type drift the first two miss.)
+select is(
+  (select count(*) from user_roles
+    where role = 'student' and (scope_type <> 'org' or scope_id is not null))::int,
+  0,
+  'every seeded student role is org-scoped with a null scope_id, matching the prod sweep'
 );
 
 select * from finish();

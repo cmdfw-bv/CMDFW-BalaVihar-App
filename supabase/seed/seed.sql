@@ -78,11 +78,14 @@ begin
         v_student_user_id
       );
 
-      -- #61/#53: a student with a login needs a matching 'student' role (scoped to their class,
-      -- mirroring the teacher grant above), or they land on /no-role and can't use the app.
+      -- #61/#53: a student with a login needs a matching 'student' role or they land on
+      -- /no-role and can't use the app. Org-scoped with a null scope_id, mirroring the
+      -- parent grant above (line 60) and the production auto-activation sweep
+      -- (role-sweep.ts) -- a student's "self" scope resolves via students.user_id, not
+      -- via scope_id (ROLE_SCOPE_TYPE.student = 'org').
       if v_student_user_id is not null then
         insert into user_roles (user_id, role, scope_type, scope_id)
-          values (v_student_user_id, 'student', 'class', v_class_id);
+          values (v_student_user_id, 'student', 'org', null);
       end if;
 
       insert into enrollments (student_id, class_id, session_id, status)
