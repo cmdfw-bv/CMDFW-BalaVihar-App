@@ -56,3 +56,21 @@ describe('isRemoteMigrationPush', () => {
     expect(isRemoteMigrationPush('supabase db push --local && supabase migration up')).toBe(false);
   });
 });
+
+// See gh-pr-create-match.test.ts — same shared-tokenizer gap: heredoc bodies were tokenized as
+// commands, so prose describing a remote push tripped the migration gate.
+describe('isRemoteMigrationPush — heredoc bodies are data, not commands', () => {
+  it('does not fire on a heredoc that documents a remote push', () => {
+    const cmd = [
+      "cat > RUNBOOK.md <<'EOF'",
+      'To promote, run: supabase db push --linked',
+      'EOF',
+    ].join('\n');
+    expect(isRemoteMigrationPush(cmd)).toBe(false);
+  });
+
+  it('still fires on a real push following a heredoc', () => {
+    const cmd = ["cat > n.md <<'EOF'", 'notes', 'EOF', 'supabase db push --linked'].join('\n');
+    expect(isRemoteMigrationPush(cmd)).toBe(true);
+  });
+});

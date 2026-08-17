@@ -37,34 +37,12 @@ function methodOf(tokens) {
   return v.length ? v[v.length - 1].toUpperCase() : null;
 }
 
-// Heredoc bodies are stdin DATA, not commands — the shell never executes them. Left in place they
-// produce false positives on exactly the text most likely to describe this hook: a commit message
-// explaining the round trip it guards. (This fired on its own commit message the first time it ran.)
-// Strips `<<EOF ... EOF` and `<<'EOF' ... EOF`, including the `<<-` indented form.
-function stripHeredocs(cmd) {
-  if (!cmd.includes("<<")) return cmd;
-  const lines = cmd.split("\n");
-  const out = [];
-  let terminator = null;
-  for (const line of lines) {
-    if (terminator !== null) {
-      if (line.trim() === terminator) terminator = null; // closing delimiter; body discarded
-      continue;
-    }
-    // A single line may open several heredocs; the last one opened closes last, but for our purpose
-    // (discarding body text) tracking the first is sufficient and never under-strips.
-    const m = line.match(/<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/);
-    out.push(line);
-    if (m) terminator = m[1] || m[2] || m[3];
-  }
-  return out.join("\n");
-}
-
 // Returns the list of local files whose contents would overwrite existing remote content.
 // Empty array = this command is not an overwrite (or supplies its body on stdin, which we can't inspect).
+// Heredoc bodies are stripped by resolveInvocations — see stripHeredocs in _shell-command-match.js.
 function remoteBodyWrites(cmd) {
   const files = [];
-  for (const tokens of resolveInvocations(stripHeredocs(cmd))) {
+  for (const tokens of resolveInvocations(cmd)) {
     if (tokens[0].split("/").pop() !== "gh") continue;
     const words = nonFlagTokens(tokens);
 
@@ -103,7 +81,7 @@ function looksLikeApiError(text) {
   return ERROR_SIGNATURES.some(re => re.test(text));
 }
 
-module.exports = { remoteBodyWrites, looksLikeApiError, stripHeredocs, MAX_ERROR_BODY_BYTES };
+module.exports = { remoteBodyWrites, looksLikeApiError, MAX_ERROR_BODY_BYTES };
 
 if (require.main === module) {
   process.stdout.write(JSON.stringify(remoteBodyWrites(process.argv.slice(2).join(" "))));

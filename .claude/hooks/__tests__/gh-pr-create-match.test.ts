@@ -39,3 +39,27 @@ describe('isGhPrCreate', () => {
     expect(isGhPrCreate('gh issue create --label bug --title x')).toBe(false);
   });
 });
+
+// Heredoc bodies are stdin DATA, never commands — the shell does not execute them. Without stripping,
+// a commit message that merely describes opening a PR trips the gate. Found 2026-08-17 while adding
+// remote-body-guard, which hit the identical bug and blocked its own commit.
+describe('isGhPrCreate — heredoc bodies are data, not commands', () => {
+  it('does not fire on a quoted heredoc commit message mentioning gh pr create', () => {
+    const cmd = [
+      "git commit -F - <<'EOF'",
+      'docs: explain the release flow',
+      '',
+      'Run `gh pr create --fill` once the suite is green.',
+      'EOF',
+    ].join('\n');
+    expect(isGhPrCreate(cmd)).toBe(false);
+  });
+
+  it('does not fire on an unquoted heredoc body', () => {
+    expect(isGhPrCreate(['cat > n.md <<EOF', 'gh pr create', 'EOF'].join('\n'))).toBe(false);
+  });
+
+  it('still fires on a real invocation that follows a heredoc', () => {
+    expect(isGhPrCreate(['cat > n.md <<\'EOF\'', 'decoy', 'EOF', 'gh pr create --fill'].join('\n'))).toBe(true);
+  });
+});

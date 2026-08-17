@@ -11,6 +11,28 @@
 const SHELL_WRAPPERS = new Set(["bash", "sh", "zsh", "dash"]);
 const PACKAGE_RUNNERS = new Set(["npx", "bunx"]);
 
+// Heredoc bodies (`<<EOF ... EOF`, `<<'EOF' ... EOF`, and the `<<-` indented form) are stdin DATA —
+// the shell never executes them. Left in place they are split on \n like any other text, so a body
+// LINE THAT BEGINS WITH a gated command reads as an invocation. Prose mentioning a command mid-
+// sentence was already safe (the first token is the prose word, not the binary); a line starting
+// with it was not. Found 2026-08-17: remote-body-guard's own commit message contained an indented
+// `gh issue view ... && gh issue edit --body-file f` line and the hook blocked its own commit.
+function stripHeredocs(cmd) {
+  if (!cmd.includes("<<")) return cmd;
+  const out = [];
+  let terminator = null;
+  for (const line of cmd.split("\n")) {
+    if (terminator !== null) {
+      if (line.trim() === terminator) terminator = null; // closing delimiter; body discarded
+      continue;
+    }
+    const m = line.match(/<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/);
+    out.push(line); // the opening line is a real command (`cat > f <<EOF`) and is kept
+    if (m) terminator = m[1] || m[2] || m[3];
+  }
+  return out.join("\n");
+}
+
 function splitSegments(cmd) {
   const segments = [];
   let cur = "";
@@ -60,7 +82,7 @@ function tokenize(segment) {
 // `sh -c` wrapping unwrapped (recursively, so segments inside the wrapped string are included too).
 function resolveInvocations(cmd) {
   const results = [];
-  for (const segment of splitSegments(cmd)) {
+  for (const segment of splitSegments(stripHeredocs(cmd))) {
     let tokens = tokenize(segment);
     if (!tokens.length) continue;
     let bin = tokens[0].split("/").pop();
@@ -115,6 +137,7 @@ function findMatchingInvocation(cmd, binaries, subcommandWords) {
 }
 
 module.exports = {
+  stripHeredocs,
   splitSegments,
   tokenize,
   resolveInvocations,
