@@ -56,3 +56,39 @@ describe('isRemoteMigrationPush', () => {
     expect(isRemoteMigrationPush('supabase db push --local && supabase migration up')).toBe(false);
   });
 });
+
+// See gh-pr-create-match.test.ts — same shared-tokenizer gap: heredoc bodies were tokenized as
+// commands, so prose describing a remote push tripped the migration gate.
+describe('isRemoteMigrationPush — heredoc bodies are data, not commands', () => {
+  it('does not fire on a heredoc that documents a remote push', () => {
+    const cmd = [
+      "cat > RUNBOOK.md <<'EOF'",
+      'To promote, run: supabase db push --linked',
+      'EOF',
+    ].join('\n');
+    expect(isRemoteMigrationPush(cmd)).toBe(false);
+  });
+
+  it('still fires on a real push following a heredoc', () => {
+    const cmd = ["cat > n.md <<'EOF'", 'notes', 'EOF', 'supabase db push --linked'].join('\n');
+    expect(isRemoteMigrationPush(cmd)).toBe(true);
+  });
+});
+
+// Regression (PR #74 review) — see gh-pr-create-match.test.ts. Same shared-tokenizer defect.
+describe('isRemoteMigrationPush — a bogus heredoc delimiter must not swallow real commands', () => {
+  it('does not treat a quoted << as a heredoc opener', () => {
+    expect(isRemoteMigrationPush('echo "use << EOF for multiline"\nsupabase db push --linked')).toBe(true);
+  });
+
+  it('does not treat a herestring as a heredoc', () => {
+    expect(isRemoteMigrationPush('cat <<< notes\nsupabase db push --linked')).toBe(true);
+  });
+});
+
+// PR #74 review (#11) — same bypass; this gate protects remote database pushes.
+describe('isRemoteMigrationPush — env-var prefixes must not hide the binary', () => {
+  it('sees through an assignment before supabase', () => {
+    expect(isRemoteMigrationPush('PGPASSWORD=x supabase db push --linked')).toBe(true);
+  });
+});

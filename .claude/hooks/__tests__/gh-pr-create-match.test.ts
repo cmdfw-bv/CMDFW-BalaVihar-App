@@ -39,3 +39,62 @@ describe('isGhPrCreate', () => {
     expect(isGhPrCreate('gh issue create --label bug --title x')).toBe(false);
   });
 });
+
+// Heredoc bodies are stdin DATA, never commands — the shell does not execute them. Without stripping,
+// a commit message that merely describes opening a PR trips the gate. Found 2026-08-17 while adding
+// remote-body-guard, which hit the identical bug and blocked its own commit.
+describe('isGhPrCreate — heredoc bodies are data, not commands', () => {
+  it('does not fire on a quoted heredoc commit message mentioning gh pr create', () => {
+    const cmd = [
+      "git commit -F - <<'EOF'",
+      'docs: explain the release flow',
+      '',
+      'Run `gh pr create --fill` once the suite is green.',
+      'EOF',
+    ].join('\n');
+    expect(isGhPrCreate(cmd)).toBe(false);
+  });
+
+  it('does not fire on an unquoted heredoc body', () => {
+    expect(isGhPrCreate(['cat > n.md <<EOF', 'gh pr create', 'EOF'].join('\n'))).toBe(false);
+  });
+
+  it('still fires on a real invocation that follows a heredoc', () => {
+    expect(isGhPrCreate(['cat > n.md <<\'EOF\'', 'decoy', 'EOF', 'gh pr create --fill'].join('\n'))).toBe(true);
+  });
+});
+
+// Regression (PR #74 review): the first stripHeredocs was neither quote-aware nor herestring-aware,
+// so `<<` inside a quoted string — or the `<<` of a `<<<` herestring — set a terminator that never
+// arrived, discarding every following line. That silently DISABLED this gate. False negatives here
+// are the severe direction: the hook fails open with no signal.
+describe('isGhPrCreate — a bogus heredoc delimiter must not swallow real commands', () => {
+  it('does not treat a herestring as a heredoc', () => {
+    expect(isGhPrCreate('cat <<< "hello"\ngh pr create --fill')).toBe(true);
+  });
+
+  it('does not treat << inside a quoted string as a heredoc', () => {
+    expect(isGhPrCreate('git commit -m "fix: strip << heredoc bodies"\ngh pr create --fill')).toBe(true);
+  });
+
+  it('does not treat << inside single quotes as a heredoc', () => {
+    expect(isGhPrCreate("echo 'a << b'\ngh pr create --fill")).toBe(true);
+  });
+});
+
+// PR #74 review (#11): a leading VAR=value assignment made tokens[0] the assignment, not the binary,
+// so every hook on this tokenizer was bypassed. Matters most for migration-guard, which gates
+// production database pushes.
+describe('isGhPrCreate — env-var prefixes must not hide the binary', () => {
+  it('sees through a single assignment', () => {
+    expect(isGhPrCreate('GH_TOKEN=x gh pr create --fill')).toBe(true);
+  });
+
+  it('sees through several assignments', () => {
+    expect(isGhPrCreate('A=1 B=2 gh pr create --fill')).toBe(true);
+  });
+
+  it('does not mistake a bare assignment for a command', () => {
+    expect(isGhPrCreate('GH_TOKEN=x')).toBe(false);
+  });
+});
