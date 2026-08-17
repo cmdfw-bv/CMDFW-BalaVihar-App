@@ -171,9 +171,11 @@ None. No bounces to `/architect`. The design is complete and the spec is self-co
 
 ---
 
-## Design addendum plan — Stage 7: skip-dates CSV seam (ADR-0031, 2026-07-24)
+## Design addendum plan — Stage 7: skip-dates CSV seam (ADR-0035, 2026-07-24)
 
-**Extends** `csv-enrollment-import.md`'s "Design addendum — ADR-0031 (session skip-dates CSV seam)". **Depends on** `core-schema-and-rls.plan.md` Task 12 (`class_meetings` table + `generate_class_meetings_for_session`) — the `UPDATE ... class_meetings` this stage writes has nothing to target until that migration lands. Not a dependency of the Coordinator compliance-dashboard screen itself (`compliance-dashboard.plan.md`) — that screen reads regardless of whether any skip dates have been applied yet.
+> **ADR numbering note.** Written as ADR-0031; renumbered to **ADR-0035** before merge because `main` already owns ADR-0031 (*session weekly-schedule fields*). Also relevant here: **ADR-0036** set the canonical `class_updates` shape and dropped the proposed `sessions.meeting_weekday`, and **ADR-0038** moved `class_meetings` generation to a trigger on `classes` insert — which removes this stage's dependency on a separate generation step (PR #50 review round 4).
+
+**Extends** `csv-enrollment-import.md`'s "Design addendum — ADR-0035 (session skip-dates CSV seam)". **Depends on** `core-schema-and-rls.plan.md` Task 12 (`class_meetings` table) — the `UPDATE ... class_meetings` this stage writes has nothing to target until that migration lands. *(That dependency is now satisfied on any environment with classes: ADR-0038's trigger populates the calendar at class-insert time, so this stage no longer needs `generate_class_meetings_for_session` to have been called first. Read `core-schema-and-rls.md`'s addendum for the as-built schema — **not** `core-schema-and-rls.plan.md`'s Tasks 12–14 block, which is a pre-reconciliation historical record and carries a banner saying so.)* Not a dependency of the Coordinator compliance-dashboard screen itself (`compliance-dashboard.plan.md`) — that screen reads regardless of whether any skip dates have been applied yet.
 
 **Decision resolved at this `/plan` pass** (left open by the spec addendum): **same endpoint, second CSV shape** — `POST /api/csv-import` distinguishes the skip-dates shape from the enrollment shape by header row (`session_id,skip_date`, 2 columns) before running either parser. Chosen over a new route/function because the two shapes share Phase 0 (admin auth check) verbatim, and Netlify Functions are already a peritem-file boundary — a second function would duplicate the entire auth-check block for no isolation benefit the spec asks for.
 
@@ -222,7 +224,8 @@ None. No bounces to `/architect`. The design is complete and the spec is self-co
 
 - [ ] **F16 — Typecheck + local smoke**
   - `npm run typecheck` → zero errors.
-  - Local smoke (prerequisite: `core-schema-and-rls` Task 12 + Task 14 applied, so `class_meetings` exists and is populated for the seed's `F3` session): POST a small `session_id,skip_date` CSV naming one of the seed's already-generated Tuesday dates → expect `200`, and confirm via `psql`/Studio that the targeted `class_meetings` rows flipped to `cancelled`.
+  - Local smoke (prerequisite: a `supabase db reset`, so `class_meetings` exists and is populated for the seed's `F3` session — ADR-0038's `classes_generate_class_meetings` trigger fills it as the seed inserts each class; no separate generation step to run): POST a small `session_id,skip_date` CSV naming one of the seed's already-generated **Sunday** dates → expect `200`, and confirm via `psql`/Studio that the targeted `class_meetings` rows flipped to `cancelled`.
+    > **Corrected in PR #50 review round 4.** This step previously said *Tuesday* dates, inherited from `core-schema-and-rls.plan.md` Task 14 Step 1, which set the seed session's weekday to Tuesday (`meeting_weekday = 2`). That step was reverted with the `meeting_weekday` column itself (ADR-0036 §5): the seed's `F3` session is `day_of_week = 0`, **Sunday**, running `2026-01-11 → 2026-05-24`. As written the smoke test would have named dates with no `class_meetings` row at all, flipped nothing, and still returned `200` — passing while proving nothing. Pick a date from `select meeting_date from class_meetings order by meeting_date limit 5;` rather than hardcoding one, and assert a non-zero `cancelled` count, not just the status code.
 
 ---
 
@@ -237,7 +240,7 @@ None. No bounces to `/architect`. The design is complete and the spec is self-co
 | `netlify/functions/__tests__/csv-import.test.ts` | **modify** — add skip-dates cases |
 
 ### Architectural flags (Stage 7)
-None — ADR-0031 already settled the mechanism (CSV seam, additive to this already-built function); the same-endpoint-vs-new-route choice above is delivery detail, not a new access pattern (same trust boundary, same admin check, no new residency/PII surface — the spec's own addendum already noted skip dates carry no PII).
+None — ADR-0035 already settled the mechanism (CSV seam, additive to this already-built function); the same-endpoint-vs-new-route choice above is delivery detail, not a new access pattern (same trust boundary, same admin check, no new residency/PII surface — the spec's own addendum already noted skip dates carry no PII).
 
 ## Sign-off — Stage 7
 - [x] **Human sign-off on Stage 7** (2026-07-24, mehta.maulik@gmail.com) → ready for `/build` (F12–F16), independent of and non-blocking for the Coordinator compliance-dashboard screen.

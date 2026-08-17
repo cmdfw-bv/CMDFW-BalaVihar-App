@@ -2156,22 +2156,39 @@ git commit -m "fix: replace broken Teacher attendance-write RLS with mark_attend
 
 ---
 
-## Design addendum plan — Tasks 12–13 (ADR-0030 → ADR-0031, 2026-07-24)
+## Design addendum plan — Tasks 12–13 (ADR-0034 → ADR-0035, 2026-07-24)
 
-**Extends the "Design addendum — ADR-0030 → ADR-0031" section of `core-schema-and-rls.md`** (`class_meetings`, `class_updates`, `sessions.meeting_weekday`, `generate_class_meetings_for_session`, `get_session_compliance_for_staff`). Coordinated with `.docs/specs/coordinator/compliance-dashboard.plan.md`, which plans the consuming client screen — these two tasks are the shared, serialized seam (§12.6) that item's client work depends on; nothing in `features/coordinator/` can be built against real data until Task 13 lands (it can, and should, be built/unit-tested against a mocked RPC response in parallel — see that plan's note).
+> ## ⚠️ HISTORICAL RECORD — do not read this block as the schema contract
+>
+> **Everything from here to the Tasks 12–14 sign-off is the plan *as written and executed on 2026-07-24*, before the ADR-0036 reconciliation and ADR-0038. It was signed off in that state and the `[x]` boxes are true of that day. Several of the things it describes as built were subsequently reverted or renamed, so as a description of the tree it is wrong in four specific ways.** Corrected in place — annotated rather than rewritten — during PR #50 review round 4 (@ssrinivas90), because the constitution makes the spec the source of truth and a signed-off plan with every box checked is exactly what the next implementer will read as the contract. The live contract is [`core-schema-and-rls.md`](core-schema-and-rls.md)'s **"Design addendum — ADR-0034 → ADR-0035, reconciled by ADR-0036"** section, plus ADR-0036 and ADR-0038.
+>
+> | This block says | Actually true in the tree | Authority |
+> |---|---|---|
+> | ADR-0030 / ADR-0031 | **ADR-0034 / ADR-0035** — renumbered before merge; `main` owns 0030/0031 as two unrelated decisions (teacher-roster enrollment-id read, session weekly schedule) | ADR-0034, ADR-0035 banners |
+> | `sessions.meeting_weekday` is added `NOT NULL`, with a range constraint, and the generator reads it | **The column was never created.** The session weekday is ADR-0031's pre-existing `sessions.day_of_week`, and the generator reads that | ADR-0036 §5 |
+> | Tests live in `160_class_meetings_schema.sql` / `165_session_compliance_rpc.sql` | **`180_class_meetings_schema.sql` / `181_session_compliance_rpc.sql`.** `160_`/`165_` are `main`'s `session_weekly_schedule` files — renamed to clear that collision | the tree |
+> | Six pre-existing pgTAP fixture files were updated for a new `NOT NULL` column (see the `/migration` fixes bullet) | **Those six edits were reverted by `a26a6d8`** and are not in the tree. Nothing about `010`/`040`/`060`/`100`/`150`/`999` changed | `a26a6d8` |
+>
+> One more mechanism change, not an error in this block but superseding its Task 12 design: **ADR-0038** replaced "call `generate_class_meetings_for_session` at session creation" with an `after insert` trigger on `classes` (`classes_generate_class_meetings`, migration `20260729093000`). The RPC still exists and is still correct; it is no longer how the calendar normally comes to be.
+>
+> **If you are here to implement something** — in particular `csv-enrollment-import.plan.md` Stage 7, the next planned consumer of `class_meetings` — read `core-schema-and-rls.md`'s addendum section first. Do not transcribe DDL from this block.
+
+**Extends the "Design addendum — ADR-0034 → ADR-0035, reconciled by ADR-0036" section of `core-schema-and-rls.md`** (`class_meetings`, `class_updates`, the session weekday column — as built, ADR-0031's existing `day_of_week`, *not* the `sessions.meeting_weekday` this plan specifies — `generate_class_meetings_for_session`, `get_session_compliance_for_staff`). Coordinated with `.docs/specs/coordinator/compliance-dashboard.plan.md`, which plans the consuming client screen — these two tasks are the shared, serialized seam (§12.6) that item's client work depends on; nothing in `features/coordinator/` can be built against real data until Task 13 lands (it can, and should, be built/unit-tested against a mocked RPC response in parallel — see that plan's note).
 
 **Branch/worktree:** same as Tasks 1–11 — pure migrations, done directly on this branch (`mehtamaulik-creator/issue-23-coordinator-compliance-dashboard`), not a separate worktree. Merge before the coordinator client feature's screen is wired to the real RPC.
 
-### Task 12: `sessions.meeting_weekday` + `class_meetings` + `generate_class_meetings_for_session` (ADR-0031)
+### Task 12: ~~`sessions.meeting_weekday`~~ + `class_meetings` + `generate_class_meetings_for_session` (ADR-0035)
+
+> **As-built correction.** `sessions.meeting_weekday` was **not** created (ADR-0036 §5) — the generator reads ADR-0031's existing `sessions.day_of_week`. The test file is `180_`, not `160_`. Every `meeting_weekday` reference in this task is the superseded design, retained as the record of what was planned that day.
 
 **Files:**
-- Create: `supabase/tests/160_class_meetings_schema.sql`
+- Create: `supabase/tests/180_class_meetings_schema.sql` *(planned as `160_`; renamed to clear a collision with `main`'s `160_session_weekly_schedule.sql`)*
 - Create: `supabase/migrations/<ts>_class_meetings_schema.sql`
 
 **Interfaces:**
-- Produces: `class_meetings(id, class_id, meeting_date, status, created_at)`, `sessions.meeting_weekday`, `generate_class_meetings_for_session(p_session_id uuid) returns void` — Task 13's RPC and `supabase/seed/seed.sql` (Task 14 below) both consume these.
+- Produces: `class_meetings(id, class_id, meeting_date, status, created_at)`, ~~`sessions.meeting_weekday`~~ *(not created — ADR-0036 §5)*, `generate_class_meetings_for_session(p_session_id uuid) returns void` — Task 13's RPC and `supabase/seed/seed.sql` (Task 14 below) both consume these.
 
-- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/160_class_meetings_schema.sql`
+- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/180_class_meetings_schema.sql` *(planned as `160_`)*
 ```sql
 begin;
 select plan(13);
@@ -2268,11 +2285,16 @@ npx supabase migration new class_meetings_schema
 
 - [x] **Step 3: Write it** `supabase/migrations/<ts>_class_meetings_schema.sql`
 ```sql
--- ADR-0031: sessions.meeting_weekday + class_meetings (expected-meeting-date calendar).
--- Pre-pilot POC — no existing session rows to backfill, so this ships as a straight NOT NULL add.
-alter table sessions add column meeting_weekday smallint not null default 0;
-alter table sessions alter column meeting_weekday drop default;
-alter table sessions add constraint sessions_meeting_weekday_range check (meeting_weekday between 0 and 6);
+-- ADR-0035: sessions weekday + class_meetings (expected-meeting-date calendar).
+--
+-- !! NOT SHIPPED — the three `meeting_weekday` statements below were never applied. ADR-0036 §5
+-- !! found this duplicated ADR-0031's existing `sessions.day_of_week` (same type, same 0=Sunday
+-- !! convention) and kept `day_of_week` as the single source of truth. There is no
+-- !! `sessions.meeting_weekday` column and no `sessions_meeting_weekday_range` constraint in the
+-- !! tree. Retained here as the record of the superseded design; do not transcribe.
+-- alter table sessions add column meeting_weekday smallint not null default 0;
+-- alter table sessions alter column meeting_weekday drop default;
+-- alter table sessions add constraint sessions_meeting_weekday_range check (meeting_weekday between 0 and 6);
 
 create table if not exists class_meetings (
   id uuid primary key default gen_random_uuid(),
@@ -2317,7 +2339,7 @@ create table if not exists class_updates (
 );
 alter table class_updates enable row level security;
 
--- ADR-0030: zero policies for any role this pass (same posture user_roles' write side had
+-- ADR-0034: zero policies for any role this pass (same posture user_roles' write side had
 -- before user-role-approval existed) — Coordinator's read goes through get_session_compliance_for_staff
 -- (Task 13, SECURITY DEFINER, bypasses RLS by design), never a direct grant. Teacher's write
 -- RPC, once refined, is the only thing that will ever need a policy or grant here.
@@ -2371,7 +2393,7 @@ grant execute on function generate_class_meetings_for_session(uuid) to authentic
 npx supabase db reset
 npx supabase test db
 ```
-Expected: `160_class_meetings_schema.sql` — 12/12 passing (at `/migration`, the plan's assertion count was off by one — the file's actual, transcribed assertion list is 12; `plan(12)` matches it, no coverage was dropped).
+Expected: `180_class_meetings_schema.sql` *(planned as `160_`)* — 12/12 passing (at `/migration`, the plan's assertion count was off by one — the file's actual, transcribed assertion list is 12; `plan(12)` matches it, no coverage was dropped).
 
 - [x] **Step 5: Full clean-reset + full-suite regression**
 ```bash
@@ -2380,16 +2402,16 @@ npx supabase test db
 ```
 Expected: every test file `000`–`160` passes — confirms the new NOT NULL column doesn't break any existing `sessions` insert (Task 9's seed inserts one — see Task 14 below, which must land in the same pass or the seed breaks `db reset`).
 
-### Task 13: `get_session_compliance_for_staff` (ADR-0030 + ADR-0031, consumed by `compliance-dashboard`)
+### Task 13: `get_session_compliance_for_staff` (ADR-0034 + ADR-0035, consumed by `compliance-dashboard`)
 
 **Files:**
-- Create: `supabase/tests/165_session_compliance_rpc.sql`
+- Create: `supabase/tests/181_session_compliance_rpc.sql` *(planned as `165_`; renamed to clear a collision with `main`'s `165_session_weekly_schedule_and_attendance_adversarial.sql`)*
 - Create: `supabase/migrations/<ts>_session_compliance_rpc.sql`
 
 **Interfaces:**
 - Produces: `get_session_compliance_for_staff(p_session_id uuid, p_window_size int default 4) returns table(class_id, class_name, enrolled_count, window_start, window_end, attendance_rate, update_rate)` — the **only** data-access path for `features/coordinator/compliance-dashboard/` (compliance-dashboard.plan.md).
 
-- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/165_session_compliance_rpc.sql`
+- [x] **Step 1: Write the RED pgTAP test** `supabase/tests/181_session_compliance_rpc.sql` *(planned as `165_`)*
 ```sql
 begin;
 select plan(11);
@@ -2529,14 +2551,14 @@ npx supabase migration new session_compliance_rpc
 
 - [x] **Step 3: Write it** `supabase/migrations/<ts>_session_compliance_rpc.sql`
 
-Exact SQL is fully specified in `core-schema-and-rls.md`'s "Design addendum — ADR-0030 → ADR-0031" section, "New read RPC: `get_session_compliance_for_staff`" — transcribe verbatim (the spec disclaimer that "conceptual DDL may need adjustment at `/migration`" applies only if `supabase db reset` surfaces a real syntax error; no logic change expected).
+Exact SQL is fully specified in `core-schema-and-rls.md`'s "Design addendum — ADR-0034 → ADR-0035, reconciled by ADR-0036" section, "New read RPC: `get_session_compliance_for_staff`" — transcribe verbatim (the spec disclaimer that "conceptual DDL may need adjustment at `/migration`" applies only if `supabase db reset` surfaces a real syntax error; no logic change expected).
 
 - [x] **Step 4: Apply + rerun — expect GREEN**
 ```bash
 npx supabase db reset
 npx supabase test db
 ```
-Expected: `165_session_compliance_rpc.sql` — 11/11 passing.
+Expected: `181_session_compliance_rpc.sql` *(planned as `165_`)* — 11/11 passing.
 
 - [x] **Step 5: Full clean-reset + full-suite regression**
 ```bash
@@ -2545,14 +2567,18 @@ npx supabase test db
 ```
 Expected: every test file `000`–`165` passes.
 
-### Task 14: Seed data — `meeting_weekday`, generated calendar, sample `class_updates`
+### Task 14: Seed data — ~~`meeting_weekday`~~, generated calendar, sample `class_updates`
 
-**Why this task exists:** `sessions.meeting_weekday` is `NOT NULL` (Task 12) — `supabase/seed/seed.sql`'s existing `insert into sessions (...)` (line 28) breaks `npm run db:reset` the instant Task 12 lands, unless updated in the same pass. This is a required fix, not optional polish.
+> **⚠️ Step 1 of this task was REVERTED by `a26a6d8` and is not in the tree.** It existed only to satisfy the `sessions.meeting_weekday NOT NULL` column that ADR-0036 §5 then deleted, so its premise disappeared with the column. Today's seed inserts `day_of_week = 0` (Sunday) — see `supabase/seed/seed.sql` — and the F3 session's meetings fall on Sundays, **not** the Tuesdays this task's Step 1 describes. The Tuesday assumption also survives, uncorrected, in `csv-enrollment-import.plan.md` F16's smoke test; corrected there in the same pass.
+>
+> Steps 2 and 3 (generated calendar, sample `class_updates`) did land and are still meaningful, though ADR-0038 later moved calendar generation to the `classes` insert trigger, so the seed no longer calls `generate_class_meetings_for_session` at all (PR #50 review round 4).
+
+**Why this task existed:** `sessions.meeting_weekday` was to be `NOT NULL` (Task 12) — `supabase/seed/seed.sql`'s existing `insert into sessions (...)` (line 28) would break `npm run db:reset` the instant Task 12 landed, unless updated in the same pass. Moot once the column was dropped.
 
 **Files:**
 - Modify: `supabase/seed/seed.sql`
 
-- [x] **Step 1: Add `meeting_weekday` to the session insert**
+- [x] ~~**Step 1: Add `meeting_weekday` to the session insert**~~ — **reverted, `a26a6d8`; never in the tree**
 The seed's existing 4-week attendance loop already steps by Tuesdays (`'2026-01-13'::date` stepping `7 days`) — `2026-01-13` is a Tuesday, so `meeting_weekday = 2` keeps the existing attendance fixture consistent with the new calendar:
 ```sql
 insert into sessions (id, center_id, name, start_date, end_date, meeting_weekday) values
@@ -2588,22 +2614,25 @@ Expected: clean reset, no constraint violations, `class_meetings` populated for 
 
 ---
 
-### Self-Review addendum (Tasks 12–14 against ADR-0030/ADR-0031)
+### Self-Review addendum (Tasks 12–14 against ADR-0034/ADR-0035)
 
-- ADR-0031 AC (calendar generation, RLS, idempotency, skip-date-preserving re-run) → Task 12 ✓
-- ADR-0030 AC (`class_updates` System-owned, zero-policy posture) → Task 12 ✓
+- ADR-0035 AC (calendar generation, RLS, idempotency, skip-date-preserving re-run) → Task 12 ✓ *(generation mechanism later superseded by ADR-0038's trigger)*
+- ADR-0034 AC (`class_updates` System-owned, zero-policy posture) → Task 12 ✓ *(shape later reconciled by ADR-0036; the zero-policy posture no longer holds — issue #21's canonical table carries read policies and a gated Teacher insert)*
 - Session-wide aggregate RPC replacing N per-class calls; roster approximation; zero-expected-date denominator exclusion; per-call (not per-row) audit granularity (AC8) → Task 13 ✓
-- Seed doesn't break on the new NOT NULL column → Task 14 ✓
+- ~~Seed doesn't break on the new NOT NULL column → Task 14 ✓~~ — moot: the column was never created (ADR-0036 §5)
 - **Architectural flags:** none — both ADRs already recorded the significant decisions (System ownership, calendar source-of-truth); Tasks 12–14 are execution detail within that already-approved design, consistent with how Tasks 1–11 handled ADR-0018/0019/0021's already-recorded decisions.
 
 **Fixes made at `/migration` (execution detail, no architectural change):**
-- `sessions.meeting_weekday` NOT NULL broke six pre-existing pgTAP fixture files (`010`/`040`/`060`/`100`/`150`/`999`) that insert `sessions` directly, not just the seed the plan called out — all six updated to pass `meeting_weekday`.
+- ~~`sessions.meeting_weekday` NOT NULL broke six pre-existing pgTAP fixture files (`010`/`040`/`060`/`100`/`150`/`999`) that insert `sessions` directly, not just the seed the plan called out — all six updated to pass `meeting_weekday`.~~
+  **This happened and was then undone. `a26a6d8` reverted all six edits when ADR-0036 §5 dropped the column; `010`/`040`/`060`/`100`/`150`/`999` are untouched by this feature in the tree.** Left struck rather than deleted because the ripple itself is the useful lesson — a `NOT NULL` add to `sessions` reaches every fixture that inserts one, which is exactly what ADR-0031's `day_of_week` had already cost across six files a day earlier, and is a large part of why ADR-0036 refused to pay it twice.
 - `generate_class_meetings_for_session`, called directly from `seed.sql` with no simulated JWT, denies itself (its `v_authorized` check reads `auth.jwt()`, which is empty outside a real/simulated auth context) — the plan's "no role simulation needed" assumption didn't hold. Fixed by wrapping the seed's call in a throwaway `tests.authenticate_as(..., 'admin', 'org', null)` / `tests.clear_authentication()` pair (no audit_log row is written on a successful call, so a non-existent actor id is safe).
 - `get_session_compliance_for_staff`'s `returns table` column names (`class_id`, etc.) collided with same-named query columns inside the function body ("column reference is ambiguous") — fixed with `#variable_conflict use_column` as the function's first line.
 - `audit_log_coordinator_read` (Task 5's existing policy) had no clause for this RPC's audit-row shape (`target_table` in `('attendance','sessions')`, `target_student_id` null) — a Coordinator's own successful/denied compliance-dashboard reads were invisible to their own audit read, even though the `SECURITY DEFINER` insert itself succeeded. Extended the policy with a third OR-clause scoped to the caller's own `scope_id`, folded into the Task 13 migration.
-- `165_session_compliance_rpc.sql`'s per-class assertions each called the RPC independently (8 calls), then asserted "exactly one audit_log row" — inconsistent with the RPC's one-row-per-call design and with real client usage (one call per focus). Fixed by materializing one call into a temp table and asserting against it. Also fixed a malformed 11-hex-digit UUID literal in the Class E fixture.
+- `181_session_compliance_rpc.sql` *(then `165_`)*'s per-class assertions each called the RPC independently (8 calls), then asserted "exactly one audit_log row" — inconsistent with the RPC's one-row-per-call design and with real client usage (one call per focus). Fixed by materializing one call into a temp table and asserting against it. Also fixed a malformed 11-hex-digit UUID literal in the Class E fixture.
 
 ---
 
 ## Sign-off — Tasks 12–14
 - [x] **Human sign-off on Tasks 12–14** (2026-07-24, mehta.maulik@gmail.com) → ready for `/migration` (already embedded — every task *is* a migration) → `/build`.
+
+> **This sign-off is left intact and is still accurate: it signed off the plan as written on 2026-07-24.** What it approved was subsequently changed by ADR-0036 (no `meeting_weekday`; canonical `class_updates` shape) and ADR-0038 (trigger-generated calendar), and the test files were renamed `160_`/`165_` → `180_`/`181_`. Those changes carry their own ADRs and their own review; they do not retroactively invalidate this signature, and it has not been re-dated or re-checked. See the banner at the top of this block for the full as-built delta (PR #50 review round 4).

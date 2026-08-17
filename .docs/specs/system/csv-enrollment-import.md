@@ -353,9 +353,11 @@ All example emails use `.test` domains — they are clearly synthetic and will n
 
 ---
 
-## Design addendum — ADR-0031 (session skip-dates CSV seam, 2026-07-24)
+## Design addendum — ADR-0035 (session skip-dates CSV seam, 2026-07-24)
 
-**Stage:** 1 — Design (small addendum; no new UoW). Full detail — the `class_meetings` schema, RLS, and `generate_class_meetings_for_session` RPC this seam feeds — lives in `core-schema-and-rls.md`'s **"Design addendum — ADR-0030 → ADR-0031"** section; this entry only records the extension to *this* item's import function.
+> **ADR numbering note.** Written as ADR-0031, renumbered to **ADR-0035** before merge (`main` owns ADR-0031, *session weekly-schedule fields*). PR #50 review round 4.
+
+**Stage:** 1 — Design (small addendum; no new UoW). Full detail — the `class_meetings` schema, RLS, and `generate_class_meetings_for_session` RPC this seam feeds — lives in `core-schema-and-rls.md`'s **"Design addendum — ADR-0034 → ADR-0035, reconciled by ADR-0036"** section; this entry only records the extension to *this* item's import function.
 
 - **New import shape**, distinct from the enrollment CSV above: `session_id, skip_date` rows. Same trust boundary as enrollment import (Admin-uploaded, service-role key, server-side only) — no new residency/PII surface, since skip dates carry no student/PII data.
 - Effect per row: flips every `class_meetings` row for that session's classes on `skip_date` to `status='cancelled'` (never deletes).

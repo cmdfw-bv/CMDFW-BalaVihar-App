@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Spec:** [compliance-dashboard.md](compliance-dashboard.md) (Design signed off 2026-07-24, ADR-0030/ADR-0031). **Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ → `/plan` (this doc) → next is `/migration` then `/build`.
+**Spec:** [compliance-dashboard.md](compliance-dashboard.md) (Design signed off 2026-07-24, ADR-0034/ADR-0035 — renumbered from ADR-0030/0031 before merge; later reconciled by ADR-0036 and ADR-0038). **Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ → `/plan` (this doc) ✓ → `/migration` ✓ → `/build` ✓ → `/test` ✓ → **PR #50 in review** → next is `/deploy-staging`. The [`_index.md`](_index.md) row is authoritative (§12.12).
 
 **Goal:** Ship the Coordinator's read-only, session-scoped compliance screen — one poll-on-focus call to `get_session_compliance_for_staff`, rendered as a `StatTile` roll-up row plus one `Card` per class carrying two `ComplianceBar` rows (attendance-submission, class-update-posting), honest `—` placeholders for null metrics, and all four design-system states (loading/empty/error-preserving/content).
 
