@@ -13,9 +13,22 @@
 const { resolveInvocations, nonFlagTokens, containsAdjacentSubsequence } = require("./_shell-command-match.js");
 
 // `gh <thing> edit` replaces a body wholesale. Creates/comments are additive — excluded on purpose.
-const OVERWRITING_SUBCOMMANDS = [["issue", "edit"], ["pr", "edit"], ["release", "edit"], ["gist", "edit"]];
+//
+// Flags are per-subcommand, NOT a single global set: `-F` is the --body-file shorthand on
+// `issue`/`pr edit` and the --notes-file shorthand on `release edit`, but on `gh api` it is
+// `--field key=value`. Treating it globally read a routine typed parameter (`-F milestone=3`) as a
+// filename and blocked an entirely safe PATCH. Found in review of PR #74.
+//
+// `gist edit` is deliberately absent: it has no read-body-from-file flag (`-f/--filename` selects a
+// file *within* the gist, `-a/--add` adds one), so there is nothing of this shape to gate. Listing it
+// with no matching flag made the coverage look broader than it was.
+const OVERWRITING_SUBCOMMANDS = [
+  { words: ["issue", "edit"], fileFlags: new Set(["--body-file", "-F"]) },
+  { words: ["pr", "edit"], fileFlags: new Set(["--body-file", "-F"]) },
+  { words: ["release", "edit"], fileFlags: new Set(["--notes-file", "-F"]) },
+];
 const OVERWRITING_METHODS = new Set(["PATCH", "PUT"]);
-const FILE_FLAGS = new Set(["--body-file", "-F", "--input"]);
+const API_FILE_FLAGS = new Set(["--input"]);
 
 // Read the value of a flag in either `--flag value` or `--flag=value` form.
 function flagValues(tokens, flagNames) {
@@ -46,37 +59,46 @@ function remoteBodyWrites(cmd) {
     if (tokens[0].split("/").pop() !== "gh") continue;
     const words = nonFlagTokens(tokens);
 
-    const isEdit = OVERWRITING_SUBCOMMANDS.some(sub => containsAdjacentSubsequence(words, sub));
+    const edit = OVERWRITING_SUBCOMMANDS.find(sub => containsAdjacentSubsequence(words, sub.words));
     // `gh api` only overwrites on PATCH/PUT; a POST creates a subresource (e.g. a comment).
     const isApiOverwrite =
       containsAdjacentSubsequence(words, ["api"]) && OVERWRITING_METHODS.has(methodOf(tokens));
-    if (!isEdit && !isApiOverwrite) continue;
+    if (!edit && !isApiOverwrite) continue;
 
-    for (const f of flagValues(tokens, FILE_FLAGS)) {
+    for (const f of flagValues(tokens, edit ? edit.fileFlags : API_FILE_FLAGS)) {
       if (f && f !== "-") files.push(f); // "-" is stdin: nothing on disk to inspect
     }
   }
   return files;
 }
 
-// Signatures of a failed fetch sitting where content should be.
-const ERROR_SIGNATURES = [
-  /^gh:\s/m,
-  /No server is currently available/i,
-  /"documentation_url"\s*:/,
-  /API rate limit exceeded/i,
-  /\bBad credentials\b/i,
+// ANCHORED signatures: the error IS the file, so length is irrelevant. `gh` writes its failure as the
+// entire output, and an HTML error page is never a legitimate body (GitHub bodies are markdown).
+// Length alone used to exonerate these — a 1.2KB proxy error page during the exact 503 window this
+// hook exists for sailed through. Found in review of PR #74.
+const ANCHORED_ERROR_SIGNATURES = [
+  /^\s*gh:\s/,
   /^\s*\{\s*"message"\s*:/,
-  /\bHTTP (4\d{2}|5\d{2})\b/,
+  /^\s*<!doctype html/i,
+  /^\s*<html[\s>]/i,
 ];
 
-// A real body can legitimately QUOTE an API error (this repo has issues that do exactly that), so a
-// signature alone is not enough. Only treat it as a failed fetch when the file is also small enough
-// that the error is plausibly the whole content — a genuine write-up carries much more around it.
+// UNANCHORED signatures: suggestive, but a real body can legitimately QUOTE them, so they only count
+// when the file is also small enough that the error is plausibly the whole content.
+// Deliberately excludes /\bHTTP \d{3}\b/ and /"documentation_url":/ — both appear in legitimate short
+// bodies discussing error handling, and any genuine occurrence of them is already caught anchored
+// above (`gh: ... (HTTP 404)`, `{"message":...,"documentation_url":...}`).
+const ERROR_SIGNATURES = [
+  /No server is currently available/i,
+  /API rate limit exceeded/i,
+  /\bBad credentials\b/i,
+];
+
 const MAX_ERROR_BODY_BYTES = 1000;
 
 function looksLikeApiError(text) {
   if (!text || !text.trim()) return true; // empty is never a legitimate replacement body
+  if (ANCHORED_ERROR_SIGNATURES.some(re => re.test(text))) return true;
   if (text.length > MAX_ERROR_BODY_BYTES) return false;
   return ERROR_SIGNATURES.some(re => re.test(text));
 }

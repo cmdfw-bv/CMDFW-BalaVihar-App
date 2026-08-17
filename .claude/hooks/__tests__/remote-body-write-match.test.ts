@@ -129,3 +129,49 @@ describe("looksLikeApiError — does this file hold a failed fetch instead of co
     expect(looksLikeApiError(body)).toBe(false);
   });
 });
+
+// PR #74 review: the flag set was applied uniformly, but `-F` means --body-file on `issue/pr edit`
+// and --field key=value on `gh api`. A routine typed parameter was being read as a filename.
+describe("remoteBodyWrites — file flags are per-subcommand, not global", () => {
+  it("does not treat gh api -F key=value as a body file", () => {
+    expect(remoteBodyWrites("gh api --method PATCH repos/o/r/issues/9 -F milestone=3")).toEqual([]);
+  });
+
+  it("still honours -F as --body-file on issue edit", () => {
+    expect(remoteBodyWrites("gh issue edit 9 -F body.md")).toEqual(["body.md"]);
+  });
+
+  it("honours --notes-file on release edit", () => {
+    expect(remoteBodyWrites("gh release edit v1.0 --notes-file notes.md")).toEqual(["notes.md"]);
+  });
+
+  it("honours -F on release edit (its --notes-file shorthand)", () => {
+    expect(remoteBodyWrites("gh release edit v1.0 -F notes.md")).toEqual(["notes.md"]);
+  });
+
+  it("ignores --input on issue edit, which has no such flag", () => {
+    expect(remoteBodyWrites("gh issue edit 9 --input x.json")).toEqual([]);
+  });
+});
+
+describe("looksLikeApiError — anchored errors win regardless of length", () => {
+  it("flags a long HTML error page (a body is markdown, never an HTML document)", () => {
+    const html = "<!DOCTYPE html>\n<html><body><h1>GitHub Unavailable</h1>\n" +
+      "<p>HTTP 503 — please retry.</p>\n".repeat(40) + "</body></html>";
+    expect(html.length).toBeGreaterThan(1000);
+    expect(looksLikeApiError(html)).toBe(true);
+  });
+
+  it("flags a gh error followed by a lot of stale text", () => {
+    expect(looksLikeApiError("gh: Not Found (HTTP 404)\n" + "x".repeat(1200))).toBe(true);
+  });
+
+  // These two were false positives before anchoring — both are legitimate short bodies.
+  it("passes a short body that merely discusses an HTTP status", () => {
+    expect(looksLikeApiError("## Bug\n\nWe should handle HTTP 404 from the fetch by retrying once.")).toBe(false);
+  });
+
+  it("passes a short body quoting a REST envelope inside a code fence", () => {
+    expect(looksLikeApiError('Example response:\n```\n{"documentation_url": "https://docs.github.com/rest"}\n```')).toBe(false);
+  });
+});

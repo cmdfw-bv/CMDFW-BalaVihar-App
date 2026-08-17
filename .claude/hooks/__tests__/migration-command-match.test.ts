@@ -74,3 +74,21 @@ describe('isRemoteMigrationPush — heredoc bodies are data, not commands', () =
     expect(isRemoteMigrationPush(cmd)).toBe(true);
   });
 });
+
+// Regression (PR #74 review) — see gh-pr-create-match.test.ts. Same shared-tokenizer defect.
+describe('isRemoteMigrationPush — a bogus heredoc delimiter must not swallow real commands', () => {
+  it('does not treat a quoted << as a heredoc opener', () => {
+    expect(isRemoteMigrationPush('echo "use << EOF for multiline"\nsupabase db push --linked')).toBe(true);
+  });
+
+  it('does not treat a herestring as a heredoc', () => {
+    expect(isRemoteMigrationPush('cat <<< notes\nsupabase db push --linked')).toBe(true);
+  });
+});
+
+// PR #74 review (#11) — same bypass; this gate protects remote database pushes.
+describe('isRemoteMigrationPush — env-var prefixes must not hide the binary', () => {
+  it('sees through an assignment before supabase', () => {
+    expect(isRemoteMigrationPush('PGPASSWORD=x supabase db push --linked')).toBe(true);
+  });
+});

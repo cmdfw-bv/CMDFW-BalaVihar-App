@@ -17,18 +17,51 @@ const PACKAGE_RUNNERS = new Set(["npx", "bunx"]);
 // sentence was already safe (the first token is the prose word, not the binary); a line starting
 // with it was not. Found 2026-08-17: remote-body-guard's own commit message contained an indented
 // `gh issue view ... && gh issue edit --body-file f` line and the hook blocked its own commit.
+// Returns [delimiter, isDashForm] for a line that OPENS a heredoc, else null.
+// Must be quote-aware and herestring-aware. A plain regex is not: on `<<<` it fails at offset 0 but
+// the engine retries at offset 1, matches the inner `<<`, and takes the herestring word as a
+// delimiter that never arrives; and `<<` inside a quoted string matches unconditionally. Either way
+// every following line is discarded as "body", which silently DISABLES pr-guard and migration-guard.
+// Caught in review of PR #74 — a commit message reading `-m "... strip << heredoc bodies"` was enough.
+function heredocOpener(line) {
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === "<" && line[i + 1] === "<") {
+      if (line[i + 2] === "<") { i += 2; continue; } // `<<<` is a herestring, not a heredoc
+      const m = line.slice(i + 2).match(/^(-?)\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][A-Za-z0-9_]*))/);
+      if (m) return [m[2] || m[3] || m[4], m[1] === "-"];
+      i += 1;
+    }
+  }
+  return null;
+}
+
+// Heredoc bodies (`<<EOF ... EOF`, `<<'EOF' ... EOF`, and the `<<-` indented form) are stdin DATA —
+// the shell never executes them. Left in place they are split on \n like any other text, so a body
+// LINE THAT BEGINS WITH a gated command reads as an invocation. Prose mentioning a command
+// mid-sentence is usually safe (the first token is the prose word), though `;`/`&`/`|` in the prose
+// can still start a fresh segment — a line starting with the command was never safe.
+// Found 2026-08-17: remote-body-guard's own commit message contained an indented
+// `gh issue view ... && gh issue edit --body-file f` line and the hook blocked its own commit.
 function stripHeredocs(cmd) {
   if (!cmd.includes("<<")) return cmd;
   const out = [];
   let terminator = null;
+  let dashForm = false;
   for (const line of cmd.split("\n")) {
     if (terminator !== null) {
-      if (line.trim() === terminator) terminator = null; // closing delimiter; body discarded
+      // Only `<<-` permits an indented terminator; bash requires column 0 otherwise.
+      const closes = dashForm ? line.trim() === terminator : line.replace(/\r$/, "") === terminator;
+      if (closes) terminator = null; // closing delimiter; body discarded
       continue;
     }
-    const m = line.match(/<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/);
+    const opener = heredocOpener(line);
     out.push(line); // the opening line is a real command (`cat > f <<EOF`) and is kept
-    if (m) terminator = m[1] || m[2] || m[3];
+    if (opener) { terminator = opener[0]; dashForm = opener[1]; }
   }
   return out.join("\n");
 }
@@ -84,6 +117,11 @@ function resolveInvocations(cmd) {
   const results = [];
   for (const segment of splitSegments(stripHeredocs(cmd))) {
     let tokens = tokenize(segment);
+    // `VAR=value cmd ...` — the shell applies leading assignments to the environment and runs the
+    // command after them. Left in place, tokens[0] is the assignment and every gate on this
+    // tokenizer is bypassed (`GH_TOKEN=x gh pr create`, `PGPASSWORD=x supabase db push`).
+    // Found in review of PR #74.
+    while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens = tokens.slice(1);
     if (!tokens.length) continue;
     let bin = tokens[0].split("/").pop();
 
