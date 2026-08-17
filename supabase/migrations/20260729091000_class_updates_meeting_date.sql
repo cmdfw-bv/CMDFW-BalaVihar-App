@@ -18,7 +18,13 @@
 -- replay against any environment that does have rows by the time this runs.
 alter table class_updates add column if not exists meeting_date date;
 
-update class_updates set meeting_date = created_at::date where meeting_date is null;
+-- Chicago-pinned, per PR #50 review: `created_at::date` casts through the server TimeZone GUC,
+-- which is the very drift this column exists to avoid. Provably a no-op in every environment
+-- that exists (both migrations land in the same first deploy, against an empty table), but a
+-- migration is immutable once merged, so it should not ship doing the thing its own header
+-- rejects.
+update class_updates set meeting_date = (created_at at time zone 'America/Chicago')::date
+where meeting_date is null;
 
 alter table class_updates alter column meeting_date set not null;
 

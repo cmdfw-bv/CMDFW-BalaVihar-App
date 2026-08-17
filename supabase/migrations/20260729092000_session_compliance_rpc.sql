@@ -1,4 +1,4 @@
--- ADR-0030 + ADR-0031: get_session_compliance_for_staff — the only data-access path for
+-- ADR-0034 + ADR-0035: get_session_compliance_for_staff — the only data-access path for
 -- features/coordinator/compliance-dashboard/ (compliance-dashboard.plan.md). Replaces N
 -- per-class get_class_attendance_for_staff calls with one session-wide aggregate.
 create or replace function get_session_compliance_for_staff(
@@ -17,6 +17,11 @@ returns table (
 language plpgsql
 security definer
 set search_path = public
+-- Pinned so every date cast in this function agrees with the window clause's explicit
+-- `at time zone 'America/Chicago'`. Without it `enrolled_at::date` resolves through the
+-- server GUC (PR #50 review): latent rather than active, since the predicate is `<=` and both
+-- subqueries share it, but the function should not be half-pinned.
+set timezone = 'America/Chicago'
 as $$
 #variable_conflict use_column
 declare
@@ -26,7 +31,7 @@ declare
   -- Defensive clamp: a caller-supplied 0/negative p_window_size would otherwise silently
   -- collapse every class's window to empty (rendering an honest-looking "—" that actually masks
   -- real non-compliance); an absurdly large value is capped to bound how far back this scans.
-  v_window_size int := greatest(1, least(p_window_size, 52));
+  v_window_size int := greatest(1, least(coalesce(p_window_size, 4), 52));
 begin
   if v_role in ('bv_coordinator','admin') then
     v_authorized := true;

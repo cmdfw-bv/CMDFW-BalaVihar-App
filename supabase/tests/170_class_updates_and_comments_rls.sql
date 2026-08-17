@@ -38,6 +38,16 @@ insert into enrollments (student_id, class_id, session_id, status) values
   ('cd888888-0000-0000-0000-000000000041', 'cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000011', 'active'),
   ('cd888888-0000-0000-0000-000000000042', 'cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000011', 'active');
 
+-- class_meetings backing for the dates these fixtures post against. Required since the PR #50
+-- review: class_updates_teacher_insert now demands a matching `scheduled` class_meetings row for
+-- the teacher's own class, so a Teacher can no longer self-certify the compliance metric by
+-- posting against an arbitrary date. The fixtures below deliberately used an unbacked date, which
+-- is exactly how the reviewer proved the hole was real.
+insert into class_meetings (class_id, meeting_date, status) values
+  ('cd888888-0000-0000-0000-000000000021', '2026-01-11', 'scheduled'),
+  ('cd888888-0000-0000-0000-000000000022', '2026-01-11', 'scheduled')
+on conflict (class_id, meeting_date) do nothing;
+
 -- Fixture rows inserted directly (bypasses RLS at setup time — same convention as
 -- 060_chat_rls.sql's own fixtures) so the read-side policies below have real rows to check.
 insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values

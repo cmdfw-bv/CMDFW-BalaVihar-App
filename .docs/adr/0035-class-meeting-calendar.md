@@ -2,6 +2,8 @@
 
 > **Renumbered 0031 → 0035 before merge (ADR-0036).** `main` already owned ADR-0030/0031 via #49, and issue #21 owns 0032/0033. This ADR was an unmerged draft when renumbered, so it never entered the record under its original number.
 >
+> **Generation mechanism superseded by [ADR-0038](0038-class-meetings-generated-by-trigger.md) (2026-08-16):** this ADR chose "a callable RPC invoked at session creation". That caller was never built, so on migrate-only environments `class_meetings` stayed empty — the compliance dashboard shipped inert and a Teacher could not post a class update at all. Generation now happens in an `after insert` trigger on `classes`. The calendar-as-source-of-truth decision below is unaffected, and `generate_class_meetings_for_session` is retained for re-generation and the skip-dates seam.
+>
 > **Amended by [ADR-0036](0036-class-updates-shape-reconciliation.md):** this ADR's `sessions.meeting_weekday` column is not created. `sessions.day_of_week` (ADR-0031, already migrated/seeded/tested) is the single source of truth for session weekday, and `generate_class_meetings_for_session` reads it. The `class_meetings` calendar decision itself stands unchanged.
 
 **Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect

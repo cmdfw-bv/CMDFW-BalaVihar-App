@@ -75,14 +75,20 @@ insert into students (id, family_id, first_name, last_name, grade_level) values
   ('56500000-0000-0000-0000-0000000000e1', 'f6500000-0000-0000-0000-00000000000e', 'E1', 'Student', 'Gr6');
 insert into enrollments (student_id, class_id, session_id, status, enrolled_at) values
   ('56500000-0000-0000-0000-0000000000e1', 'cc650000-0000-0000-0000-00000000000e', 'a6500000-0000-0000-0000-000000000001', 'active', '2026-01-04');
--- (deliberately: no generate_class_meetings_for_session call after this insert — Class E must
--- end up with zero class_meetings rows, proving the "new class, no meetings yet" null placeholder)
+-- Class E must end up with ZERO class_meetings rows. Since 20260729093000 every class gets its
+-- calendar from a trigger at insert time, so "just don't call the RPC" no longer produces that
+-- state — it has to be constructed. Still a reachable real-world case (a session whose date range
+-- contains no matching weekday, or whose meetings are all cancelled), and still the state the
+-- honest-null placeholder exists for.
+delete from class_meetings where class_id = 'cc650000-0000-0000-0000-00000000000e';
 
 -- Class F: a meeting scheduled for *today* (current_date) — the only meeting this class has.
 -- current_date's own meeting must not enter the trailing window before it happens (the day
 -- rolls over server-side before any teacher could plausibly have submitted for it yet).
 insert into classes (id, session_id, name, grade_band) values
   ('cc650000-0000-0000-0000-00000000000f', 'a6500000-0000-0000-0000-000000000001', 'Class F (todays meeting)', 'Gr3');
+-- "The only meeting this class has" — so clear the trigger's series first (20260729093000).
+delete from class_meetings where class_id = 'cc650000-0000-0000-0000-00000000000f';
 insert into class_meetings (class_id, meeting_date, status) values
   ('cc650000-0000-0000-0000-00000000000f', current_date, 'scheduled');
 insert into families (id, label) values ('f6500000-0000-0000-0000-0000000000f1', 'Family F');
@@ -97,6 +103,10 @@ insert into enrollments (student_id, class_id, session_id, status, enrolled_at) 
 -- must count the student as expected and the attendance as submitted (100.0), not exclude them.
 insert into classes (id, session_id, name, grade_band) values
   ('cc650000-0000-0000-0000-000000000010', 'a6500000-0000-0000-0000-000000000001', 'Class G (same-day enrollment)', 'Gr3');
+-- Exactly one meeting for this class: the trigger created the session's whole Sunday series, which
+-- would inflate the denominator and mask what this fixture measures (the timestamptz-vs-date
+-- comparison on a single date).
+delete from class_meetings where class_id = 'cc650000-0000-0000-0000-000000000010';
 insert into class_meetings (class_id, meeting_date, status) values
   ('cc650000-0000-0000-0000-000000000010', '2026-01-11', 'scheduled');
 insert into families (id, label) values ('f6500000-0000-0000-0000-000000000010', 'Family G');
