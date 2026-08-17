@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(24);
 
 insert into centers (id, name) values ('c6500000-0000-0000-0000-000000000001', 'Compliance-RPC Center');
 -- Sundays: Jan4, Jan11, Jan18 — window_size=2 keeps the last two (Jan11, Jan18).
@@ -186,6 +186,25 @@ select tests.clear_authentication();
 select is(
   (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
   1, 'the cross-scope call writes exactly one denied audit_log row');
+
+-- Malformed claims: a 'coordinator' JWT carrying NO scope_id must fail closed.
+-- `v_authorized := (v_scope_id = p_session_id)` evaluates to NULL (not false) when v_scope_id is
+-- NULL, and `if not v_authorized then ... return; end if;` does not take its branch on NULL -- so
+-- without an explicit coalesce the guard falls THROUGH and the caller receives every class in the
+-- session. Unreachable through the app today (user_roles_org_scope_null_id keeps a session-scoped
+-- coordinator's scope_id non-null), but an access-control guard must fail closed on its own terms
+-- rather than inherit safety from an upstream constraint a future migration could relax (§11.3).
+-- Delta-based against a baseline so this does not couple to the denial counts asserted above.
+select (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int as v_denied_baseline \gset
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator');
+select is(
+  (select count(*) from get_session_compliance_for_staff('a6500000-0000-0000-0000-000000000001'::uuid, 2))::int,
+  0, 'coordinator with a NULL scope_id claim gets zero rows (NULL must not fall through as authorized)');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6500000-0000-0000-0000-000000000001')::int,
+  :'v_denied_baseline'::int + 1,
+  'the NULL-scope_id call writes exactly one additional denied audit_log row');
 
 -- Cross-role: a wrong-*role* caller must be denied even when authenticated within the target
 -- session's own scope — the RPC's `elsif v_role = 'coordinator'` branch must not silently let

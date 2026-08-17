@@ -36,7 +36,10 @@ begin
   if v_role in ('bv_coordinator','admin') then
     v_authorized := true;
   elsif v_role = 'coordinator' then
-    v_authorized := (v_scope_id = p_session_id);
+    -- coalesce: a NULL v_scope_id (claim absent/empty) makes this comparison NULL, and `if not
+    -- v_authorized` does NOT take its branch on NULL -- the guard would fall THROUGH to the
+    -- authorized path. Fail closed instead. Covered by 180_/181_ (PR #50 review, @ssrinivas90).
+    v_authorized := coalesce(v_scope_id = p_session_id, false);
   end if;
 
   if not v_authorized then

@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(20);
 
 insert into centers (id, name) values ('c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Center');
 -- ADR-0036: session weekday comes from ADR-0031's day_of_week (0=Sunday), not a second column.
@@ -42,6 +42,26 @@ select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001
 select tests.clear_authentication();
 select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, :'v_a1_baseline'::int,
   'sibling-session coordinator cannot generate for Session-A (row count unchanged)');
+
+-- Denied: a 'coordinator' JWT carrying NO scope_id must fail closed.
+-- `v_authorized := (v_scope_id = p_session_id)` evaluates to NULL (not false) when v_scope_id is
+-- NULL, and `if not v_authorized ...` does not take its branch on NULL -- so without an explicit
+-- coalesce the guard falls THROUGH to the authorized path. Unreachable through the app today
+-- (user_roles_org_scope_null_id keeps a session-scoped coordinator's scope_id non-null), but an
+-- access-control guard must fail closed on its own terms rather than inherit safety from an
+-- upstream constraint that a future migration could relax (§11.3).
+-- Asserted via audit_log, NOT via a row-count delta: the trigger has already created this class's
+-- calendar, so a fall-through would insert nothing anyway (on conflict do nothing) and leave the
+-- count unchanged — a count assertion here passes whether the RPC refused or silently succeeded.
+-- The denied audit_log row is the only signal that distinguishes the two.
+select (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6000000-0000-0000-0000-000000000001')::int as v_denied_baseline \gset
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator');
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'coordinator' and action = 'denied' and target_table = 'sessions' and target_id = 'a6000000-0000-0000-0000-000000000001')::int,
+  :'v_denied_baseline'::int + 1,
+  'coordinator with a NULL scope_id claim is denied generation (NULL must not fall through as authorized)');
 
 -- Positive: in-scope coordinator generates the full weekly series (4 Sundays: Jan4/11/18/25).
 select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
