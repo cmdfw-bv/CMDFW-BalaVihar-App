@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(26);
 
 -- Fixture: Center Brampton -> Session Sunday AM -> Class Junior A.
 select gen_random_uuid() as v_center \gset
@@ -274,6 +274,99 @@ select ok(
   (select count(*) from students) > 5,
   'case 14b: students table intact after injection-shaped data round-trip (no injection occurred)'
 );
+
+-- ============================================================
+-- Student scope label (issue #76). A student is org-scoped with a null scope_id (seed.sql,
+-- matching the production role-sweep -- see #61/#67), so like the parent case its label cannot
+-- come from scope_type/scope_id. Per ADR-0014 §4 a single-role student's chip should read
+-- Center · Session · Grade/Class, resolved from the student's ACTIVE enrollment
+-- (students.user_id -> enrollments -> classes -> sessions -> centers) -- the same shape a
+-- teacher of that class gets (case 1), achieved without a class scope_id.
+-- ============================================================
+select gen_random_uuid() as v_student_family \gset
+insert into families (id, label) values (:'v_student_family'::uuid, 'Student Family');
+select tests.create_supabase_user('scope-labels-student@test.local') as v_student_user \gset
+select gen_random_uuid() as v_student \gset
+insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
+  (:'v_student'::uuid, :'v_student_family'::uuid, 'Isha', 'S', 'Gr3', :'v_student_user'::uuid);
+insert into enrollments (student_id, class_id, session_id, status) values
+  (:'v_student'::uuid, :'v_class'::uuid, :'v_session'::uuid, 'active');
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-000000000010', :'v_student_user'::uuid, 'student', 'org', null, true);
+
+-- Case 15: student (org scope, no scope_id) resolves to Center · Session · Class via their
+-- active enrollment. RED until resolve_my_scope_labels() gains a student branch (today an
+-- org-scoped non-parent role hits `else null`).
+select tests.authenticate_as(:'v_student_user'::uuid, 'student', 'org', null);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000010'),
+  'Brampton · Sunday AM · Junior A',
+  'case 15: student (org scope) resolves to Center · Session · Class via active enrollment'
+);
+select tests.clear_authentication();
+
+-- Fixture: a student whose only enrollment is WITHDRAWN. The label must resolve to null
+-- (active-only), so a withdrawn student falls back to the plain chip rather than showing a
+-- class they are no longer in. (Ties to the enrollment-lifecycle question in #58.)
+select gen_random_uuid() as v_wd_family \gset
+insert into families (id, label) values (:'v_wd_family'::uuid, 'Withdrawn Family');
+select tests.create_supabase_user('scope-labels-student-wd@test.local') as v_wd_user \gset
+select gen_random_uuid() as v_wd_student \gset
+insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
+  (:'v_wd_student'::uuid, :'v_wd_family'::uuid, 'Dev', 'S', 'Gr3', :'v_wd_user'::uuid);
+insert into enrollments (student_id, class_id, session_id, status) values
+  (:'v_wd_student'::uuid, :'v_class'::uuid, :'v_session'::uuid, 'withdrawn');
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-000000000011', :'v_wd_user'::uuid, 'student', 'org', null, true);
+
+-- Case 16: a student with only a withdrawn enrollment resolves to null (active-only filter),
+-- not the class they left. Guards the fix's `status = 'active'` predicate.
+select tests.authenticate_as(:'v_wd_user'::uuid, 'student', 'org', null);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000011'),
+  null,
+  'case 16: student with only a withdrawn enrollment resolves to null (active-only), not the left class'
+);
+select tests.clear_authentication();
+
+-- Fixture: a second student B enrolled in a DIFFERENT class (Senior B) -- to prove a forged
+-- org-wide active_role cannot widen a student's own label beyond their own enrollment.
+select tests.create_supabase_user('scope-labels-student-b@test.local') as v_student_b_user \gset
+select gen_random_uuid() as v_student_b \gset
+insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
+  (:'v_student_b'::uuid, :'v_student_family'::uuid, 'Rohan', 'S', 'Gr9', :'v_student_b_user'::uuid);
+insert into enrollments (student_id, class_id, session_id, status) values
+  (:'v_student_b'::uuid, :'v_other_class'::uuid, :'v_session'::uuid, 'active');
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-000000000012', :'v_student_b_user'::uuid, 'student', 'org', null, true);
+
+-- Case 17: student A forging active_role='bv_coordinator' (org-wide bypass attempt) still
+-- resolves exactly their own one row, labelled via their own enrollment -- never student B's
+-- class, never org-wide. Mirrors case 9 for the student branch (the RPC is keyed on auth.uid(),
+-- not the JWT's active_role claim).
+select tests.authenticate_as(:'v_student_user'::uuid, 'bv_coordinator', 'org', null);
+select is(
+  (select count(*) from resolve_my_scope_labels())::int, 1,
+  'case 17: student forging active_role=bv_coordinator still gets only their own one row'
+);
+select is(
+  (select scope_label from resolve_my_scope_labels() limit 1),
+  'Brampton · Sunday AM · Junior A',
+  'case 17: and it resolves via their own enrollment (never student B''s Senior B, never org-wide)'
+);
+select tests.clear_authentication();
+
+-- Case 18: student A forging scope_type='class' + scope_id = another class (Senior B) cannot
+-- force a different CASE branch or leak that class -- the student branch keys on
+-- st.user_id = auth.uid() and ignores scope_type/scope_id entirely, so forged scope claims are
+-- structurally inert. (rls-adversarial-tester supplemental case, 2026-08-17.)
+select tests.authenticate_as(:'v_student_user'::uuid, 'student', 'class', :'v_other_class'::uuid);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000010'),
+  'Brampton · Sunday AM · Junior A',
+  'case 18: forged scope_type/scope_id claims are inert for the student branch (own class, never the smuggled one)'
+);
+select tests.clear_authentication();
 
 select * from finish();
 rollback;
