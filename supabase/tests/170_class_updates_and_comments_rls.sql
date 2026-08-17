@@ -1,5 +1,5 @@
 begin;
-select plan(31);
+select plan(33);
 
 insert into centers (id, name) values ('cd888888-0000-0000-0000-000000000001', 'Plan Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -41,12 +41,21 @@ insert into enrollments (student_id, class_id, session_id, status) values
 -- class_meetings backing for the dates these fixtures post against. Required since the PR #50
 -- review: class_updates_teacher_insert now demands a matching `scheduled` class_meetings row for
 -- the teacher's own class, so a Teacher can no longer self-certify the compliance metric by
--- posting against an arbitrary date. The fixtures below deliberately used an unbacked date, which
--- is exactly how the reviewer proved the hole was real.
-insert into class_meetings (class_id, meeting_date, status) values
-  ('cd888888-0000-0000-0000-000000000021', '2026-01-11', 'scheduled'),
-  ('cd888888-0000-0000-0000-000000000022', '2026-01-11', 'scheduled')
-on conflict (class_id, meeting_date) do nothing;
+-- posting against an arbitrary date.
+--
+-- Nothing needs inserting here. Both fixture sessions above run 2026-01-01 → 2026-06-01 with
+-- day_of_week = 0, so ADR-0038's `classes_generate_class_meetings` trigger already generated a
+-- `scheduled` row for every Sunday in that range — including the '2026-01-11' these fixtures use
+-- — at the moment each class was inserted. An explicit insert here is a no-op that reads as
+-- load-bearing, which is exactly how the first draft of assertions (3a)/(3b) below fooled itself:
+-- it "added" an unbacked date and a cancelled date via `on conflict do nothing`, both of which
+-- silently did nothing because the trigger had already scheduled them, so both throws_ok cases
+-- caught no exception. Row-absence stopped being a proxy for "no meeting" once the trigger landed.
+--
+-- (3b) needs a meeting that exists but did NOT happen, so it updates the trigger's row in place
+-- rather than trying to insert a competing one.
+update class_meetings set status = 'cancelled'
+where class_id = 'cd888888-0000-0000-0000-000000000021' and meeting_date = '2026-01-18';
 
 -- Fixture rows inserted directly (bypasses RLS at setup time — same convention as
 -- 060_chat_rls.sql's own fixtures) so the read-side policies below have real rows to check.
@@ -76,6 +85,24 @@ rollback to savepoint before_teacher_insert_check;
 select throws_ok(
   $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000022'::uuid, auth.uid(), 'wrong class', '2026-01-11')$$,
   '42501', null, 'Teacher cannot insert a class_update into a class outside their active-role scope'
+);
+
+-- (3a)/(3b) The meeting-date gate itself, asserted directly. `class_updates_teacher_insert`'s
+-- `exists (… class_meetings … status = 'scheduled')` clause exists so a Teacher cannot
+-- self-certify the metric that audits them (20260729093000). Before these two cases the clause
+-- was exercised only in the direction that would catch it OVER-blocking — every other insert
+-- assertion in this file posts against a date the fixtures deliberately back — so deleting the
+-- whole `exists (…)` block left the suite green (PR #50 review, @ssrinivas90). These fail closed.
+-- 2026-01-14 is a WEDNESDAY inside the session's date range. The session meets on Sundays
+-- (day_of_week = 0), so the trigger generated no meeting for it — a date this class demonstrably
+-- never met on, which is precisely what a Teacher inflating their update_rate would reach for.
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'no meeting on this date', '2026-01-14')$$,
+  '42501', null, 'Teacher cannot post a class_update against a meeting_date with no class_meetings row (self-certification blocked)'
+);
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'meeting was cancelled', '2026-01-18')$$,
+  '42501', null, 'Teacher cannot post a class_update against a cancelled meeting'
 );
 select tests.clear_authentication();
 

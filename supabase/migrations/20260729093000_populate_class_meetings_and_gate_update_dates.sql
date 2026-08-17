@@ -40,10 +40,21 @@ on conflict (class_id, meeting_date) do nothing;
 -- The backfill above is necessary but NOT sufficient, and that is worth stating plainly.
 -- ---------------------------------------------------------------------------
 -- Migrations run before any data exists. On a fresh environment the `sessions x classes` join is
--- empty at this point — locally the seed creates sessions AFTER migrations, and on staging/prod
--- the CSV enrollment import does. So on exactly the fresh deploy this was meant to fix, the
--- statement above inserts ZERO rows. It earns its place only for an environment that already
--- holds data when this ships.
+-- empty at this point, so on exactly the fresh deploy this was meant to fix, the statement above
+-- inserts ZERO rows. It earns its place only for an environment that already holds data when this
+-- ships.
+--
+-- Where sessions and classes actually come from, stated precisely, because an earlier draft of
+-- this comment claimed the CSV enrollment import creates them and it does not (PR #50 review,
+-- @ssrinivas90). `netlify/functions/lib/db-ops.ts` (`resolveSessionsAndClasses`) only LOOKS UP
+-- sessions and classes and errors with `session "…" not found` / `no class found for session …`
+-- when they are absent — it never inserts. The only writer of either table in the whole repo is
+-- `supabase/seed/seed.sql`. There is no session/class-creation UI yet (unrefined, unbuilt).
+--
+-- So: locally the seed creates them after migrations. On staging and prod a maintainer creates the
+-- first session and its classes by hand (one-off SQL against the project) BEFORE the first CSV
+-- import runs — the import will otherwise reject every row. That bootstrap step is a prerequisite
+-- of /deploy-staging, not something this migration or the import performs. See ADR-0038 Context.
 --
 -- The durable half is the trigger below: any class, created by any path, gets its calendar. That
 -- supersedes ADR-0035's "callable RPC invoked at session creation" (see the amendment recorded in
@@ -99,7 +110,8 @@ for each row execute function generate_class_meetings_for_new_class();
 -- exposes exactly the rows a teacher may post against (`class_id = scope_id`), which the policy
 -- independently requires. Cancelled meetings are excluded: an update about a class that did not
 -- happen should not count toward compliance.
-drop policy class_updates_teacher_insert on class_updates;
+-- `if exists` to match the sibling replacement at 20260729092000:112 and keep this file replayable.
+drop policy if exists class_updates_teacher_insert on class_updates;
 
 create policy class_updates_teacher_insert on class_updates for insert
 with check (

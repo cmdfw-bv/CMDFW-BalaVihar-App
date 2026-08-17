@@ -43,14 +43,12 @@ begin
       values (v_teacher_user_id, 'teacher', 'class', v_class_id);
   end loop;
 
-  -- ADR-0035: generate the session's expected-meeting-date calendar for all 13 classes now
-  -- that they all exist. generate_class_meetings_for_session is role-gated (SECURITY DEFINER,
-  -- checks auth.jwt() same as under real RLS) even when called from a seed script, so a
-  -- throwaway authenticated context is required here — no audit_log row is written on a
-  -- successful call, so a non-existent actor id is safe (the FK is only touched on denial).
-  perform tests.authenticate_as(gen_random_uuid(), 'admin', 'org', null);
-  perform generate_class_meetings_for_session(v_session);
-  perform tests.clear_authentication();
+  -- No explicit calendar generation here. ADR-0038's `classes_generate_class_meetings` trigger
+  -- already built every class's meeting dates as each class was inserted in the loop above, so
+  -- the `generate_class_meetings_for_session` call this block used to make was a no-op
+  -- (`on conflict do nothing`) — and the only call site that made the RPC look load-bearing in
+  -- the seed path, which it no longer is (PR #50 review, @ssrinivas90). The RPC survives for
+  -- re-generation after a session's dates change and for the CSV skip-dates seam.
 
   -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 13 classes.
   for i in 1..20 loop

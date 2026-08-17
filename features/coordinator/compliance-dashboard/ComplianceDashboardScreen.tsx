@@ -7,6 +7,7 @@ import Card from "../../../components/core/Card";
 import StateView from "../../../components/core/StateView";
 import ComplianceBar from "../../../components/dashboard/ComplianceBar";
 import { useSessionCompliance } from "./useSessionCompliance";
+import { rollupTileValues } from "./viewState";
 
 // Matches design/sankalp/bv-connect/screens/desktop/dash.jsx's "Compliance" card composition
 // pattern (spec §"Composition"): a StatTile roll-up row, then one Card per class carrying two
@@ -30,6 +31,7 @@ function formatWindowNote(start: string | null, end: string | null): string | un
 
 export default function ComplianceDashboardScreen({ sessionId }: ComplianceDashboardScreenProps) {
   const { viewState, rows, rollup, showRefreshErrorBanner, retry } = useSessionCompliance(sessionId);
+  const tiles = rollupTileValues(viewState, rollup);
 
   return (
     // A session's class list is as long as the session has classes (13 for the F3 pilot), so the
@@ -38,10 +40,13 @@ export default function ComplianceDashboardScreen({ sessionId }: ComplianceDashb
     // NOT `flex: 1`: `flex: 1` on a contentContainerStyle pins the content box to the viewport
     // height, which silently defeats scrolling — the same shape of bug this is fixing.
     <ScrollView style={styles.scroll} contentContainerStyle={styles.wrap}>
+      {/* Rendered in every state, including loading and error — so the figures come from
+          rollupTileValues, which shows "—" rather than a fabricated 0/0/0 when there is nothing
+          counted yet. See its doc comment (PR #50 review). */}
       <View style={styles.statRow}>
-        <StatTile label="Fully compliant" value={rollup.fullyCompliant} style={styles.statcell} />
-        <StatTile label="At-risk" value={rollup.atRisk} style={styles.statcell} />
-        <StatTile label="Non-compliant" value={rollup.nonCompliant} style={styles.statcell} />
+        <StatTile label="Fully compliant" value={tiles.fullyCompliant} style={styles.statcell} />
+        <StatTile label="At-risk" value={tiles.atRisk} style={styles.statcell} />
+        <StatTile label="Non-compliant" value={tiles.nonCompliant} style={styles.statcell} />
       </View>
 
       {viewState === "loading" ? (
