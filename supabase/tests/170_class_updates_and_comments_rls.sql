@@ -1,5 +1,5 @@
 begin;
-select plan(33);
+select plan(34);
 
 insert into centers (id, name) values ('cd888888-0000-0000-0000-000000000001', 'Plan Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -57,6 +57,15 @@ insert into enrollments (student_id, class_id, session_id, status) values
 update class_meetings set status = 'cancelled'
 where class_id = 'cd888888-0000-0000-0000-000000000021' and meeting_date = '2026-01-18';
 
+-- (3c) needs a `scheduled` meeting that has not happened YET. The fixture session's own range is
+-- entirely in the past relative to any real run, and the trigger only generates inside that
+-- range, so this row is inserted explicitly. Clock-relative rather than a hardcoded far-future
+-- date: it has to stay in the future for every future run of this suite, and it is compared
+-- against the same Chicago-pinned "today" the policy uses.
+insert into class_meetings (class_id, meeting_date, status) values
+  ('cd888888-0000-0000-0000-000000000021', ((now() at time zone 'America/Chicago')::date + 7), 'scheduled')
+on conflict (class_id, meeting_date) do nothing;
+
 -- Fixture rows inserted directly (bypasses RLS at setup time — same convention as
 -- 060_chat_rls.sql's own fixtures) so the read-side policies below have real rows to check.
 insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
@@ -103,6 +112,14 @@ select throws_ok(
 select throws_ok(
   $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'meeting was cancelled', '2026-01-18')$$,
   '42501', null, 'Teacher cannot post a class_update against a cancelled meeting'
+);
+-- (3c) A `scheduled` meeting that hasn't happened yet is not postable either. Without the
+-- meeting_date upper bound, a Teacher pre-posts against every remaining meeting in the session in
+-- one statement and update_rate reads 100% for the rest of the term (PR #50 review round 5).
+select throws_ok(
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'posting ahead', %L)$$,
+         ((now() at time zone 'America/Chicago')::date + 7)),
+  '42501', null, 'Teacher cannot post a class_update against a future scheduled meeting (no forward self-certification)'
 );
 select tests.clear_authentication();
 

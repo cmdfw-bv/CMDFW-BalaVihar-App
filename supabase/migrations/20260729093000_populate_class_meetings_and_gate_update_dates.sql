@@ -92,6 +92,7 @@ $$;
 -- SECURITY DEFINER so the calendar is written regardless of which role created the class — the
 -- CSV import runs service-role, a future admin screen runs as an authenticated Admin, and neither
 -- holds a write grant on class_meetings (deliberately: generation is not a client write path).
+drop trigger if exists classes_generate_class_meetings on classes;
 create trigger classes_generate_class_meetings
 after insert on classes
 for each row execute function generate_class_meetings_for_new_class();
@@ -102,15 +103,27 @@ for each row execute function generate_class_meetings_for_new_class();
 -- ADR-0036's own Consequences named this as a hardening item for /build, and /build did not do
 -- it: `class_updates.meeting_date` is client-supplied and unvalidated, so a Teacher can post an
 -- update against any date at all and lift their own update_rate on the one dashboard that exists
--- to flag them. Provable from this repo's fixtures — 170_class_updates_and_comments_rls.sql's
--- `lives_ok` insert uses a meeting_date with no matching class_meetings row and succeeds.
+-- to flag them.
+--
+-- "Any date at all" has three shapes, and the policy below has to close all three or it closes
+-- none of them. A date with no meeting; a date whose meeting was cancelled; and a date whose
+-- meeting has not happened yet. The first two were closed in review round 4, the third in round 5
+-- (@ssrinivas90 found it by running the gate rather than reading it). Each is asserted directly
+-- in 170_class_updates_and_comments_rls.sql — see the three throws_ok cases there, which fail if
+-- any part of this `with check` is removed.
 --
 -- Replaced rather than edited in place: 20260724120426 is merged, so it is immutable.
 -- The added clause resolves under RLS as the calling role — class_meetings_teacher_select already
 -- exposes exactly the rows a teacher may post against (`class_id = scope_id`), which the policy
 -- independently requires. Cancelled meetings are excluded: an update about a class that did not
 -- happen should not count toward compliance.
--- `if exists` to match the sibling replacement at 20260729092000:112 and keep this file replayable.
+-- `if exists` to match the sibling replacement at 20260729092000:115.
+--
+-- An earlier version of this comment claimed the guard kept the file replayable; it did not, and
+-- the claim was wrong at the time (PR #50 review round 5, @ssrinivas90 hit the error for real):
+-- `create trigger` above and the three `create policy` statements in 20260729090000 all still
+-- errored on a second run. Those now carry `drop … if exists` guards too, so the claim holds —
+-- verified by applying both files a second time against an already-migrated database, clean.
 drop policy if exists class_updates_teacher_insert on class_updates;
 
 create policy class_updates_teacher_insert on class_updates for insert
@@ -124,4 +137,19 @@ with check (
       and cm.meeting_date = class_updates.meeting_date
       and cm.status = 'scheduled'
   )
+  -- The meeting must already have happened. Without this bound the gate above is only half a
+  -- gate: every FUTURE scheduled meeting is a valid target, so one statement pre-posts an update
+  -- for the rest of the session and update_rate reads 100% from then on without the Teacher ever
+  -- posting on the day — self-certification moved forward in time rather than prevented (PR #50
+  -- review round 5, @ssrinivas90, demonstrated live: 6 future meetings, 6 updates accepted).
+  --
+  -- Client code already declines to offer future dates (`fetchRecentClassMeetings`'s
+  -- `.lte('meeting_date', todayIso)`), but that is application code and a direct PostgREST call
+  -- with a teacher JWT walks around it — the inversion §12.1 non-negotiable #1 exists to prevent.
+  --
+  -- Chicago-pinned to match `get_session_compliance_for_staff`'s `set timezone` and the
+  -- `20260729091000` backfill cast, so "today" means the same date everywhere in this feature.
+  -- Unpinned, a post made Sunday evening Central would be rejected as tomorrow's under a UTC
+  -- server clock — the exact defect ADR-0036 §2 was written about.
+  and class_updates.meeting_date <= (now() at time zone 'America/Chicago')::date
 );

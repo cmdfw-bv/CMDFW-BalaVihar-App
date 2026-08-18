@@ -24,11 +24,13 @@ alter table class_meetings enable row level security;
 grant select on class_meetings to authenticated;
 revoke insert, update, delete on class_meetings from authenticated, anon;
 
+drop policy if exists class_meetings_teacher_select on class_meetings;
 create policy class_meetings_teacher_select on class_meetings for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
   and class_meetings.class_id = (auth.jwt()->>'scope_id')::uuid
 );
+drop policy if exists class_meetings_coordinator_select on class_meetings;
 create policy class_meetings_coordinator_select on class_meetings for select
 using (
   auth.jwt()->>'active_role' = 'coordinator'
@@ -36,6 +38,7 @@ using (
     select 1 from classes c where c.id = class_meetings.class_id and c.session_id = (auth.jwt()->>'scope_id')::uuid
   )
 );
+drop policy if exists class_meetings_org_select on class_meetings;
 create policy class_meetings_org_select on class_meetings for select
 using (auth.jwt()->>'active_role' in ('bv_coordinator','admin'));
 

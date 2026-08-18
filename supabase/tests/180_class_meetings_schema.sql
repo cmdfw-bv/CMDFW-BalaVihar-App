@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(24);
 
 insert into centers (id, name) values ('c6000000-0000-0000-0000-000000000001', 'Meetings-Schema Center');
 -- ADR-0036: session weekday comes from ADR-0031's day_of_week (0=Sunday), not a second column.
@@ -63,12 +63,17 @@ select is(
   :'v_denied_baseline'::int + 1,
   'coordinator with a NULL scope_id claim is denied generation (NULL must not fall through as authorized)');
 
--- Positive: in-scope coordinator generates the full weekly series (4 Sundays: Jan4/11/18/25).
+-- Positive: the calendar holds the full weekly series (4 Sundays: Jan4/11/18/25).
+-- NOTE: since ADR-0038 the trigger already created these rows when the classes were inserted, so
+-- this and the three counts below it assert the CALENDAR's shape, not that the RPC built it — the
+-- call on the next line is a no-op here. That is fine as far as it goes, but it is not RPC
+-- coverage; the assertions at the bottom of this file are, and they are the ones that fail if the
+-- generation body is removed. Read this block as "the calendar is right", not "the RPC works".
 select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
 select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
 select tests.clear_authentication();
 select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 4,
-  'generate_class_meetings_for_session creates one row per Sunday in the session window');
+  'the class calendar holds one row per Sunday in the session window (trigger-created; see the re-generation assertions at the end of this file for RPC coverage)');
 -- Class B belongs to Session-B, so its rows come from its own trigger run and must be exactly the
 -- same 4 Sundays — Session-A's generation call must not add to, or reach into, another session.
 select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000002')::int, 4,
@@ -192,6 +197,43 @@ select throws_ok(
   '42501', null, 'anon cannot select class_meetings at all (no grant)'
 );
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- generate_class_meetings_for_session actually generates. Everything above only proves the
+-- calendar is correct, NOT that the RPC produced it.
+-- ---------------------------------------------------------------------------
+-- Since ADR-0038 the trigger builds each class's calendar at insert time, so by the time any of
+-- the positive assertions above run, the rows they count already exist. The RPC calls between
+-- them are inert: gut its generation body entirely, leaving only the auth guard, and this file
+-- and 181_ both stay green (PR #50 review round 5, @ssrinivas90, verified by doing exactly that).
+-- The denial assertions above were rewired to the `denied` audit_log row for this same reason;
+-- the positive ones were not, and that left ADR-0038's stated reason for keeping the RPC alive —
+-- "re-generation after a session's dates change", a production path via the CSV skip-dates seam —
+-- with no regression guard at all.
+--
+-- The fix is to give the RPC work the trigger cannot already have done. There is no trigger on
+-- `sessions` (only `classes_generate_class_meetings` on `classes`), so extending a session's date
+-- range leaves the existing calendar short by construction, and only the RPC can close the gap.
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 4,
+  'baseline before extending the session: Class A holds its original 4 Sundays');
+
+update sessions set end_date = '2026-02-22' where id = 'a6000000-0000-0000-0000-000000000001';
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 4,
+  'extending a session does not itself add meetings — there is no trigger on sessions (this is the gap the RPC exists to close)');
+
+select tests.authenticate_as(:'v_coordinator'::uuid, 'coordinator', 'session', 'a6000000-0000-0000-0000-000000000001'::uuid);
+select generate_class_meetings_for_session('a6000000-0000-0000-0000-000000000001'::uuid);
+select tests.clear_authentication();
+select is((select count(*) from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001')::int, 8,
+  'the RPC regenerates the calendar after the session dates change (adds Feb 1/8/15/22) — fails if its generation body is removed');
+
+-- The re-generation must still respect a cancellation, the same way the idempotent re-run above
+-- does. 2026-01-18 was cancelled earlier in this file and must not be resurrected by a run that
+-- is otherwise adding rows.
+select is(
+  (select status from class_meetings where class_id = 'cc600000-0000-0000-0000-000000000001' and meeting_date = '2026-01-18'),
+  'cancelled',
+  're-generation after a date change still does not reset an already-cancelled meeting');
 
 select * from finish();
 rollback;
