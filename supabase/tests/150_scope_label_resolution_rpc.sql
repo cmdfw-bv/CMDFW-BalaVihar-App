@@ -1,5 +1,5 @@
 begin;
-select plan(26);
+select plan(30);
 
 -- Fixture: Center Brampton -> Session Sunday AM -> Class Junior A.
 select gen_random_uuid() as v_center \gset
@@ -305,9 +305,11 @@ select is(
 );
 select tests.clear_authentication();
 
--- Fixture: a student whose only enrollment is WITHDRAWN. The label must resolve to null
--- (active-only), so a withdrawn student falls back to the plain chip rather than showing a
--- class they are no longer in. (Ties to the enrollment-lifecycle question in #58.)
+-- Fixture: a student with NO current active enrollment (only a withdrawn one). NOTE: this state --
+-- a student who can still reach the app despite not being currently registered -- is itself an
+-- access-lifecycle gap (WHO may log in at all), tracked for a future ADR / #58, NOT something #77
+-- fixes. The case below only pins the DB behaviour of the `status = 'active'` filter (null, never a
+-- class they've left); it does NOT assert the resulting chip is acceptable UX.
 select gen_random_uuid() as v_wd_family \gset
 insert into families (id, label) values (:'v_wd_family'::uuid, 'Withdrawn Family');
 select tests.create_supabase_user('scope-labels-student-wd@test.local') as v_wd_user \gset
@@ -319,18 +321,25 @@ insert into enrollments (student_id, class_id, session_id, status) values
 insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
   ('90000003-0000-0000-0000-000000000011', :'v_wd_user'::uuid, 'student', 'org', null, true);
 
--- Case 16: a student with only a withdrawn enrollment resolves to null (active-only filter),
--- not the class they left. Guards the fix's `status = 'active'` predicate.
+-- Case 16: the `status = 'active'` filter -- a student whose only enrollment is withdrawn resolves
+-- to null, never the class they left. The count(*) = 1 companion proves the null is the label of a
+-- real row, not a missing row. Documents current DB behaviour only; NOT a claim the resulting chip
+-- is acceptable -- who may log in at all is the access-lifecycle ADR / #58.
 select tests.authenticate_as(:'v_wd_user'::uuid, 'student', 'org', null);
+select is(
+  (select count(*) from resolve_my_scope_labels())::int, 1,
+  'case 16: the withdrawn student still has exactly one role row (so the null below is a real label)'
+);
 select is(
   (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000011'),
   null,
-  'case 16: student with only a withdrawn enrollment resolves to null (active-only), not the left class'
+  'case 16: ...and its label is null (active-only filter), never the class they left'
 );
 select tests.clear_authentication();
 
--- Fixture: a second student B enrolled in a DIFFERENT class (Senior B) -- to prove a forged
--- org-wide active_role cannot widen a student's own label beyond their own enrollment.
+-- Fixture: a second REAL student B, enrolled in a DIFFERENT class (Senior B) and -- deliberately --
+-- in the SAME family as student A. B is authenticated as in case 19 (the cross-identity proof) and
+-- is also the decoy class for the forged-claim cases 17-18.
 select tests.create_supabase_user('scope-labels-student-b@test.local') as v_student_b_user \gset
 select gen_random_uuid() as v_student_b \gset
 insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
@@ -362,9 +371,30 @@ select tests.clear_authentication();
 -- structurally inert. (rls-adversarial-tester supplemental case, 2026-08-17.)
 select tests.authenticate_as(:'v_student_user'::uuid, 'student', 'class', :'v_other_class'::uuid);
 select is(
+  (select count(*) from resolve_my_scope_labels())::int, 1,
+  'case 18: forged scope_type/scope_id does not widen the row set -- still the caller''s own one row'
+);
+select is(
   (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000010'),
   'Brampton · Sunday AM · Junior A',
   'case 18: forged scope_type/scope_id claims are inert for the student branch (own class, never the smuggled one)'
+);
+select tests.clear_authentication();
+
+-- Case 19: the cross-identity proof -- authenticate as student B (a DIFFERENT real user, in the
+-- SAME family as A, whose class sorts AFTER A's) and assert B sees B's OWN class. This is the load-
+-- bearing isolation test (the student analogue of case 13). It fails if the branch ever correlates
+-- by family instead of by user (a plausible refactor toward the sibling parent branch), or if the
+-- caller predicate `st.user_id = ur.user_id` is dropped -- both of which slip past cases 15-18.
+select tests.authenticate_as(:'v_student_b_user'::uuid, 'student', 'org', null);
+select is(
+  (select count(*) from resolve_my_scope_labels())::int, 1,
+  'case 19: student B sees exactly their own one row'
+);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000012'),
+  'Brampton · Sunday AM · Senior B',
+  'case 19: and it is B''s own class, never student A''s Junior A (kills family-correlation + dropped-caller-predicate mutations)'
 );
 select tests.clear_authentication();
 

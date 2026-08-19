@@ -8,16 +8,21 @@
 -- so a student fell through to the "Org" fallback -- which reads as org-wide access a student
 -- does not have (the same misleading-label reason that migration cited for parents).
 --
--- The label comes from the student's ACTIVE enrollment; a withdrawn-only student resolves to
--- null (falls back to the plain chip, not a class they have left). A student with active
--- enrollments in more than one session is not reachable today (enrollments_one_active_per_session
--- constrains within a session; the seed has none across sessions) -- the deterministic
--- order-by + limit 1 keeps the label single-valued rather than erroring if that edge ever arises.
+-- The label comes from the student's CURRENT (active) enrollment only. A student with NO current
+-- active enrollment -- withdrawn, or not in the latest registration -- resolves to null. Making
+-- that null render gracefully is deliberately NOT this migration's job: such a student should not
+-- have portal access at all. WHO may log in (registration-driven access + the annual academic-year
+-- reset, all roles) is a separate access-lifecycle concern tracked for a future ADR (see #58) --
+-- out of scope here. A student is registered in exactly one session, so a single active enrollment
+-- is expected; if a stale cross-session active row ever slips through (also a lifecycle gap),
+-- `order by se.start_date desc, cl.name, cl.id` keeps the label single-valued and on the NEWEST
+-- session rather than returning last year's class or erroring.
 --
 -- Unlike the parent branch, this reads no minor's PII: only Center/Session/Class reference-data
 -- names plus the caller's own enrollment linkage, via the same active-role-agnostic SECURITY
--- DEFINER / auth.uid() mechanism (ADR-0027). Adversarial coverage lives in
--- supabase/tests/150_scope_label_resolution_rpc.sql (cases 15-16).
+-- DEFINER / auth.uid() mechanism (ADR-0027). Cross-identity isolation is proven in
+-- supabase/tests/150_scope_label_resolution_rpc.sql: case 19 authenticates as a SECOND student and
+-- asserts they see only their own class; cases 17-18 cover forged-claim inertness.
 create or replace function public.resolve_my_scope_labels()
 returns table (user_roles_id uuid, scope_label text)
 language sql
@@ -42,7 +47,7 @@ as $$
         join sessions se on se.id = cl.session_id
         join centers ce on ce.id = se.center_id
         where st.user_id = ur.user_id
-        order by se.start_date, cl.name
+        order by se.start_date desc, cl.name, cl.id
         limit 1
       )
       when ur.scope_type = 'class' then (
