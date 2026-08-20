@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(32);
 
 -- Fixture: Center Brampton -> Session Sunday AM -> Class Junior A.
 select gen_random_uuid() as v_center \gset
@@ -331,6 +331,11 @@ select is(
   'case 16: the withdrawn student still has exactly one role row (so the null below is a real label)'
 );
 select is(
+  (select count(*) from resolve_my_scope_labels()
+    where user_roles_id = '90000003-0000-0000-0000-000000000011')::int, 1,
+  'case 16: ...and the specific row under test exists (so the null is its label, not a wrong/missing id)'
+);
+select is(
   (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000011'),
   null,
   'case 16: ...and its label is null (active-only filter), never the class they left'
@@ -383,9 +388,11 @@ select tests.clear_authentication();
 
 -- Case 19: the cross-identity proof -- authenticate as student B (a DIFFERENT real user, in the
 -- SAME family as A, whose class sorts AFTER A's) and assert B sees B's OWN class. This is the load-
--- bearing isolation test (the student analogue of case 13). It fails if the branch ever correlates
--- by family instead of by user (a plausible refactor toward the sibling parent branch), or if the
--- caller predicate `st.user_id = ur.user_id` is dropped -- both of which slip past cases 15-18.
+-- bearing isolation test (the student analogue of case 13). The mutation it UNIQUELY catches is
+-- same-family sibling resolution -- resolving via the caller's family rather than their own user_id
+-- (a plausible refactor toward the sibling parent branch): 29/30 pass, only this fails. (The literal
+-- family_members swap and a dropped caller predicate die more trivially -- case 15 catches those,
+-- since family_members holds parent users, not students. Confirmed by mutation testing, #77 review.)
 select tests.authenticate_as(:'v_student_b_user'::uuid, 'student', 'org', null);
 select is(
   (select count(*) from resolve_my_scope_labels())::int, 1,
@@ -394,7 +401,40 @@ select is(
 select is(
   (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000012'),
   'Brampton · Sunday AM · Senior B',
-  'case 19: and it is B''s own class, never student A''s Junior A (kills family-correlation + dropped-caller-predicate mutations)'
+  'case 19: and it is B''s own class, never student A''s Junior A (kills same-family sibling resolution -- the one mutation that survives cases 15-18)'
+);
+select tests.clear_authentication();
+
+-- Fixture: a RETURNING student C with TWO active enrollments -- last year's session (Sunday AM,
+-- Jan) and this year's (Fall Term, Sep, a later start_date). enrollments_one_active_per_session
+-- only constrains WITHIN a session, so this is schema-legal and reachable in year two of production
+-- (the reset that would retire last year's row is deferred to #58). This is the ONLY fixture that
+-- exercises the migration's `order by se.start_date desc ... limit 1` -- without it, deleting that
+-- clause leaves every other case green (Maulik/Srinath #77 review).
+select gen_random_uuid() as v_new_session \gset
+insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time)
+  values (:'v_new_session'::uuid, :'v_center'::uuid, 'Fall Term', '2026-09-06', '2026-12-13', 0, '09:00', '10:30');
+select gen_random_uuid() as v_new_class \gset
+insert into classes (id, session_id, name, grade_band)
+  values (:'v_new_class'::uuid, :'v_new_session'::uuid, 'Gr4 Class', 'Gr4');
+select tests.create_supabase_user('scope-labels-student-returning@test.local') as v_ret_user \gset
+select gen_random_uuid() as v_ret_student \gset
+insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
+  (:'v_ret_student'::uuid, :'v_student_family'::uuid, 'Meera', 'S', 'Gr4', :'v_ret_user'::uuid);
+insert into enrollments (student_id, class_id, session_id, status) values
+  (:'v_ret_student'::uuid, :'v_class'::uuid, :'v_session'::uuid, 'active'),          -- last year: Sunday AM (Jan)
+  (:'v_ret_student'::uuid, :'v_new_class'::uuid, :'v_new_session'::uuid, 'active');  -- this year: Fall Term (Sep)
+insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) values
+  ('90000003-0000-0000-0000-000000000013', :'v_ret_user'::uuid, 'student', 'org', null, true);
+
+-- Case 20: a returning student with two active enrollments resolves to the NEWEST session's class
+-- (this year's), not last year's. Proves `order by se.start_date desc`: deleting the clause (or the
+-- `desc`) makes this the assertion that fails, since the older Sunday AM row is inserted first.
+select tests.authenticate_as(:'v_ret_user'::uuid, 'student', 'org', null);
+select is(
+  (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000013'),
+  'Brampton · Fall Term · Gr4 Class',
+  'case 20: returning student (two active enrollments) resolves to the newest session (order by start_date desc)'
 );
 select tests.clear_authentication();
 
