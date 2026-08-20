@@ -14,17 +14,33 @@ export function setupAutoRefreshOnRegain(intervalMs: number): () => void {
   const tick = () => {
     if (inFlight) return;
     inFlight = true;
-    void supabase.auth
-      .refreshSession()
-      .catch(() => {})
-      .finally(() => {
-        inFlight = false;
-      });
+    // try/catch is defensive, not reachable with auth-js 2.108.2: if refreshSession() ever threw
+    // synchronously instead of returning a rejected promise, `.catch`/`.finally` would never
+    // attach, `inFlight` would stay true for the life of the screen, and auto-recovery would die
+    // silently — leaving only the sign-out path. The throw would also escape the focus listener
+    // as a console error, contradicting AC#4's "no console-visible crash" (PR #54 review).
+    try {
+      void supabase.auth
+        .refreshSession()
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+        });
+    } catch {
+      inFlight = false;
+    }
   };
 
   const interval = setInterval(tick, intervalMs);
 
   if (Platform.OS === "web") {
+    // `document`/`window` are only safe here because the sole call site is inside useEffect,
+    // which never runs during Expo Router's static web export. This function is exported and
+    // carries no such precondition in its signature, so the guard makes the invariant hold for
+    // any future non-effect caller rather than relying on the current call site (PR #54 review).
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return () => clearInterval(interval);
+    }
     const onVisibility = () => {
       if (document.visibilityState === "visible") tick();
     };
@@ -46,7 +62,16 @@ export function setupAutoRefreshOnRegain(intervalMs: number): () => void {
   };
 }
 
+/**
+ * How often `/no-role` re-checks whether a role has been granted.
+ *
+ * 60s was an explicit architect decision (client-auth-session-and-nav.md, decision #2). Named
+ * here rather than left as a literal at the call site so the value is greppable from the code
+ * and not only from the plan doc (PR #54 review, @ssrinivas90).
+ */
+export const ROLE_POLL_MS = 60_000;
+
 // Pure side effect, no return value, no local state (Design spec, decision #1).
-export function useAutoRefreshOnRegain(intervalMs: number): void {
+export function useAutoRefreshOnRegain(intervalMs: number = ROLE_POLL_MS): void {
   useEffect(() => setupAutoRefreshOnRegain(intervalMs), [intervalMs]);
 }

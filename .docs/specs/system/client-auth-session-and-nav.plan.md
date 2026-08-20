@@ -1081,6 +1081,14 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
 
 **No migration this time — pure client-only change**, entirely inside `lib/auth/` (one new file) and `app/no-role.tsx` (append two lines to an existing component). Nothing to serialize against; the current branch (`mehtamaulik-creator/issue-46-no-role-screen`) already scopes this one item — no new worktree needed.
 
+> ### ⚠️ RETRACTED — this TDD exemption was wrong
+>
+> **The paragraph below claimed there was no extractable logic in `useAutoRefreshOnRegain`. That was demonstrably false**, and it is retracted rather than deleted so the reasoning that produced it stays visible. `ae1e034` extracted exactly such a seam — `setupAutoRefreshOnRegain(intervalMs): () => void`, which owns the timer, both platform branches and teardown, leaving the hook a one-line `useEffect` wrapper — and covered it with 7 tests that survived mutation testing six ways (dropping `inFlight`, either `removeEventListener`, `clearInterval`, the `visibilityState` check, `.catch`, `.finally`). PR #54 review, @ssrinivas90.
+>
+> The order was also wrong: the implementation landed in `843acc2` and the tests only after review, so Red-then-Green ran backwards. TDD is a stated non-negotiable (§12.1 #4), so this is recorded as a process miss, not smoothed over.
+>
+> **The general lesson, so the same exemption is not reused for the next hook:** "it's platform-wiring glue" is a claim about the code as currently written, not a property of the problem. A hook that wires listeners can almost always have its body lifted into a plain function that takes its dependencies and returns its own teardown — which is precisely what makes it testable. The `useRoleGuard.ts` precedent cited below does not transfer, because that one genuinely needs a live router; this one only needed `supabase.auth.refreshSession()`, which is trivially substitutable.
+
 **TDD boundary — same line this plan already drew at Stage 7/8 and Stage 4's platform branch:** `useAutoRefreshOnRegain` is 100% platform-wiring glue (`setInterval`, `AppState`/`visibilitychange`/`focus` listeners, calling `supabase.auth.refreshSession()`) — there is no pure/extractable logic inside it the way `navMap.ts` or `sessionDerivation.ts` had (confirmed against the Design spec's decision #1: "pure side effect, no return value, no local state"). Per the precedent this plan already established (`useRoleGuard.ts`, Stage 8: "needs a live router to verify" — no unit test), this hook is verified by hand at `/build`/`/test`, not via a RED→GREEN vitest test. Not a new deviation, not architecturally significant — matches the Design spec's own framing and the Architect review already recorded in the spec (no ADR).
 
 **Verify-at-build flag:** confirm `AppState.addEventListener('change', …)` (native) actually needs no explicit initial-state check beyond the interval (i.e., mounting while already backgrounded doesn't need a synchronous first call) — the spec's AC#2 only requires the interval *and* regained-focus triggers, not an on-mount fetch, so no extra branch is expected, but confirm the RN `AppState` API shape (`addEventListener` returns a subscription with `.remove()`, matching the web listener cleanup) against the installed Expo SDK version at implementation time.
@@ -1128,7 +1136,7 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
     }, [intervalMs]);
   }
   ```
-  No RED step — pure platform-wiring glue, see Shared seam above. Verified by hand at `/build`: mount `/no-role`, confirm no console errors, confirm a manual `refreshSession()` call site still behaves (existing `switchRole` path untouched).
+  ~~No RED step — pure platform-wiring glue, see Shared seam above.~~ **Corrected:** a RED step exists. `ae1e034` extracted `setupAutoRefreshOnRegain` and added `lib/auth/__tests__/useAutoRefreshOnRegain.test.ts` (7 tests: interval firing, visibility/focus triggering, the visibilitychange+focus dedupe regression, error swallowing with no unhandled rejection, and interval+listener cleanup on unmount), confirmed failing against the pre-extraction implementation first. It came after `843acc2` rather than before it — see the retraction under Shared seam. Still verified by hand at `/build` as described: mount `/no-role`, confirm no console errors, confirm the existing `switchRole` path is untouched.
 
 - [x] **G2 — `app/no-role.tsx`** (append sign-out `Button` + the auto-refresh hook to the existing component; no other lines touched)
   ```typescript
@@ -1174,8 +1182,12 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
   ```
   Note: `gap: theme.space.lg` added to `container` (token-driven, per the design-system DoD — no hex/magic-number spacing introduced) to separate the message from the new button.
 
-- [x] **G3 — `npm run typecheck` + `npm run test`** confirm zero regressions (228+/228+ vitest still green — this amendment adds zero new test files, per the TDD-boundary call above; `npm run typecheck` clean against the two new/changed files).
-  Ran 2026-07-25: `npm run typecheck` → zero errors. `npm run test` → 379/379 vitest passing (58 files) — no new test files, no regressions, count is higher than the plan's "228+" baseline only because later, unrelated System items landed test files on this branch's base since the plan text was written.
+- [x] **G3 — `npm run typecheck` + `npm run test`** confirm zero regressions. ~~this amendment adds zero new test files, per the TDD-boundary call above~~ — **false, corrected below.**
+  Ran 2026-07-25 (as originally recorded): `npm run typecheck` → zero errors. `npm run test` → 379/379 vitest passing (58 files).
+  **Corrected 2026-08-19 (PR #54 review, @ssrinivas90) — both claims in the original record are now false:**
+  - This amendment adds **two** test files, not zero: `lib/auth/__tests__/useAutoRefreshOnRegain.test.ts` (7 tests, `ae1e034`) and `lib/auth/__tests__/performSignOut.test.ts` (6 tests, this round).
+  - The 379/58 figures are stale. They were true at `843acc2`; the count rose as `main` merged in twice. Re-measured at this head: **vitest 72 files / 479 passing**, `tsc --noEmit` clean, `expo lint` clean, secret/tracker/unistyles scans clean. No migrations anywhere in this diff, so pgTAP is untouched and `/rls-audit` is correctly skipped.
+  Left struck rather than overwritten because the plan is the audit record: in a repo where TDD is non-negotiable, "no new test files" reading as fact is exactly what makes a later reader believe tests were skipped here, when in fact they were written and are good.
 
 - [x] **G4 — manual `/build` walkthrough** (per Shared seam, this is where G1's wiring gets verified, no automated substitute):
   1. Force a zero-role session locally (same method as UAT-9: delete a test account's `user_roles` row via `docker exec ... psql`, sign in) → confirm `/no-role` renders the message + a visible "Sign out" button, no console errors.
