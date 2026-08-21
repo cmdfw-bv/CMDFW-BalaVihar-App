@@ -5,9 +5,9 @@ vi.mock('../../supabase', () => ({
   supabase: { auth: { refreshSession: (...args: unknown[]) => refreshSession(...args) } },
 }));
 
-// Web-only (Platform.OS is stubbed 'web' in test/mocks/react-native.ts); the native
-// AppState branch is unexercised here for the same reason useRoleGuard's router.replace
-// side effect is — it needs a live host runtime, verified by hand at /build.
+// Web-only: Platform.OS is stubbed 'web' in test/mocks/react-native.ts, the repo-wide alias.
+// The native AppState branch is covered in useAutoRefreshOnRegain.native.test.ts, which
+// overrides that alias with a local vi.mock rather than widening the shared stub.
 import { setupAutoRefreshOnRegain } from '../useAutoRefreshOnRegain';
 
 let originalDocument: typeof globalThis.document;
@@ -121,5 +121,48 @@ describe('setupAutoRefreshOnRegain', () => {
     globalThis.window.dispatchEvent(new Event('focus'));
 
     expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  // The next two pin the SSR guard. Both of its mutations survived the suite before these
+  // existed: deleting the `if` block entirely, and weakening its teardown to `() => {}`. The
+  // second is the one that matters — the interval is created *before* the platform branch, so a
+  // teardown that dropped clearInterval would leak one timer per call, which is precisely the
+  // claim made in the round-2 thread reply with nothing holding it (PR #54 review round 3).
+  it('is inert with a working teardown when there is no document (SSR / static export)', () => {
+    // @ts-expect-error test-only global, deliberately removed to simulate a DOM-less pass
+    delete globalThis.document;
+
+    const cleanup = setupAutoRefreshOnRegain(60_000);
+    cleanup();
+    vi.advanceTimersByTime(180_000);
+
+    expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  it('is inert with a working teardown when there is no window (SSR / static export)', () => {
+    // @ts-expect-error test-only global, deliberately removed to simulate a DOM-less pass
+    delete globalThis.window;
+
+    const cleanup = setupAutoRefreshOnRegain(60_000);
+    cleanup();
+    vi.advanceTimersByTime(180_000);
+
+    expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  // Pins the defensive try/catch. Replacing its body with a no-op left the whole suite green:
+  // a wedged `inFlight` kills auto-recovery silently for the life of the screen, leaving only
+  // the sign-out path — which, until this PR, could also fail silently. That is the failure a
+  // future "this catch is unreachable, drop it" cleanup would reintroduce.
+  it('does not wedge the in-flight guard when refreshSession throws synchronously', () => {
+    refreshSession.mockImplementationOnce(() => {
+      throw new Error('sync throw');
+    });
+
+    setupAutoRefreshOnRegain(60_000);
+    globalThis.window.dispatchEvent(new Event('focus')); // throws, caught
+    globalThis.window.dispatchEvent(new Event('focus')); // must still fire
+
+    expect(refreshSession).toHaveBeenCalledTimes(2);
   });
 });

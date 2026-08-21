@@ -184,11 +184,15 @@ npm run dev           # starts the app at http://localhost:8888
 **Steps:**
 1. Sign in as the zero-role account, land on `/no-role`.
 2. Click "Sign out".
+3. *(Failure path — added 2026-08-20, PR #54 review round 3.)* Sign in again, and with the GoTrue `/logout` POST route-intercepted to return 500, click "Sign out".
 
 **Expected result:**
-- Returns to `/sign-in`, session cleared. No console errors.
+- Steps 1–2: returns to `/sign-in`, session cleared. No console errors.
+- Step 3: the button reads "Signing out…" and is disabled while in flight, then re-enables; "Couldn't sign out — check your connection and try again." renders inline (`theme.colors.status.absent`); the session is **not** cleared and the screen stays on `/no-role`; removing the intercept and clicking again signs out normally.
 
-- [x] Pass  - [ ] Fail (notes: issue #46 — playwright-cli against a throwaway `issue46-test@bv-seed.test.local` account created via `tests.create_supabase_user`, no `user_roles` row. Signed in via real magic-link through Mailpit, landed on `/no-role`, clicked "Sign out", returned to `/sign-in`. 0 console errors. Account deleted afterward.)
+**Steps 1–2:** [x] Pass  - [ ] Fail (notes: issue #46 — playwright-cli against a throwaway `issue46-test@bv-seed.test.local` account created via `tests.create_supabase_user`, no `user_roles` row. Signed in via real magic-link through Mailpit, landed on `/no-role`, clicked "Sign out", returned to `/sign-in`. 0 console errors. Account deleted afterward.)
+
+**Step 3:** [ ] Pass  - [ ] Fail (not yet run — added after the 2026-07-25 walkthrough, belongs to the next `/test` pass. The behaviour it covers is verified automatically by `lib/auth/__tests__/runSignOut.test.ts` + `performSignOut.test.ts`, and reverting the screen's handler to the pre-fix shape now fails `scripts/__tests__/signout-delegation-checks.test.ts`. Left unchecked rather than back-filled: this is the sign-off record, and step 2's existing Pass genuinely did not exercise this path.)
 
 ---
 

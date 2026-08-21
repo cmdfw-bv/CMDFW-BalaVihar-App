@@ -1139,26 +1139,41 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
   ~~No RED step — pure platform-wiring glue, see Shared seam above.~~ **Corrected:** a RED step exists. `ae1e034` extracted `setupAutoRefreshOnRegain` and added `lib/auth/__tests__/useAutoRefreshOnRegain.test.ts` (7 tests: interval firing, visibility/focus triggering, the visibilitychange+focus dedupe regression, error swallowing with no unhandled rejection, and interval+listener cleanup on unmount), confirmed failing against the pre-extraction implementation first. It came after `843acc2` rather than before it — see the retraction under Shared seam. Still verified by hand at `/build` as described: mount `/no-role`, confirm no console errors, confirm the existing `switchRole` path is untouched.
 
 - [x] **G2 — `app/no-role.tsx`** (append sign-out `Button` + the auto-refresh hook to the existing component; no other lines touched)
+
+  > **Block replaced 2026-08-20 (PR #54 review round 3, @ssrinivas90).** What stood here was verbatim the *pre-fix* screen — `const { signOut } = useSession();` and `onClick={() => { void signOut(); }}`, with no `busy`/`failed` state and no `performSignOut`. That is precisely the shape this review blocked, for the reason at `client-auth-session-and-nav.md:188`: `SessionProvider.signOut()` discards the error, so a GoTrue 5xx leaves the button silently dead. Leaving it in place would have handed the next reader a copy-paste path straight back into the bug — in the same file that argues the plan must not read as false (G3 below). Replaced with the shipped code rather than struck, because unlike G3's stale *counts*, a wrong code block is actively dangerous.
+
   ```typescript
   import "../lib/unistyles";
+  import { useState } from "react";
   import { View, Text } from "react-native";
   import { StyleSheet } from "react-native-unistyles";
-  import { useAutoRefreshOnRegain } from "../lib/auth/useAutoRefreshOnRegain";
-  import { useSession } from "../lib/auth/SessionProvider";
+  import { ROLE_POLL_MS, useAutoRefreshOnRegain } from "../lib/auth/useAutoRefreshOnRegain";
+  import { runSignOut } from "../lib/auth/runSignOut";
+  import { supabase } from "../lib/supabase";
   import Button from "../components/core/Button";
 
   export default function NoRole() {
-    useAutoRefreshOnRegain(60_000);
-    const { signOut } = useSession();
+    useAutoRefreshOnRegain(ROLE_POLL_MS);
+    const [busy, setBusy] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    const onSignOut = () => {
+      void runSignOut(() => supabase.auth.signOut(), { busy: setBusy, failed: setFailed });
+    };
 
     return (
       <View style={styles.container}>
         <Text style={styles.text}>
           Your account is set up but no role has been assigned yet — contact your Bala Vihar coordinator.
         </Text>
-        <Button variant="primary" size="lg" onClick={() => { void signOut(); }}>
-          Sign out
+        <Button variant="primary" size="lg" disabled={busy} onClick={onSignOut}>
+          {busy ? "Signing out…" : "Sign out"}
         </Button>
+        {failed ? (
+          <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+            Couldn&apos;t sign out — check your connection and try again.
+          </Text>
+        ) : null}
       </View>
     );
   }
@@ -1178,15 +1193,33 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
       fontSize: theme.type.body,
       textAlign: "center",
     },
+    error: {
+      width: "100%",
+      maxWidth: theme.chrome.maxw,
+      fontFamily: theme.fonts.body,
+      fontSize: theme.type.body,
+      textAlign: "center",
+      color: theme.colors.status.absent,
+    },
   }));
   ```
-  Note: `gap: theme.space.lg` added to `container` (token-driven, per the design-system DoD — no hex/magic-number spacing introduced) to separate the message from the new button.
+  Note: `gap: theme.space.lg` added to `container` (token-driven, per the design-system DoD — no hex/magic-number spacing introduced) to separate the message from the new button. The `error` style is token-driven for the same reason — `theme.colors.status.absent` (`lib/theme.ts:20`), no hex literal.
+
+  **New production modules this stage depends on** (added by the PR #54 review rounds, absent from the original G1/G2 lists):
+  - `lib/auth/performSignOut.ts` — runs a sign-out and reports whether the session was genuinely cleared, because auth-js keeps the local session on a 5xx/offline failure.
+  - `lib/auth/runSignOut.ts` — drives the screen's `busy`/`failed` state around it, so the interaction itself carries a regression guard.
+  - `scripts/_signout-delegation-checks.js` — pure source-scan predicate enforcing that anything outside `lib/auth/**` routes `supabase.auth.signOut()` through `runSignOut`; mirrors `_unistyles-config-checks.js` and rides the existing `app-tests` job.
 
 - [x] **G3 — `npm run typecheck` + `npm run test`** confirm zero regressions. ~~this amendment adds zero new test files, per the TDD-boundary call above~~ — **false, corrected below.**
   Ran 2026-07-25 (as originally recorded): `npm run typecheck` → zero errors. `npm run test` → 379/379 vitest passing (58 files).
   **Corrected 2026-08-19 (PR #54 review, @ssrinivas90) — both claims in the original record are now false:**
   - This amendment adds **two** test files, not zero: `lib/auth/__tests__/useAutoRefreshOnRegain.test.ts` (7 tests, `ae1e034`) and `lib/auth/__tests__/performSignOut.test.ts` (6 tests, this round).
   - The 379/58 figures are stale. They were true at `843acc2`; the count rose as `main` merged in twice. Re-measured at this head: **vitest 72 files / 479 passing**, `tsc --noEmit` clean, `expo lint` clean, secret/tracker/unistyles scans clean. No migrations anywhere in this diff, so pgTAP is untouched and `/rls-audit` is correctly skipped.
+
+  **Updated 2026-08-20 (PR #54 review round 3).** Round 3 blocked on coverage, not behaviour: the reviewer demonstrated that the blocker's own fix, the SSR guard, and the defensive `catch` each survived deletion with a green suite. All are now pinned, each verified by running the mutation and watching the specific assertion go red:
+  - **Five** test files now, not two. Added this round: `lib/auth/__tests__/runSignOut.test.ts` (6), `lib/auth/__tests__/useAutoRefreshOnRegain.native.test.ts` (5 — covers the native `AppState` half of AC#2, previously untestable), `scripts/__tests__/signout-delegation-checks.test.ts` (7). `useAutoRefreshOnRegain.test.ts` grew 7 → 10 (SSR guard × 2, synchronous-throw wedge).
+  - **The reviewer's own suggested fix did not close the finding, and was measured rather than assumed.** Extracting `runSignOut` alone still left the pre-fix revert green — 73 files / 485 tests, `tsc` exit 0, `expo lint` exit 0 (an unused-var *warning* only). Nothing obliges a screen to call a free function. The guard that actually bites is `scripts/_signout-delegation-checks.js`, a pure source predicate in the idiom of `_unistyles-config-checks.js`; with it in place the same revert fails. A render test remains impossible here — no testing-library/jsdom/react-test-renderer dependency, `react-native` aliased to a four-line stub, and `vitest.config.ts` does not include `app/**`.
+  - Re-measured at this head: **vitest 75 files / 500 passing**, `tsc --noEmit` clean, `expo lint` clean, secret/tracker/unistyles scans clean. Still zero migrations in the diff.
   Left struck rather than overwritten because the plan is the audit record: in a repo where TDD is non-negotiable, "no new test files" reading as fact is exactly what makes a later reader believe tests were skipped here, when in fact they were written and are good.
 
 - [x] **G4 — manual `/build` walkthrough** (per Shared seam, this is where G1's wiring gets verified, no automated substitute):
@@ -1195,6 +1228,7 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
   3. While still on `/no-role` (fresh zero-role session), insert a `user_roles` row for that account directly in the DB, then blur/refocus the browser tab (or wait out one 60s interval tick) → confirm automatic navigation to `(tabs)` with no manual reload (AC#2/AC#3).
   4. Confirm a tick that finds no role yet produces no visible change and no console error (AC#4) — e.g. observe an interval tick fire while the account is still role-less.
   5. Confirm no regression to `sign-in.tsx` or any tab screen (AC#5) — quick pass over `feed`/role-switch still works as in the last `/test` UAT run.
+  6. **(Added 2026-08-20, PR #54 review round 3 — covers AC#1's failure path, which the original walkthrough never exercised.)** With the GoTrue `/logout` POST route-intercepted to return 500, click "Sign out" → the button reads `Signing out…` and is disabled while in flight, then re-enables; the inline failure line renders in `theme.colors.status.absent`; the session is *not* cleared and the screen stays on `/no-role`; removing the intercept and clicking again signs out normally.
 
   **Run 2026-07-25, live against the local stack + real Mailpit magic-link emails** (fresh throwaway account `issue46-zero-role@bv-seed.test.local`, created via `tests.create_supabase_user`, no `user_roles` row — a genuine zero-role account, not a delete-then-restore against a seeded one, to avoid disturbing other seed fixtures). Local Supabase DB required a `db reset` first — `supabase migration list --local` showed this worktree's migrations weren't applied (shared-Docker-stack collision with another worktree, a known recurring issue); reset was confirmed with the human before running given the shared-container blast radius, then re-verified clean (169/169 pgTAP after reset).
   1. **Pass** — signed in via real magic-link (Playwright + Mailpit API), landed on `/no-role`, screen showed the existing message plus the new "Sign out" button, zero console errors.
@@ -1202,6 +1236,7 @@ See `docs/superpowers/plans/2026-07-15-design-parity-fixes.md` for the full task
   3. **Pass** — signed in again (same account, still zero-role), landed on `/no-role`; granted a `parent`/`org` `user_roles` row via `docker exec ... psql` mid-session (same live browser session — see test-harness note below), dispatched a `visibilitychange`/`focus` event, and the app auto-navigated to `/feed` with the Parent tab set (Feed/Attendance/Chat) rendering live data, no manual reload, no console errors.
   4. **Pass** (folded into step 3's wait window — an interval tick fired while still zero-role with no visible change/error before the grant landed).
   5. **Pass** — no regressions surfaced in `npm run test`/typecheck (G3); did not re-walk the full UAT matrix since this amendment touches only `no-role.tsx` + one new hook, per Shared seam's stated blast radius.
+  6. **Not yet run** — added 2026-08-20, after the 2026-07-25 walkthrough above. The failure path it covers is verified automatically (`runSignOut` + `performSignOut`, 12 tests between them, and the reverting mutation now goes red — see G3), but the live route-intercept walkthrough belongs to the next `/test` pass and has not been executed. Recorded unrun rather than back-filled: this plan is the audit record, and a `Pass` nobody performed is the same failure class the G3 correction above exists to undo.
 
   **Test-harness note (not an app defect):** an early attempt split steps 3 into two separate Playwright process invocations, round-tripping the session via `storageState()` in between (to simulate the DB grant happening while the tab sits idle). That resumed on `/sign-in` instead of `/no-role` — traced to `storageState()` only persisting cookies/`localStorage`, not IndexedDB, and this app's web session adapter (`lib/auth/storage.ts`) keeps the AES-GCM decryption key in IndexedDB. A fresh context has no key, so the restored ciphertext fails to decrypt and the app correctly (and silently, per `storage.ts`'s existing "corrupt/undecryptable entry — treat as absent" contract) treats it as no session. Re-ran as one continuous browser session with the DB grant shelled out mid-script instead — confirmed the walkthrough passes as described above. No code changed as a result; noted here so a future `/test` pass doesn't waste time on the same false lead.
 

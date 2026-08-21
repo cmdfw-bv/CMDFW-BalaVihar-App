@@ -1,5 +1,13 @@
-/** What `supabase.auth.signOut()` resolves with — the only part of it this module needs. */
-type SignOutFn = () => Promise<{ error: unknown | null }>;
+/**
+ * What `supabase.auth.signOut()` resolves with — the only part of it this module needs.
+ *
+ * `unknown`, not `unknown | null`: the union collapses to `unknown` anyway, so the `| null` read
+ * as if it conveyed something it did not (PR #54 review round 3). The shape is deliberately not
+ * `AuthError | null` — nothing here inspects the error beyond its truthiness, and keeping it
+ * opaque is what lets the tests pass plain objects. `signOut()`'s real
+ * `{ error: AuthError | null }` is assignable to it.
+ */
+export type SignOutFn = () => Promise<{ error: unknown }>;
 
 /**
  * Run a sign-out and report whether the session was actually cleared.
