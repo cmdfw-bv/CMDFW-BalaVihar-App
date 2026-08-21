@@ -307,7 +307,7 @@ select tests.clear_authentication();
 
 -- Fixture: a student with NO current active enrollment (only a withdrawn one). NOTE: this state --
 -- a student who can still reach the app despite not being currently registered -- is itself an
--- access-lifecycle gap (WHO may log in at all), tracked for a future ADR / #58, NOT something #77
+-- access-lifecycle gap (WHO may log in at all), tracked for a future ADR / #82, NOT something #77
 -- fixes. The case below only pins the DB behaviour of the `status = 'active'` filter (null, never a
 -- class they've left); it does NOT assert the resulting chip is acceptable UX.
 select gen_random_uuid() as v_wd_family \gset
@@ -324,7 +324,7 @@ insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) valu
 -- Case 16: the `status = 'active'` filter -- a student whose only enrollment is withdrawn resolves
 -- to null, never the class they left. The count(*) = 1 companion proves the null is the label of a
 -- real row, not a missing row. Documents current DB behaviour only; NOT a claim the resulting chip
--- is acceptable -- who may log in at all is the access-lifecycle ADR / #58.
+-- is acceptable -- who may log in at all is the access-lifecycle ADR / #82.
 select tests.authenticate_as(:'v_wd_user'::uuid, 'student', 'org', null);
 select is(
   (select count(*) from resolve_my_scope_labels())::int, 1,
@@ -408,7 +408,7 @@ select tests.clear_authentication();
 -- Fixture: a RETURNING student C with TWO active enrollments -- last year's session (Sunday AM,
 -- Jan) and this year's (Fall Term, Sep, a later start_date). enrollments_one_active_per_session
 -- only constrains WITHIN a session, so this is schema-legal and reachable in year two of production
--- (the reset that would retire last year's row is deferred to #58). This is the ONLY fixture that
+-- (the reset that would retire last year's row is deferred to #82). This is the ONLY fixture that
 -- exercises the migration's `order by se.start_date desc ... limit 1` -- without it, deleting that
 -- clause leaves every other case green (Maulik/Srinath #77 review).
 select gen_random_uuid() as v_new_session \gset
@@ -416,7 +416,7 @@ insert into sessions (id, center_id, name, start_date, end_date, day_of_week, st
   values (:'v_new_session'::uuid, :'v_center'::uuid, 'Fall Term', '2026-09-06', '2026-12-13', 0, '09:00', '10:30');
 select gen_random_uuid() as v_new_class \gset
 insert into classes (id, session_id, name, grade_band)
-  values (:'v_new_class'::uuid, :'v_new_session'::uuid, 'Gr4 Class', 'Gr4');
+  values (:'v_new_class'::uuid, :'v_new_session'::uuid, 'Kishore B', 'Gr4');
 select tests.create_supabase_user('scope-labels-student-returning@test.local') as v_ret_user \gset
 select gen_random_uuid() as v_ret_student \gset
 insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
@@ -428,12 +428,14 @@ insert into user_roles (id, user_id, role, scope_type, scope_id, is_active) valu
   ('90000003-0000-0000-0000-000000000013', :'v_ret_user'::uuid, 'student', 'org', null, true);
 
 -- Case 20: a returning student with two active enrollments resolves to the NEWEST session's class
--- (this year's), not last year's. Proves `order by se.start_date desc`: deleting the clause (or the
--- `desc`) makes this the assertion that fails, since the older Sunday AM row is inserted first.
+-- (this year's), not last year's. The Fall class is named 'Kishore B' so it sorts AFTER 'Junior A'
+-- by class name -- so this fails under BOTH mutations: flipping `desc`->`asc` (picks Jan's Junior A)
+-- AND dropping the `start_date` key entirely (cl.name asc also then picks 'Junior A'). It's also the
+-- only fixture with two active enrollments, so deleting `limit 1` raises "more than one row returned".
 select tests.authenticate_as(:'v_ret_user'::uuid, 'student', 'org', null);
 select is(
   (select scope_label from resolve_my_scope_labels() where user_roles_id = '90000003-0000-0000-0000-000000000013'),
-  'Brampton · Fall Term · Gr4 Class',
+  'Brampton · Fall Term · Kishore B',
   'case 20: returning student (two active enrollments) resolves to the newest session (order by start_date desc)'
 );
 select tests.clear_authentication();

@@ -14,11 +14,11 @@
 -- latest registration -- resolves to null. Making that null render gracefully is deliberately NOT
 -- this migration's job: such a student should not have portal access at all. WHO may log in
 -- (registration-driven access + the annual reset, all roles) is a separate access-lifecycle
--- concern tracked for a future ADR (see #58) -- out of scope here.
+-- concern tracked for a future ADR (see #82) -- out of scope here.
 --
 -- A returning student can legitimately hold TWO active enrollments (last year's + this year's):
 -- enrollments_one_active_per_session only constrains WITHIN a session, and the reset that retires
--- old rows is deferred to #58. `order by se.start_date desc, cl.name, cl.id` picks this year's
+-- old rows is deferred to #82. `order by se.start_date desc, cl.name, cl.id` picks this year's
 -- (newest) class -- test case 20 exercises this. The `limit 1` is load-bearing rather than
 -- defensive: students.user_id has no uniqueness constraint (follow-up #81), so this branch is the
 -- first consumer that must deterministically pick one of N possible rows.
