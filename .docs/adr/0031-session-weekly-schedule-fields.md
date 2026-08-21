@@ -1,6 +1,6 @@
 # ADR-0031: Sessions carry a fixed weekly schedule (`day_of_week`, `start_time`, `end_time`) — core-schema-and-rls amendment; supersedes attendance-ui's raw-`today` date default
 
-**Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`, Built) — amends its canonical schema (acceptance criterion #1). Also amends Teacher → `attendance-ui` (`.docs/specs/teacher/attendance-ui.md`, Design ✓/signed-off/`/plan` ✓) — its date-default decision assumed a fact that turns out to be false for real Bala Vihar sessions.
 
 ### Context

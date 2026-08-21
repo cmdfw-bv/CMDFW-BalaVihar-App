@@ -1,6 +1,6 @@
 # ADR-0006: Hosting — Netlify + 2 free Supabase projects; local + staging + prod
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 Near-$0 POC, US residency, three environments, low ops. Verified live: Supabase Free = **2 active projects/org**; Netlify Free = 300 credits with full-outage pause at exhaustion.

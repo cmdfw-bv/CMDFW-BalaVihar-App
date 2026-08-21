@@ -1,6 +1,6 @@
 # ADR-0009: Org-owned AWS/EC2 self-host is a documented future path, not the POC
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 CMDFW may want to run the whole stack (web + backend) on its own AWS EC2 for full data ownership. Verified live (Supabase self-hosting docs): self-host = Docker Compose, **single project only**, **no managed backups/PITR**, and the org owns patching/DR/HA/monitoring; EC2 is not $0.

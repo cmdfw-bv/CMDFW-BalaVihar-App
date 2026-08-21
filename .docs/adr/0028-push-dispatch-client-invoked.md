@@ -1,6 +1,6 @@
 # ADR-0028: Push dispatch is client-invoked, not a DB trigger
 
-**Status:** Closed · **Date:** 2026-07-21 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-07-21 · **Deciders:** Project owner + architect
 **Governs:** System → `notifications-infra` (`.docs/specs/system/notifications-infra.md`).
 
 ### Context

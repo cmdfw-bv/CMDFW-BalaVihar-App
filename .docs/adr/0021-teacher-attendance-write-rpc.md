@@ -1,6 +1,6 @@
 # ADR-0021: Teacher attendance-write via SECURITY DEFINER RPC (supersedes ADR-0020)
 
-**Status:** Closed · **Date:** 2026-07-09 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-09 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`). **Supersedes ADR-0020** in full — ADR-0020's premise (audit a client-side Teacher `UPDATE` via a trigger) does not apply once the client-side write path it was auditing is retired. Does not touch ADR-0019's core decision (hybrid RPC for cross-scope **reads** of `students`/`attendance`/`consents`), which stands unchanged.
 
 ### Context

@@ -1,6 +1,6 @@
 # ADR-0018: Family/household data model
 
-**Status:** Closed · **Date:** 2026-07-08 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-08 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`). Resolves doc 3 §6.2's deferred "schema design is a downstream task" for the family/guardian/student shape; informs the Parent row of the §5.4 scope model ("own-children").
 
 ### Context

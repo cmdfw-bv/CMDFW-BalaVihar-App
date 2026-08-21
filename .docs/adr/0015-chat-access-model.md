@@ -1,6 +1,6 @@
 # ADR-0015: Chat access model — grade-band membership, participant ladder, mentions
 
-**Status:** Closed · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
 **Extends:** ADR-0007 (chat is POC-core via Broadcast-from-DB — transport unchanged). **Supersedes** the chat *membership* described in 2_POC_FEATURE_SCOPE §2 ("class group chat = teacher + all enrolled students" + "student-to-student DMs") and the §9.2 *read-only* oversight framing. **Partially resolves** the §9.4 / doc 2 §6 governance gate (who-may-chat-whom).
 
 ### Context

@@ -1,6 +1,6 @@
 # ADR-0013: Sequential refine → architect-review → design for every feature item
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 **Extends:** ADR-0008 (delivery system). **Supersedes** the §12.10 stance that trivial items skip `/architect`.
 
 ### Context

@@ -1,6 +1,6 @@
 # ADR-0025: CI residency/tracker-dependency scan + CODEOWNERS-required review (ADR-0024 addendum)
 
-**Status:** Closed · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
 
 **Governs:** System → `cicd-pipeline` (`.docs/specs/System/cicd-pipeline.md`). Extends ADR-0024; does not supersede it — GitHub Actions as the required-status-check enforcement layer stands unchanged. This addendum closes a gap discovered during `/design`, folding two `.docs/CI_rules.md` items into this UoW's scope that ADR-0024's original acceptance criteria hadn't listed.
 

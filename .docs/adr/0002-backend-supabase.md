@@ -1,6 +1,6 @@
 # ADR-0002: Backend — Supabase (Postgres/RLS), pinned to a US region
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 The app handles minors' data: it needs DB-enforced per-row access (ADR-0003), US data residency, low/predictable cost, and low ops burden for volunteers. Verified live: Supabase pins an exact US AWS region (fixed at creation).

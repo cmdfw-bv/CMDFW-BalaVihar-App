@@ -1,6 +1,6 @@
 # ADR-0007: Real-time chat is POC-core via Supabase Realtime Broadcast-from-DB
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 **Resolves:** the doc 1 (post-POC) vs doc 2 (POC-core) conflict — doc 1 Appendix A updated to match.
 
 ### Context
