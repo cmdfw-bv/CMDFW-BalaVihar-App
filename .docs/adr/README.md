@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-**Status:** Living decision log — append new ADRs as decisions are made. **Never edit a Closed ADR; supersede it** with a new one that references it. New ADRs use a **date-based id** (`ADR-YYYY-MM-DD-<slug>`, stamped at authoring); `ADR-0001–0033` keep their numbers (see [ADR-2026-08-21-adr-identifier-scheme](2026-08-21-adr-identifier-scheme.md)). The index below is **generated from the ADR files** — run `npm run gen:adr-index` after adding or editing an ADR; **never edit the index block by hand** (CI checks it). Maintained via the `/architect` skill (3_ARCHITECTURE §12.10).
+**Status:** Living decision log — append new ADRs as decisions are made. **Never edit a Closed ADR; supersede it** with a new one that references it. New ADRs use a **date-based id** (`ADR-YYYY-MM-DD-<slug>`, stamped at authoring); the legacy numbered `ADR-0001–0038` keep their numbers (see [ADR-2026-08-21-adr-identifier-scheme](2026-08-21-adr-identifier-scheme.md)). The index below is **generated from the ADR files** — run `npm run gen:adr-index` after adding or editing an ADR; **never edit the index block by hand** (CI checks it). Maintained via the `/architect` skill (3_ARCHITECTURE §12.10).
 
 Authoritative architecture: [3_ARCHITECTURE.md](../3_ARCHITECTURE.md). Requirements: [1_GREENFIELD_POC_PROPOSAL.md](../1_GREENFIELD_POC_PROPOSAL.md) · [2_POC_FEATURE_SCOPE.md](../2_POC_FEATURE_SCOPE.md).
 
@@ -78,4 +78,4 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 
 ## How to read an ADR
 
-Each record has: **Status · Category · Date · Deciders**, then **Context · Options Considered (with Pros/Cons) · Decision · Consequences**. A Closed ADR is immutable; changing a decision means a new ADR that supersedes the old one. **Category** is one of UX · Auth/Access · Data · Privacy/Minors · Chat/Notifications · Infra/Process (the index groups by it). New ADR ids are date-based (`ADR-YYYY-MM-DD-<slug>`); the numbered `ADR-0001–0033` are the legacy set — both are listed together in the generated index above.
+Each record has: **Status · Category · Date · Deciders**, then **Context · Options Considered (with Pros/Cons) · Decision · Consequences**. A Closed ADR is immutable; changing a decision means a new ADR that supersedes the old one. **Category** is one of UX · Auth/Access · Data · Privacy/Minors · Chat/Notifications · Infra/Process (the index groups by it). New ADR ids are date-based (`ADR-YYYY-MM-DD-<slug>`); the numbered `ADR-0001–0038` are the legacy set (frozen at the 0038 cutover — no new numbers) — both are listed together in the generated index above.
