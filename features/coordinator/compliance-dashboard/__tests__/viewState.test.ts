@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveDashboardViewState } from '../viewState';
+import { deriveDashboardViewState, rollupTileValues } from '../viewState';
 
 describe('deriveDashboardViewState', () => {
   it('no fetch yet -> loading', () => {
@@ -43,5 +43,31 @@ describe('deriveDashboardViewState', () => {
     const r = deriveDashboardViewState({ hasSession: false, hasEverSucceeded: true, rows: [{} as any], lastFetchFailed: false });
     expect(r.viewState).toBe('error');
     expect(r.rows).toEqual([]);
+  });
+});
+
+describe('rollupTileValues', () => {
+  const rollup = { fullyCompliant: 3, atRisk: 1, nonCompliant: 2 };
+
+  // AC5's "honest placeholder, never a false zero" applied to the roll-up row, not just the
+  // per-class bars: computeRollup([]) during loading/error would otherwise read as "0 Fully
+  // compliant · 0 At-risk · 0 Non-compliant" in the largest type on the screen — the same
+  // misread AC5 exists to prevent, one level up, and the more dangerous direction (a coordinator
+  // reading it concludes everything is fine) (PR #50 review, @ssrinivas90).
+  it('loading -> every tile is an honest placeholder, never 0', () => {
+    expect(rollupTileValues('loading', rollup)).toEqual({ fullyCompliant: '—', atRisk: '—', nonCompliant: '—' });
+  });
+
+  it('error -> every tile is an honest placeholder, never a false 0', () => {
+    expect(rollupTileValues('error', rollup)).toEqual({ fullyCompliant: '—', atRisk: '—', nonCompliant: '—' });
+  });
+
+  it('content -> real counts, as strings', () => {
+    expect(rollupTileValues('content', rollup)).toEqual({ fullyCompliant: '3', atRisk: '1', nonCompliant: '2' });
+  });
+
+  it('empty -> real counts too (a genuinely empty session is 0, not a placeholder)', () => {
+    const zero = { fullyCompliant: 0, atRisk: 0, nonCompliant: 0 };
+    expect(rollupTileValues('empty', zero)).toEqual({ fullyCompliant: '0', atRisk: '0', nonCompliant: '0' });
   });
 });
