@@ -520,7 +520,7 @@ grant execute on function get_session_compliance_for_staff(uuid, int) to authent
 - Cross-scope: a Coordinator calling with a sibling session's `p_session_id` returns nothing and creates exactly one `audit_log` row (`action='denied'`).
 - **Roster-approximation fixture:** a student who withdrew mid-window is excluded from every date in the window (not just post-withdrawal dates) — asserts the documented approximation, not a regression.
 - **Zero-expected-date fixture:** a class-meeting date with zero active-as-of-that-date enrollments is excluded from `attendance_rate`'s denominator but a same-date `class_updates` row still counts toward `update_rate`.
-- `class_meetings`/`class_updates` direct `select` from Coordinator/Teacher/BV Coordinator/Admin returns zero rows (RLS-only for `class_meetings` per role; zero-policy for `class_updates`) — proves the RPC is the only path.
+- `class_meetings` direct `select` from Coordinator/Teacher/BV Coordinator/Admin returns exactly the RLS-scoped rows for that role, never a cross-scope row (`180_class_meetings_schema.sql`). **Superseded for `class_updates`:** this originally read "zero-policy for `class_updates`," but ADR-0036 made issue #21's table canonical, and it carries real per-role read policies (`170_`/`171_class_updates_and_comments_rls*.sql`) — a direct select is expected to return rows there, not zero. The "only path" property only ever described this RPC's own access route, not the table generally.
 - `generate_class_meetings_for_session` is idempotent — calling it twice produces no duplicate rows and doesn't reset an already-`cancelled` row back to `scheduled`.
 
 ### Out of scope (unchanged, plus)
