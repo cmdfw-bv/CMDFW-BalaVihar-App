@@ -382,7 +382,7 @@ Extends `csv-enrollment-import.md`'s existing Netlify function (ADR-0022) with a
 - **Ordering dependency:** a skip date entered before `generate_class_meetings_for_session` has run for that session is a no-op (no rows exist yet to cancel) — `csv-enrollment-import.md`'s addendum should note "generate before skip-import" as an operational sequencing note for Admin/Coordinator.
 
 ### `class_meetings` RLS
-Read: matches `classes`/`sessions`' existing posture (organizational metadata, no PII, per the "not RPC-gated" note above) — Teacher (own class), Coordinator (own session), BV Coordinator/Admin (org). Write: no direct client grant — only `generate_class_meetings_for_session` and the CSV skip-import function (service-role) ever write to it.
+Read: matches `classes`/`sessions`' existing posture (organizational metadata, no PII, per the "not RPC-gated" note above) — Teacher (own class), Coordinator (own session), BV Coordinator/Admin (org). Write: no direct client grant — the `classes_generate_class_meetings` `after insert` trigger on `classes` (ADR-0038, migration `20260729093000`) is the primary writer now that any class-creation path generates its own calendar; `generate_class_meetings_for_session` and the CSV skip-import function (service-role) remain the paths for re-generation after a session's dates change and for the skip-dates seam, respectively.
 
 ### `class_updates` RLS
 
