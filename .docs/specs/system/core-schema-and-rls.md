@@ -293,6 +293,18 @@ Everything already listed in the item's "Out of scope" section above; this adden
 
 > **ADR-0036:** `sessions.meeting_weekday` is **not** created — it duplicated ADR-0031's `sessions.day_of_week`, which already holds the doc 1 §9a catalog. Rows referencing it below are superseded.
 
+> **⚠️ The SQL in this addendum is the as-built form, reconciled with the shipped migrations — transcribe it, don't "fix" it.**
+>
+> This section began as `/design` output and was written before `/migration`. Its two function bodies were later corrected in place to match what actually shipped, because this is the section the constitution designates as the contract the next `/build` transcribes, and a design draft sitting here is a transcription hazard rather than a historical record.
+>
+> Four things differ from the original draft and each one is a defect if copied back out (PR #50 review, @ssrinivas90):
+> - **`coalesce(v_scope_id = p_session_id, false)`, twice** — bare equality yields NULL for a coordinator whose JWT has no `scope_id` claim, and `if not v_authorized` does not branch on NULL, so the guard falls through **authorized**. This is the fail-open shape tracked by **[#73](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/73)** for two already-merged functions on `main`.
+> - **`cm.meeting_date < …`, not `<=`** — today's meeting may not have happened yet.
+> - **`(now() at time zone 'America/Chicago')::date`, not `current_date`** — the latter resolves through the server TimeZone (UTC on Supabase).
+> - **`e.enrolled_at::date <= …`, not the bare timestamptz** — the implicit cast is to midnight, dropping same-day enrollments from the denominator.
+>
+> Superseded prose is kept in `<details>` blocks below rather than deleted; superseded *SQL* is not kept anywhere, deliberately.
+
 **Stage:** 1 — Design (third addendum to this already-Built item, same pattern as the ADR-0021 addendum above: folded into this spec per each ADR's Consequences, no new System backlog item). Coordinated with `.docs/specs/coordinator/compliance-dashboard.md`'s own `/design` pass, which specifies the consuming RPC's client usage and screen in detail — this section is the schema/RPC/RLS side of the same design pass.
 
 **Why here, not a new item:** ADR-0034 (`class_updates`) and ADR-0035 (`class_meetings`) both concluded these are System-owned — one persona (Teacher, eventually) writes, a different persona (Coordinator, now) reads, the same shape as the existing `attendance` pattern this item already owns.
@@ -330,7 +342,10 @@ begin
   if v_role in ('bv_coordinator','admin') then
     v_authorized := true;
   elsif v_role = 'coordinator' then
-    v_authorized := (v_scope_id = p_session_id);
+    -- coalesce, not bare equality: a coordinator whose JWT carries no scope_id claim leaves
+    -- v_scope_id NULL, `NULL = p_session_id` is NULL, and `if not v_authorized` does not take
+    -- its branch on NULL — the guard would fall through to the authorized path. Fail closed.
+    v_authorized := coalesce(v_scope_id = p_session_id, false);
   end if;
 
   if not v_authorized or v_session.id is null then
@@ -370,11 +385,24 @@ Extends `csv-enrollment-import.md`'s existing Netlify function (ADR-0022) with a
 Read: matches `classes`/`sessions`' existing posture (organizational metadata, no PII, per the "not RPC-gated" note above) — Teacher (own class), Coordinator (own session), BV Coordinator/Admin (org). Write: no direct client grant — only `generate_class_meetings_for_session` and the CSV skip-import function (service-role) ever write to it.
 
 ### `class_updates` RLS
-**Zero policies for any role this pass** — same posture `user_roles`' write side had before `user-role-approval` existed (a safe, locked table waiting for its owning write path, per that row's note in the RLS matrix above). Coordinator's read goes through `get_session_compliance_for_staff` below (`SECURITY DEFINER`, bypasses RLS by design), never a direct grant. Teacher's write RPC, once that item is refined, is the only thing that will ever need a policy or grant here.
+
+> **As built — this design-stage plan was overtaken by issue #21 and ADR-0036.** The paragraph below described a table with no policies awaiting its write path; issue #21 shipped that write path first, so `class_updates` was already live with policies when this pass reached `/migration`. ADR-0036 §1 made issue #21's table the canonical one (see the table catalog entry above). Recorded rather than deleted because the *read* side of the plan is what was built, and the reasoning still stands.
+
+**As built (`20260724120426`, issue #21 — merged):** six policies — five `select` (teacher/student/parent/coordinator/org) and one `insert` (`class_updates_teacher_insert`), with `grant select, insert … to authenticated`. This pass then **tightened** that insert policy rather than adding one: `20260729093000` replaces `class_updates_teacher_insert` so a Teacher may only post against a `class_meetings` row that is `scheduled` and on or before today (Chicago-pinned), which is what stops a Teacher self-certifying the metric that audits them. There is no `update` or `delete` policy and no grant for either, so that insert gate is the entire Teacher write surface, not just its front door.
+
+**Teacher's write path is a direct `.insert()` under RLS, not an RPC** — the ADR-0021 write-RPC shape this section originally anticipated was not the route taken, because the row carries no minor's PII and the policy expresses the whole control.
+
+**Coordinator's read is unchanged from the plan:** it goes through `get_session_compliance_for_staff` below (`SECURITY DEFINER`, bypasses RLS by design), never a direct grant. `class_updates_coordinator_select` exists for the Teacher-feed read path, not for the dashboard.
+
+<details><summary>Original design-stage text (superseded — kept for the reasoning, do not transcribe)</summary>
+
+> **Zero policies for any role this pass** — same posture `user_roles`' write side had before `user-role-approval` existed (a safe, locked table waiting for its owning write path, per that row's note in the RLS matrix above). Coordinator's read goes through `get_session_compliance_for_staff` below (`SECURITY DEFINER`, bypasses RLS by design), never a direct grant. Teacher's write RPC, once that item is refined, is the only thing that will ever need a policy or grant here.
+
+</details>
 
 ### New read RPC: `get_session_compliance_for_staff`
 
-Replaces N per-class `get_class_attendance_for_staff` calls with one session-wide aggregate (flagged during `/architect` review of `compliance-dashboard.md`). The per-date attendance-submitted flag and the roster-approximation rule (`enrollments.status='active' and enrolled_at <= meeting_date` — see that spec's Edge cases for the human-confirmed rationale) are baked into this query, not left to the client:
+Replaces N per-class `get_class_attendance_for_staff` calls with one session-wide aggregate (flagged during `/architect` review of `compliance-dashboard.md`). The per-date attendance-submitted flag and the roster-approximation rule (`enrollments.status='active' and enrolled_at::date <= meeting_date` — see that spec's Edge cases for the human-confirmed rationale) are baked into this query, not left to the client:
 
 ```sql
 create or replace function get_session_compliance_for_staff(
@@ -393,6 +421,10 @@ returns table (
 language plpgsql
 security definer
 set search_path = public
+-- Load-bearing, not decoration: every ::date cast below resolves through the function's
+-- TimeZone. Without this pin they resolve through the server's (UTC on Supabase) and the
+-- Chicago-pinned window bound would disagree with the roster cutoffs it is compared against.
+set timezone = 'America/Chicago'
 as $$
 declare
   v_role text := auth.jwt()->>'active_role';
@@ -402,7 +434,8 @@ begin
   if v_role in ('bv_coordinator','admin') then
     v_authorized := true;
   elsif v_role = 'coordinator' then
-    v_authorized := (v_scope_id = p_session_id);
+    -- coalesce, not bare equality — see the identical guard above. Fail closed on a NULL claim.
+    v_authorized := coalesce(v_scope_id = p_session_id, false);
   end if;
 
   if not v_authorized then
@@ -421,7 +454,11 @@ begin
       select cm.*, row_number() over (partition by cm.class_id order by cm.meeting_date desc) as rn
       from class_meetings cm
       join classes c on c.id = cm.class_id
-      where c.session_id = p_session_id and cm.status = 'scheduled' and cm.meeting_date <= current_date
+      -- `<`, not `<=`: today's meeting may not have happened yet, so counting it would flag a
+      -- class non-compliant for an update it cannot yet have posted. Chicago-pinned rather than
+      -- `current_date`, which resolves through the server TimeZone (UTC in Supabase).
+      where c.session_id = p_session_id and cm.status = 'scheduled'
+        and cm.meeting_date < (now() at time zone 'America/Chicago')::date
     ) cm
     where rn <= p_window_size
   ),
@@ -430,7 +467,10 @@ begin
       w.class_id,
       w.meeting_date,
       (select count(*) from enrollments e
-         where e.class_id = w.class_id and e.status = 'active' and e.enrolled_at <= w.meeting_date) as expected_count,
+         -- `enrolled_at::date`, not the bare timestamptz: comparing a timestamptz to a date
+         -- casts the date to midnight, so anyone enrolled later that same day reads as not yet
+         -- enrolled and the meeting's expected_count comes out short.
+         where e.class_id = w.class_id and e.status = 'active' and e.enrolled_at::date <= w.meeting_date) as expected_count,
       exists (select 1 from class_updates cu
                 where cu.class_id = w.class_id and cu.meeting_date = w.meeting_date) as update_posted
     from win w
@@ -442,7 +482,7 @@ begin
          select count(*) from attendance a
          join enrollments e on e.id = a.enrollment_id
          where e.class_id = pd.class_id and a.class_meeting_date = pd.meeting_date
-           and e.status = 'active' and e.enrolled_at <= pd.meeting_date
+           and e.status = 'active' and e.enrolled_at::date <= pd.meeting_date
        )) as attendance_submitted
     from per_date pd
   )
@@ -473,6 +513,7 @@ grant execute on function get_session_compliance_for_staff(uuid, int) to authent
 - **One `audit_log` row per call, not per row/student** — a deliberate deviation from `get_class_attendance_for_staff`'s per-student-touched granularity, justified because this RPC's return shape (`compliance-dashboard.md` AC8) never includes student-identifying data — there's no individual "student touched" to attribute a row to.
 - **`attendance_rate`'s denominator excludes dates with `expected_count = 0`** (nobody active-as-of that date) entirely, from both numerator and denominator — a class isn't penalized or credited for a date nobody was expected. **`update_rate`'s denominator is every scheduled date in `win`** regardless of roster — that metric never depends on enrollment.
 - Logic above is the specified contract (two independent per-date boolean flags, one denominator each); `/migration` finalizes exact SQL if the aggregate syntax needs adjustment, same disclaimer this file's table catalog already carries for conceptual DDL generally.
+- **Both SQL blocks in this section have been reconciled with the shipped migrations** (`20260729090000`, `20260729092000`) and now carry the as-built authorization guards, window bound, roster cutoffs, and timezone pin — see the banner at the head of this addendum. The "conceptual DDL" disclaimer above covers *shape and syntax*; it has never covered access-control or date-boundary logic, and those are now the shipped form rather than the design draft.
 
 ### pgTAP addition (extends the existing adversarial suite, §"pgTAP adversarial test plan" above)
 - Positive case: a Coordinator's call returns exactly the classes in their own session, with rates matching a hand-computed fixture (mixed full/partial/missing attendance and update rows across the trailing window).

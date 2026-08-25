@@ -12,9 +12,9 @@ import { insertClassUpdate, fetchRecentClassMeetings } from "../api/classUpdates
 import { triggerClassUpdatePush } from "../api/pushTrigger";
 import { buildClassUpdatePayload, CLASS_UPDATE_BODY_MAX, CLASS_UPDATE_HOMEWORK_MAX } from "../logic/classUpdatePayload";
 import { meetingDateLabel } from "../logic/meetingDateLabel";
+import { meetingsPanel, type MeetingsState } from "../logic/meetingsPanel";
 
 type ScreenState = "form" | "submitting" | "error";
-type MeetingsState = "loading" | "ready" | "none";
 
 export default function ComposeClassUpdateScreen() {
   const { session, scopeId, activeRole, status } = useSession();
@@ -25,6 +25,9 @@ export default function ComposeClassUpdateScreen() {
   const [meetings, setMeetings] = useState<string[]>([]);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingsState, setMeetingsState] = useState<MeetingsState>("loading");
+  // Bumped by the retry affordance to re-run the fetch effect. A counter rather than calling the
+  // fetch directly, so retry and first load stay one code path.
+  const [retryToken, setRetryToken] = useState(0);
 
   // Not a tab route, so useRoleGuard (TabKey-typed) doesn't apply directly — same
   // redirect-home convention (ADR-0014, design-system.md DoD: "no permission-denied
@@ -42,7 +45,13 @@ export default function ComposeClassUpdateScreen() {
   useEffect(() => {
     if (!scopeId) return;
     let cancelled = false;
-    const todayIso = new Date().toLocaleDateString("en-CA"); // local calendar day, not UTC
+    // Chicago-pinned, not the device's calendar day. `class_updates_teacher_insert`
+    // (`20260729093000:154`) bounds `meeting_date` by Chicago's today; a teacher whose device
+    // clock is a day ahead — travelling east of Central, most plainly in Asia — would otherwise
+    // be offered a date the database then rejects with a raw `42501` (PR #50 review round 6).
+    // The whole point of that pin is that "today" means one date everywhere in this feature.
+    const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    setMeetingsState("loading");
     fetchRecentClassMeetings(supabase, scopeId, todayIso)
       .then((dates) => {
         if (cancelled) return;
@@ -51,12 +60,14 @@ export default function ComposeClassUpdateScreen() {
         setMeetingsState(dates.length === 0 ? "none" : "ready");
       })
       .catch(() => {
-        if (!cancelled) setMeetingsState("none");
+        // `error`, never `none`: we failed to ask, which is not the server saying the class has
+        // never met. See logic/meetingsPanel.ts for why the distinction is load-bearing.
+        if (!cancelled) setMeetingsState("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [scopeId]);
+  }, [scopeId, retryToken]);
 
   const payload = buildClassUpdatePayload(body, homework, meetingDate);
   const canSubmit = payload !== null && state !== "submitting";
@@ -81,14 +92,23 @@ export default function ComposeClassUpdateScreen() {
     }
   }
 
+  // Which head to render is decided in logic/meetingsPanel.ts rather than inline, because this
+  // repo has no React renderer in test and the round-6 defect was exactly a branch that looked
+  // right in JSX: `loading` fell through into the picker with an empty rail, and a failed fetch
+  // rendered the "class has never met" copy.
+  const panel = meetingsPanel(meetingsState);
+
   return (
     <View style={styles.screen}>
-      {meetingsState === "none" ? (
-        // Honest state rather than a form that cannot succeed: meeting_date is NOT NULL, so with
-        // no scheduled meeting on or before today there is nothing valid to post against.
-        <Text style={styles.notice}>
-          No class meetings have happened yet for this class, so there&apos;s nothing to post an update about.
-        </Text>
+      {panel.kind === "notice" ? (
+        <View style={styles.noticeBlock}>
+          <Text style={styles.notice}>{panel.message}</Text>
+          {panel.canRetry ? (
+            <Button variant="secondary" onClick={() => setRetryToken((n) => n + 1)}>
+              Try again
+            </Button>
+          ) : null}
+        </View>
       ) : (
         <Field label="Which class meeting?" as="select">
           {/*
@@ -140,6 +160,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.space["4"],
     padding: theme.space["4"],
     backgroundColor: theme.colors.bg,
+  },
+  noticeBlock: {
+    gap: theme.space["3"],
+    alignItems: "flex-start" as const,
   },
   notice: {
     fontFamily: theme.fonts.body,

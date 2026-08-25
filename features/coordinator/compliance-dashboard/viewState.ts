@@ -3,6 +3,14 @@ import type { ComplianceRow, RollupCounts } from './rollup';
 export type DashboardViewState = 'loading' | 'empty' | 'error' | 'content';
 
 export interface DeriveInput {
+  /**
+   * Whether there is a session to query at all — false when the Coordinator's JWT carries no
+   * `scope_id` claim, so `dashboard.tsx` passes `sessionId={null}`.
+   *
+   * Required rather than optional, deliberately: the bug this closes was a state nobody thought
+   * to pass, and an `= true` default would let the next caller reintroduce it silently.
+   */
+  hasSession: boolean;
   hasEverSucceeded: boolean;
   rows: ComplianceRow[] | null;
   lastFetchFailed: boolean;
@@ -14,7 +22,13 @@ export interface DeriveResult {
   showRefreshErrorBanner: boolean;
 }
 
-export function deriveDashboardViewState({ hasEverSucceeded, rows, lastFetchFailed }: DeriveInput): DeriveResult {
+export function deriveDashboardViewState({ hasSession, hasEverSucceeded, rows, lastFetchFailed }: DeriveInput): DeriveResult {
+  // First, and ahead of every other branch: with no session there is nothing to fetch, so no
+  // fetch ever settles and `loading` would never resolve — skeletons forever, with no retry
+  // affordance on screen. `error` is the honest render (StateView's message + retry), and it
+  // outranks last-good rows too: showing one session's cards while we cannot name the current
+  // session is the same class of bug as the round-5 stale-content finding.
+  if (!hasSession) return { viewState: 'error', rows: [], showRefreshErrorBanner: false };
   if (!hasEverSucceeded) {
     if (lastFetchFailed) return { viewState: 'error', rows: [], showRefreshErrorBanner: false };
     return { viewState: 'loading', rows: [], showRefreshErrorBanner: false };

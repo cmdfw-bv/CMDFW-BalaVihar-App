@@ -67,7 +67,7 @@ export function useSessionCompliance(sessionId: string | null, windowSize = 4) {
   // non-null array in the same success branch that used to flip the ref, so the two are
   // equivalent — and reading a ref during render is precisely what react-hooks/refs objects to.
   const { rows, lastFetchFailed } = selectSessionState(sessionId ? bySession[sessionId] ?? null : null, sessionId);
-  const derived = deriveDashboardViewState({ hasEverSucceeded: rows !== null, rows, lastFetchFailed });
+  const derived = deriveDashboardViewState({ hasSession: sessionId !== null, hasEverSucceeded: rows !== null, rows, lastFetchFailed });
 
   return { ...derived, rollup: computeRollup(derived.rows), retry: fetchOnce };
 }
