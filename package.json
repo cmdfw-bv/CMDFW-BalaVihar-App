@@ -61,6 +61,7 @@
     "test": "vitest run",
     "env:init": "node scripts/env-init.mjs",
     "gen:theme": "node scripts/gen-theme.mjs",
+    "gen:adr-index": "node scripts/gen-adr-index.mjs",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",

@@ -1,6 +1,6 @@
 # ADR-0017: Chat governance gate — moderation & retention deferred post-pilot
 
-**Status:** Closed · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
 **Extends:** ADR-0015 (chat access model), ADR-0007 (chat POC-core). **Closes** the 3_ARCHITECTURE §9.4 / 2_POC_FEATURE_SCOPE §6.4 chat-governance gate — its remaining two items are resolved here *by deferral under interim safeguards*.
 
 ### Context

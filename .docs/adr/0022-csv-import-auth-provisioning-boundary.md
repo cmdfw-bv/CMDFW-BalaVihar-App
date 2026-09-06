@@ -1,6 +1,6 @@
 # ADR-0022: CSV import — auth provisioning after DB commit (DB-first boundary)
 
-**Status:** Closed · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
 **Governs:** System → `csv-enrollment-import` (`.docs/specs/system/csv-enrollment-import.md`).
 
 ### Context

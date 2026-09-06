@@ -1,6 +1,6 @@
 # ADR-0008: Delivery — Claude Code skills + enforcing hooks; SDD + AI-DLC through our own tree
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 Three non-technical volunteers + Claude Code build and operate an app handling minors' data. We need guidance Claude follows **and** guarantees it can't bypass. Researched: GitHub Spec Kit / SDD (113.9k★), AWS AI-DLC (2,987★), official Anthropic skills + Supabase AI prompts/MCP.

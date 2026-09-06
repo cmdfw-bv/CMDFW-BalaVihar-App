@@ -1,6 +1,6 @@
 # ADR-0014: Access UX — no permission-denied, role-derived navigation, conditional persona switcher
 
-**Status:** Closed · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** UX · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
 **Refines:** ADR-0003 (DB-layer RLS), ADR-0004 (multi-persona auth hook). **Supersedes** the 3_ARCHITECTURE §12.13 stance that *permission-denied* is one of five required states, and the §5.3 implication that the role switcher is always present.
 
 ### Context

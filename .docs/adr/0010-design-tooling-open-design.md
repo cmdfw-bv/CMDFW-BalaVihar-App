@@ -1,6 +1,6 @@
 # ADR-0010: Design tooling — Open Design (local-first), artifacts exported into the repo
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** UX · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 The team needs design, prototyping, and a design system for a multi-surface app (web PWA + native), driven by non-technical maintainers + Claude Code. Open Design (`nexu-io/open-design`, local-first, self-hostable) is already in use and produces a project-specific design system, **"Sankalp"** — a `DESIGN.md` brand contract + `tokens.css` + `design-tokens.json` (od-design-tokens/v1) + components + HTML prototypes — and can package a design system as a Claude plugin/skill and hand prototypes to a code agent.

@@ -1,6 +1,6 @@
 # ADR-0020: Teacher attendance-write audit trigger (ADR-0019 addendum)
 
-**Status:** Superseded by [ADR-0021](0021-teacher-attendance-write-rpc.md) · **Date:** 2026-07-09 · **Deciders:** Project owner + architect
+**Status:** Superseded by [ADR-0021](0021-teacher-attendance-write-rpc.md) · **Category:** Privacy/Minors · **Date:** 2026-07-09 · **Deciders:** Project owner + architect
 
 > **Superseded 2026-07-09, same day:** implementing this ADR's trigger (Task 11) revealed during TDD that its premise doesn't hold — the client-side `attendance_teacher_update` it audits never actually executes for a real client (Postgres RLS blocks the row lookup; see ADR-0021). The trigger was never built. Body below is kept for the record, unedited.
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`). Extends ADR-0019; does not supersede it — the hybrid RPC model for cross-scope staff reads of `students`/`attendance`/`consents` stands unchanged. This addendum closes a bypass of that model discovered during final review (deferred from the item's build, tracked in project memory).

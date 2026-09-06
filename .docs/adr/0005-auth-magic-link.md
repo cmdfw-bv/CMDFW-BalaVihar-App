@@ -1,6 +1,6 @@
 # ADR-0005: Auth — magic link (passwordless), provisioned accounts
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Auth/Access · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 COPPA: no minor self-registration. Non-technical users; org tooling is the member system (not Workspace).
