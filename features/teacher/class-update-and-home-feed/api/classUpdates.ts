@@ -72,11 +72,11 @@ export async function fetchClassUpdateById(supabase: SupabaseClient, id: string)
 
 export async function insertClassUpdate(
   supabase: SupabaseClient,
-  params: { classId: string; postedBy: string; body: string; homework?: string }
+  params: { classId: string; postedBy: string; body: string; homework?: string; meetingDate: string }
 ): Promise<{ id: string }> {
   const { data, error } = await supabase
     .from('class_updates')
-    .insert({ class_id: params.classId, posted_by: params.postedBy, body: params.body, homework: params.homework ?? null })
+    .insert({ class_id: params.classId, posted_by: params.postedBy, body: params.body, homework: params.homework ?? null, meeting_date: params.meetingDate })
     .select('id')
     .single();
   if (error) throw error;
@@ -117,4 +117,29 @@ export async function fetchCommentCounts(
     counts.set(row.class_update_id, (counts.get(row.class_update_id) ?? 0) + 1);
   }
   return counts;
+}
+
+
+// ADR-0036 §3: the composer's meeting-date picker. `class_meetings` is the calendar of expected
+// meetings (ADR-0035), so it — not `today` — is the source of truth for what a Teacher can post
+// against. Scoped to the caller's own class by class_meetings_teacher_select; cancelled meetings
+// are excluded, and future dates are not offerable (you cannot report on a class that has not
+// happened). Newest first, so index 0 is the natural default.
+export const MEETING_PICKER_LIMIT = 4;
+
+export async function fetchRecentClassMeetings(
+  supabase: SupabaseClient,
+  classId: string,
+  todayIso: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('class_meetings')
+    .select('meeting_date')
+    .eq('class_id', classId)
+    .eq('status', 'scheduled')
+    .lte('meeting_date', todayIso)
+    .order('meeting_date', { ascending: false })
+    .limit(MEETING_PICKER_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as { meeting_date: string }[]).map((r) => r.meeting_date);
 }
