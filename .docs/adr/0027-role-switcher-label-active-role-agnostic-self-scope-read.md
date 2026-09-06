@@ -1,6 +1,6 @@
 # ADR-0027: Role-switcher labels are an active-role-agnostic self-scope read (ADR-0019 addendum)
 
-**Status:** Closed · **Date:** 2026-07-17 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Privacy/Minors · **Date:** 2026-07-17 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`). Extends ADR-0019; does not supersede it — the hybrid model (plain RLS-select for self/parent, audited RPC for staff cross-scope reads) stands unchanged. This addendum covers a third shape neither pathway anticipated, surfaced during code review of `client-auth-session` (issue #17).
 
 ### Context

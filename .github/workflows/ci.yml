@@ -24,6 +24,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: node scripts/check-unistyles-config.js
+      - name: ADR index is in sync with the ADR files
+        run: node scripts/gen-adr-index.mjs --check
 
   db-and-rls:
     runs-on: ubuntu-latest

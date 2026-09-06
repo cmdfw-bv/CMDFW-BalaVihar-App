@@ -1,6 +1,7 @@
 # Security-critical paths require review — no single person (including a maintainer)
 # can wave these through (ADR-0025). Enforced via branch protection's "Require review
-# from Code Owners" — a one-time human repo-admin step, see cicd-pipeline.plan.md Task 8.
+# from Code Owners" — enabled on `main` 2026-07-30 (the repo-admin step this file's
+# original note described as still pending; cicd-pipeline.plan.md Task 8 is now done).
 /supabase/migrations/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /supabase/tests/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /netlify/functions/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
@@ -12,3 +13,20 @@
 /scripts/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /.claude/hooks/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
 /.gitleaks.toml @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+
+# The pipeline's own configuration — same reasoning as the block above, extended one
+# step closer to the off switch. `/.claude/hooks/` above protects the guard *code*
+# (pr-guard, migration-guard, schema-guard, residency-guard, instructions-audit), but
+# those guards only run because settings.json registers them: deleting a few lines there
+# disables every one of them while the guard files sit in the tree looking untouched, and
+# nothing in CI checks whether the hooks are still wired. CLAUDE.md carries the six
+# non-negotiables (§12.1); rules/ carries the path-scoped ones (minors'-data retention,
+# service-role key handling, client privacy); skills/ defines what each pipeline stage
+# must actually do — e.g. that /test runs pgTAP, walks UAT.md, and only records a green
+# gate marker when the suite is genuinely green.
+#
+# None of these are covered by a CI check, so review is the only gate they have.
+/.claude/settings.json @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.claude/CLAUDE.md @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.claude/rules/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator
+/.claude/skills/ @arunasharad-coder @ssrinivas90 @mehtamaulik-creator

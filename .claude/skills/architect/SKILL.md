@@ -19,7 +19,7 @@ Authoritative detail: `.docs/3_ARCHITECTURE.md` §12.10–§12.12. Use `superpow
 The refined brief from `/refine` (`.docs/specs/<persona>/<functionality>.md` → Requirements + the `_index.md` row), plus `.docs/1_GREENFIELD_POC_PROPOSAL.md`, `.docs/2_POC_FEATURE_SCOPE.md`, `.docs/3_ARCHITECTURE.md`, and the existing `.docs/adr/` index.
 
 ## Outputs
-1. **ADR(s)** — *when significant* — in `.docs/adr/NNN-<slug>.md` using the repo format (`Status · Date · Deciders · Context · Options Considered (Pros/Cons) · Decision · Consequences`); update `.docs/adr/README.md`. **Never edit a Closed ADR — supersede it.**
+1. **ADR(s)** — *when significant* — in `.docs/adr/YYYY-MM-DD-<slug>.md` (**date-based id** = today's authoring date, immutable; e.g. `ADR-2026-08-21-adr-identifier-scheme`) using the repo format (`Status · Category · Date · Deciders · Context · Options Considered (Pros/Cons) · Decision · Consequences`), with a **`Category:`** field (one of UX · Auth/Access · Data · Privacy/Minors · Chat/Notifications · Infra/Process). Then **regenerate the index** with `npm run gen:adr-index` — **never hand-edit `.docs/adr/README.md`** (its index block is generated; CI checks it). **Never edit a Closed ADR — supersede it.** (ADR-2026-08-21-adr-identifier-scheme)
 2. **Review sign-off** recorded on the item: set its `governing ADR` (or "none") in `.docs/specs/<persona>/<functionality>.md` + the `_index.md` row; confirm owner / consumers / scope are sound (§12.12).
 
 ## Method (AI-DLC rhythm — plan → ask → human-validate)

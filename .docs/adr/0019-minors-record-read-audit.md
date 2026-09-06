@@ -1,6 +1,6 @@
 # ADR-0019: Minors'-record read-audit mechanism — hybrid RPC for cross-scope reads
 
-**Status:** Closed · **Date:** 2026-07-08 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Privacy/Minors · **Date:** 2026-07-08 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/System/core-schema-and-rls.md`). Resolves the brief's flagged open question: constitution non-negotiable #6 requires an `audit_log` entry on **every access** to a minor's record (doc 3 §6.2, §11.2), but native Postgres triggers cannot fire on `SELECT` — a real mechanism decision was needed before `/design`.
 
 ### Context

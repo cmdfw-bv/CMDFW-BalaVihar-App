@@ -1,6 +1,6 @@
 # ADR-0024: CI/CD — GitHub Actions required status check as server-side enforcement layer (extends ADR-0008)
 
-**Status:** Closed · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-07-11 · **Deciders:** Project owner + architect
 
 ### Context
 The local GOVERN hooks (`secret-scan`, `migration-guard`, `schema-guard`, `residency-guard`, `pr-guard` — §12.1) only fire **inside a Claude Code session** and key off gitignored local marker files (`.claude/.tests-passed`, `.claude/.rls-tests-passed`). Nothing today stops a PR opened by editing directly on github.com, a stale marker from an earlier source tree, or a human clicking "Merge" without re-running `/test`. ADR-0008 chose local hooks specifically for "no external CLI dependency" — a reasonable trade-off then, but it leaves the safety guarantees doc 3 §6.3/§11.3/§12.1 already commit to (RLS tests must pass before merge) unenforced for any path that doesn't go through a Claude Code session.

@@ -1,5 +1,5 @@
 begin;
-select plan(31);
+select plan(34);
 
 insert into centers (id, name) values ('cd888888-0000-0000-0000-000000000001', 'Plan Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -38,11 +38,39 @@ insert into enrollments (student_id, class_id, session_id, status) values
   ('cd888888-0000-0000-0000-000000000041', 'cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000011', 'active'),
   ('cd888888-0000-0000-0000-000000000042', 'cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000011', 'active');
 
+-- class_meetings backing for the dates these fixtures post against. Required since the PR #50
+-- review: class_updates_teacher_insert now demands a matching `scheduled` class_meetings row for
+-- the teacher's own class, so a Teacher can no longer self-certify the compliance metric by
+-- posting against an arbitrary date.
+--
+-- Nothing needs inserting here. Both fixture sessions above run 2026-01-01 → 2026-06-01 with
+-- day_of_week = 0, so ADR-0038's `classes_generate_class_meetings` trigger already generated a
+-- `scheduled` row for every Sunday in that range — including the '2026-01-11' these fixtures use
+-- — at the moment each class was inserted. An explicit insert here is a no-op that reads as
+-- load-bearing, which is exactly how the first draft of assertions (3a)/(3b) below fooled itself:
+-- it "added" an unbacked date and a cancelled date via `on conflict do nothing`, both of which
+-- silently did nothing because the trigger had already scheduled them, so both throws_ok cases
+-- caught no exception. Row-absence stopped being a proxy for "no meeting" once the trigger landed.
+--
+-- (3b) needs a meeting that exists but did NOT happen, so it updates the trigger's row in place
+-- rather than trying to insert a competing one.
+update class_meetings set status = 'cancelled'
+where class_id = 'cd888888-0000-0000-0000-000000000021' and meeting_date = '2026-01-18';
+
+-- (3c) needs a `scheduled` meeting that has not happened YET. The fixture session's own range is
+-- entirely in the past relative to any real run, and the trigger only generates inside that
+-- range, so this row is inserted explicitly. Clock-relative rather than a hardcoded far-future
+-- date: it has to stay in the future for every future run of this suite, and it is compared
+-- against the same Chicago-pinned "today" the policy uses.
+insert into class_meetings (class_id, meeting_date, status) values
+  ('cd888888-0000-0000-0000-000000000021', ((now() at time zone 'America/Chicago')::date + 7), 'scheduled')
+on conflict (class_id, meeting_date) do nothing;
+
 -- Fixture rows inserted directly (bypasses RLS at setup time — same convention as
 -- 060_chat_rls.sql's own fixtures) so the read-side policies below have real rows to check.
-insert into class_updates (id, class_id, posted_by, body, homework) values
-  ('cd888888-0000-0000-0000-000000000051', 'cd888888-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Class A update', null),
-  ('cd888888-0000-0000-0000-000000000052', 'cd888888-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Class B update', null);
+insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
+  ('cd888888-0000-0000-0000-000000000051', 'cd888888-0000-0000-0000-000000000021', :'v_teacher_a'::uuid, 'Class A update', null, '2026-01-11'),
+  ('cd888888-0000-0000-0000-000000000052', 'cd888888-0000-0000-0000-000000000022', :'v_teacher_b'::uuid, 'Class B update', null, '2026-01-11');
 
 insert into comments (id, class_update_id, author_user_id, author_role, body, is_private, target_parent_id) values
   ('cd888888-0000-0000-0000-000000000061', 'cd888888-0000-0000-0000-000000000051', :'v_student_a1'::uuid, 'student', 'public comment on A', false, null),
@@ -57,15 +85,41 @@ select is((select count(*) from class_updates)::int, 1, 'Teacher sees exactly th
 -- proof doesn't leak an extra row into every class_updates count assertion below it.
 savepoint before_teacher_insert_check;
 select lives_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'another update')$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'another update', '2026-01-11')$$,
   'Teacher can insert a class_update into their own active-role class'
 );
 rollback to savepoint before_teacher_insert_check;
 
 -- (3) Teacher A cannot insert into a different class.
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000022'::uuid, auth.uid(), 'wrong class')$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000022'::uuid, auth.uid(), 'wrong class', '2026-01-11')$$,
   '42501', null, 'Teacher cannot insert a class_update into a class outside their active-role scope'
+);
+
+-- (3a)/(3b) The meeting-date gate itself, asserted directly. `class_updates_teacher_insert`'s
+-- `exists (… class_meetings … status = 'scheduled')` clause exists so a Teacher cannot
+-- self-certify the metric that audits them (20260729093000). Before these two cases the clause
+-- was exercised only in the direction that would catch it OVER-blocking — every other insert
+-- assertion in this file posts against a date the fixtures deliberately back — so deleting the
+-- whole `exists (…)` block left the suite green (PR #50 review, @ssrinivas90). These fail closed.
+-- 2026-01-14 is a WEDNESDAY inside the session's date range. The session meets on Sundays
+-- (day_of_week = 0), so the trigger generated no meeting for it — a date this class demonstrably
+-- never met on, which is precisely what a Teacher inflating their update_rate would reach for.
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'no meeting on this date', '2026-01-14')$$,
+  '42501', null, 'Teacher cannot post a class_update against a meeting_date with no class_meetings row (self-certification blocked)'
+);
+select throws_ok(
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'meeting was cancelled', '2026-01-18')$$,
+  '42501', null, 'Teacher cannot post a class_update against a cancelled meeting'
+);
+-- (3c) A `scheduled` meeting that hasn't happened yet is not postable either. Without the
+-- meeting_date upper bound, a Teacher pre-posts against every remaining meeting in the session in
+-- one statement and update_rate reads 100% for the rest of the term (PR #50 review round 5).
+select throws_ok(
+  format($$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'posting ahead', %L)$$,
+         ((now() at time zone 'America/Chicago')::date + 7)),
+  '42501', null, 'Teacher cannot post a class_update against a future scheduled meeting (no forward self-certification)'
 );
 select tests.clear_authentication();
 
@@ -172,7 +226,17 @@ select tests.clear_authentication();
 
 -- (17)/(18) Admin: org-wide, both class_updates and every comment (public + private, both classes).
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
-select is((select count(*) from class_updates)::int, 2, 'Admin sees every class_update, org-wide');
+-- Scoped to this file's own two fixture classes rather than an absolute `count(*)` (ADR-0036).
+-- The unscoped version was correct when written — nothing seeded `class_updates` — but issue
+-- #23's seed now creates 36 rows of compliance demo data, so an absolute count reads 38 and the
+-- assertion fails for a reason unrelated to what it tests. Scoping keeps the actual claim intact
+-- (Admin reads updates from BOTH classes, i.e. across class scope, not just their own) while
+-- making it independent of seed volume.
+select is(
+  (select count(*) from class_updates
+     where class_id in ('cd888888-0000-0000-0000-000000000021', 'cd888888-0000-0000-0000-000000000022'))::int,
+  2,
+  'Admin sees every class_update across both fixture classes, org-wide');
 select is((select count(*) from comments)::int, 3, 'Admin sees every comment (public and private) org-wide, both classes');
 select throws_ok(
   $$update class_updates set body = 'admin edit' where id = 'cd888888-0000-0000-0000-000000000051'::uuid$$,
@@ -201,17 +265,17 @@ select tests.clear_authentication();
 select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'cd888888-0000-0000-0000-000000000021'::uuid);
 
 select lives_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5000))$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5000), '2026-01-11')$$,
   'a class_update body exactly at the 5000-char cap is accepted'
 );
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5001))$$,
+  $$insert into class_updates (class_id, posted_by, body, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), repeat('x', 5001), '2026-01-11')$$,
   '23514',
   null,
   'a class_update body one char over the cap is rejected by class_updates_body_len'
 );
 select throws_ok(
-  $$insert into class_updates (class_id, posted_by, body, homework) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'fine', repeat('y', 2001))$$,
+  $$insert into class_updates (class_id, posted_by, body, homework, meeting_date) values ('cd888888-0000-0000-0000-000000000021'::uuid, auth.uid(), 'fine', repeat('y', 2001), '2026-01-11')$$,
   '23514',
   null,
   'homework one char over the 2000-char cap is rejected by class_updates_homework_len'

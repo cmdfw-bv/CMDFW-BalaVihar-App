@@ -1,6 +1,6 @@
 # ADR-0033: `push-send` contract extended to a discriminated event reference (ADR-0028 addendum)
 
-**Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `notifications-infra` (`.docs/specs/system/notifications-infra.md`), consumed by Teacher → `class-update-and-home-feed` (issue #21).
 **Extends:** ADR-0028 (push dispatch is client-invoked). Does not reopen ADR-0028's core decision (client-invoked, service-role, re-derive-server-side) — fixes the one thing it left open: the exact shape of a second trigger source's request.
 

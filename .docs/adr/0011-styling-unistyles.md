@@ -1,6 +1,6 @@
 # ADR-0011: Styling — Unistyles 3 with a generated theme from design-tokens.json
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** UX · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 The Expo app (RN + RN-Web) must reproduce the Sankalp design with high fidelity on **web and native** from one token source. RN native doesn't support CSS `:root` variables, so `tokens.css` can't be the native source. App UI is forms/lists/dashboards; gamification (animation-heavy) is a deferred future state (ADR-0012). Maintainers are non-technical + Claude (AI-legibility matters). Verified live: Tamagui 14k★ ("100% parity" + compiler), Unistyles 2.9k★ (themes/breakpoints/variants over StyleSheet), NativeWind 7.9k★.
