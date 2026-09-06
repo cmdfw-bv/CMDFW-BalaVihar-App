@@ -27,19 +27,23 @@ export const END = '<!-- ADR-INDEX:END -->';
 // The legacy numbered set is FROZEN at ADR-0001..ADR-0038 (ADR-2026-08-21-adr-identifier-scheme:
 // "existing ADRs keep their numbers"). The cutover line is 0038 — the high-water mark across
 // main (0001–0033) plus the numbered ADRs already in flight when enforcement landed (0034–0036,
-// 0038 on #50; 0037 on #58), grandfathered so those PRs merge as-is. No NEW numbered id may be
+// 0038 on PR #50; 0037 on issue #58's branch), grandfathered so those PRs merge as-is. No NEW id may be
 // minted beyond this set — new ADRs must be date-based (ADR-YYYY-MM-DD-<slug>). This is what
 // makes a fresh `0039-*.md` fail the gate.
 export const LEGACY_IDS = new Set(
   Array.from({ length: 38 }, (_, i) => `ADR-${String(i + 1).padStart(4, '0')}`)
 );
 
-// A real calendar date in YYYY-MM-DD form (no Date() — kept pure/deterministic).
+// A real calendar date in YYYY-MM-DD form — month 1-12 and day within that month's real length,
+// leap-aware (so 2026-02-31 / 2026-04-31 are rejected). No Date() — kept pure/deterministic.
 const isValidYmd = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (!m) return false;
-  const [, , mm, dd] = m.map(Number);
-  return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
+  const [, y, mo, d] = m.map(Number);
+  if (mo < 1 || mo > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  return d <= daysInMonth;
 };
 
 // Extract a `**Name:** value` header field. Returns '' when absent (validation flags the miss).
@@ -53,9 +57,15 @@ export const field = (text, name) => {
 // Dated:  YYYY-MM-DD-<slug>.md → ADR-<full-stem>.
 export function expectedIdForFilename(filename) {
   const stem = filename.replace(/\.md$/, '');
-  if (/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(stem)) {
+  // Date-based: YYYY-MM-DD-<slug>. Detect the date prefix FIRST so a malformed dated name reports
+  // its real problem (bad date / non-kebab slug) instead of falling through to the legacy branch
+  // and misreporting "not a known legacy id".
+  if (/^\d{4}-\d{2}-\d{2}-/.test(stem)) {
     const date = stem.slice(0, 10);
     if (!isValidYmd(date)) return { error: `filename has an invalid date "${date}" (expected YYYY-MM-DD-<slug>)` };
+    if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(stem)) {
+      return { error: `slug in "${filename}" must be lowercase kebab-case (a-z, 0-9, hyphens) after the YYYY-MM-DD- date` };
+    }
     return { expectedId: `ADR-${stem}`, kind: 'dated' };
   }
   const legacy = /^(\d{4})-.+$/.exec(stem);
@@ -105,6 +115,12 @@ export function validateAdr(adr) {
   }
   if (!adr.date) p('missing **Date:** field');
   else if (!isValidYmd(adr.date)) p(`invalid **Date:** "${adr.date}" (expected YYYY-MM-DD)`);
+  else if (expected.kind === 'dated' && adr.date !== adr.file.slice(0, 10)) {
+    // Decision 1 of ADR-2026-08-21: a date-based id's date is the immutable authoring date, so the
+    // Date: field must agree with the date embedded in the id — otherwise the "immutable" claim is
+    // documentation, not a guarantee.
+    p(`**Date:** "${adr.date}" must match the date in the id (${adr.file.slice(0, 10)}) — the authoring date is immutable`);
+  }
 
   return errors;
 }
@@ -124,16 +140,16 @@ export function findDuplicateIds(adrs) {
   return errors;
 }
 
+// Deterministic, locale-INDEPENDENT ordering (byte/codepoint), so the generated block is
+// byte-identical on every machine — CI compares it exactly, and localeCompare would drift.
+const byCodepoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 // Every problem across the whole ADR set (per-file + cross-file duplicates), sorted for
 // deterministic output. Empty array ⇒ the set is valid and safe to render.
 export function validateAll(adrs) {
   const errors = [...adrs.flatMap(validateAdr), ...findDuplicateIds(adrs)];
   return errors.sort(byCodepoint);
 }
-
-// Deterministic, locale-INDEPENDENT ordering (byte/codepoint), so the generated block is
-// byte-identical on every machine — CI compares it exactly, and localeCompare would drift.
-const byCodepoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 const esc = (s) => s.replace(/\|/g, '\\|');
 
@@ -158,15 +174,19 @@ export function buildIndexBlock(adrs) {
   return `${START}\n\n${out.trimEnd()}\n\n${END}`;
 }
 
-// Splice a freshly-built block into the README between the markers. Fail-CLOSED: if either
-// marker is missing we return an error rather than silently leaving the README untouched
-// (the old fallback could make --check compare the file against itself and pass on garbage).
+// Splice a freshly-built block into the README between the markers, by STRING SLICING — never
+// String.replace. Two reasons, both real bugs that a regex .replace() hides:
+//   1. Fail-open: a non-matching regex .replace() returns its input UNCHANGED, so markers that are
+//      absent OR out of order (END before START) would leave the README untouched and pass --check.
+//   2. Corruption: with .replace(), `$&`/`` $` ``/`$'`/`$$`/`$1` sequences in a title (which live
+//      inside `block`) expand as replacement patterns, injecting the markers into a table cell.
+// Fail-CLOSED: missing or out-of-order markers return a NAMED error, never an unchanged README.
 export function renderReadme(readmeText, block) {
-  if (!readmeText.includes(START) || !readmeText.includes(END)) {
-    return { error: 'README.md is missing the ADR-INDEX markers (<!-- ADR-INDEX:START … --> / <!-- ADR-INDEX:END -->) — cannot place the generated index' };
+  const startIdx = readmeText.indexOf(START);
+  const endIdx = readmeText.indexOf(END);
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+    return { error: 'README.md is missing or has out-of-order ADR-INDEX markers (<!-- ADR-INDEX:START … --> must come before <!-- ADR-INDEX:END -->) — cannot place the generated index' };
   }
-  const rx = new RegExp(
-    `${START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
-  );
-  return { readme: readmeText.replace(rx, block) };
+  const readme = readmeText.slice(0, startIdx) + block + readmeText.slice(endIdx + END.length);
+  return { readme };
 }

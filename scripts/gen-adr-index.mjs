@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { parseAdr, validateAll, buildIndexBlock, renderReadme } from './_adr-index.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ADR_DIR = path.join(ROOT, '.docs/adr');
+// ADR_INDEX_DIR overrides the ADR directory — test-only, so the CLI-level test can run against a
+// throwaway fixture instead of the repo's real .docs/adr. Unset in normal use.
+const ADR_DIR = process.env.ADR_INDEX_DIR ? path.resolve(process.env.ADR_INDEX_DIR) : path.join(ROOT, '.docs/adr');
 const README = path.join(ADR_DIR, 'README.md');
 const CHECK = process.argv.includes('--check');
 

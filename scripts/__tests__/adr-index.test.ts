@@ -195,10 +195,53 @@ describe('renderReadme — fail-closed on missing markers (the blocker)', () => 
   it('returns a NAMED error when the markers are missing (never a silent no-op)', () => {
     const { readme: out, error } = renderReadme('# ADRs\n\n## Index\n\njust prose, no markers\n', block);
     expect(out).toBeUndefined();
-    expect(error).toMatch(/missing the ADR-INDEX markers/);
+    expect(error).toMatch(/ADR-INDEX markers/);
   });
 
   it('returns an error when only one marker is present', () => {
-    expect(renderReadme(`# ADRs\n${START}\nno end marker\n`, block).error).toMatch(/missing the ADR-INDEX markers/);
+    expect(renderReadme(`# ADRs\n${START}\nno end marker\n`, block).error).toMatch(/ADR-INDEX markers/);
+  });
+
+  it('fails closed on INVERTED markers (END before START) — the narrowed fail-open (thread 1)', () => {
+    // both markers present, but out of order: a regex .replace() would no-op and pass; slicing must error.
+    const inverted = `# ADRs\n\n## Index\n\n${END}\n\nstuff\n\n${START}\n\n## Footer\n`;
+    const { readme: out, error } = renderReadme(inverted, block);
+    expect(out).toBeUndefined();
+    expect(error).toMatch(/out-of-order/);
+  });
+
+  it('inserts a title containing `$&` LITERALLY, without corrupting the README (thread 2)', () => {
+    // buildIndexBlock is the real source of `block`; a `$&` in a title must not expand as a replace pattern.
+    const dollarBlock = buildIndexBlock([adr({ title: 'Cost $& savings review' })]);
+    const { readme: out, error } = renderReadme(readme, dollarBlock);
+    expect(error).toBeUndefined();
+    expect(out).toContain('Cost $& savings review'); // literal, not expanded
+    expect(out!.match(new RegExp(START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'))!.length).toBe(1); // marker not duplicated
+  });
+});
+
+describe('validateAdr — date-agreement (thread 3: immutable authoring date is enforced)', () => {
+  it('passes when a dated ADR’s Date field matches the date in its id', () => {
+    expect(validateAdr(adr({ file: '2026-08-21-x.md', id: 'ADR-2026-08-21-x', category: 'Infra/Process', date: '2026-08-21' }))).toEqual([]);
+  });
+  it('flags a dated ADR whose Date field disagrees with the date in its id', () => {
+    expect(
+      validateAdr(adr({ file: '2026-08-21-x.md', id: 'ADR-2026-08-21-x', category: 'Infra/Process', date: '2026-09-01' })).join(),
+    ).toMatch(/must match the date in the id/);
+  });
+});
+
+describe('isValidYmd tightening + slug-format errors', () => {
+  it('rejects an impossible calendar date (2026-02-31) in the Date field', () => {
+    expect(validateAdr(adr({ date: '2026-02-31' })).join()).toMatch(/invalid \*\*Date/);
+  });
+  it('rejects an impossible date in a dated filename', () => {
+    expect(expectedIdForFilename('2026-02-31-foo.md').error).toMatch(/invalid date/);
+  });
+  it('accepts a leap-day (2028-02-29)', () => {
+    expect(expectedIdForFilename('2028-02-29-foo.md')).toEqual({ expectedId: 'ADR-2028-02-29-foo', kind: 'dated' });
+  });
+  it('gives a slug-format error (not "not a legacy id") for an uppercase slug on a dated file', () => {
+    expect(expectedIdForFilename('2026-09-02-Foo.md').error).toMatch(/lowercase kebab-case/);
   });
 });
