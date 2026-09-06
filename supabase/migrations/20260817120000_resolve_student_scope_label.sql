@@ -12,9 +12,12 @@
 -- check against sessions.end_date; a stale 'active' row from a finished session is mitigated by
 -- ordering, not filtered out). A student with NO active enrollment -- withdrawn, or not in the
 -- latest registration -- resolves to null. Making that null render gracefully is deliberately NOT
--- this migration's job: such a student should not have portal access at all. WHO may log in
--- (registration-driven access + the annual reset, all roles) is a separate access-lifecycle
--- concern tracked for a future ADR (see #82) -- out of scope here.
+-- this migration's job: whether such a student should retain portal access at all is an open
+-- architectural question, not decided here (it runs against the precedent that reference/
+-- operational reads like classes_parent_select/classes_student_select stay unfiltered for a
+-- withdrawn family). WHO may log in -- registration-driven access + the annual reset, all roles
+-- -- is a separate access-lifecycle concern tracked for a future ADR (see #82) -- out of scope
+-- here; /architect owns the eventual call, this migration takes no position on it.
 --
 -- A returning student can legitimately hold TWO active enrollments (last year's + this year's):
 -- enrollments_one_active_per_session only constrains WITHIN a session, and the reset that retires
