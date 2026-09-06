@@ -1,6 +1,6 @@
 # ADR-0001: Frontend — Expo (React Native + RN-Web), TypeScript
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 One codebase must serve a web PWA now and native (iOS/Android) fast-follow, maintained by 3 non-technical volunteers + Claude Code. Verified live: Expo SDK 56 (RN 0.85, React 19.2, RN-Web 0.21).

@@ -1,6 +1,6 @@
 # ADR-0036: `class_updates` canonical shape reconciliation, explicit `meeting_date`, and a single session-weekday column — integration of issue #21 and issue #23
 
-**Status:** Closed · **Date:** 2026-07-28 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-28 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum) · consumed by Teacher → `class-update-and-home-feed` (`.docs/specs/teacher/class-update-and-home-feed.md`, PR #48) and Coordinator → `compliance-dashboard` (`.docs/specs/coordinator/compliance-dashboard.md`, PR #50). **Supersedes the "minimum shape" paragraph of ADR-0034** (`class_updates` is System-owned) under that ADR's own escape clause; ADR-0034's *ownership* decision stands unchanged. **Amends ADR-0035** (`class_meetings` calendar) to read `sessions.day_of_week` instead of introducing `sessions.meeting_weekday`. Does not modify ADR-0031 or ADR-0032, both of which stand as written.
 
 ### Context

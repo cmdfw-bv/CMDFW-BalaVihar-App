@@ -1,6 +1,6 @@
 # ADR-0029: Sankalp component kit ships as one System-owned unit (full-library exception to §12.12 per-capability ownership)
 
-**Status:** Closed · **Date:** 2026-07-18 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** UX · **Date:** 2026-07-18 · **Deciders:** Project owner + architect
 
 ### Context
 `.docs/3_ARCHITECTURE.md` §12.12 assigns each capability to its **owning persona's** spec — e.g. `FeedCard` would normally belong to Student/Parent feed, `ChatBubble` to chat, `ComplianceBar` to the Coordinator dashboard, `CsvImport`/`UserRoleRow` to Admin. Issue #18 ("Build the reusable Sankalp component kit") asks for the entire `design/sankalp/` component surface — `core/*` (8), `brand/*` (1 remaining: `EventDateBlock`), and all of `bv-connect/components/**` (16, across `comments/privacy/chat/admin/navigation/dashboard/feed/notifications/auth`) — ported as one deliverable, ahead of any of those owning features being built. Left under the default rule, each persona feature would independently re-port its own slice of the same reference components before its own feature work could start, duplicating effort and staggering the parallelism §12.6 is designed around.

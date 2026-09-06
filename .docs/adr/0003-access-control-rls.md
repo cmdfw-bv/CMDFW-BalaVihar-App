@@ -1,6 +1,6 @@
 # ADR-0003: Access control enforced at the database layer (RLS)
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Auth/Access · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 
 ### Context
 Minors' data must be protected even if app code has a bug. Access spans multiple personas and scopes (own-children → class → session → org).

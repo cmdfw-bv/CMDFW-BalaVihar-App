@@ -1,6 +1,6 @@
 # ADR-0016: Notification preferences — per-channel levels with role-aware defaults
 
-**Status:** Closed · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Chat/Notifications · **Date:** 2026-06-20 · **Deciders:** Project owner + architect
 **Extends:** ADR-0015 (chat access model), 3_ARCHITECTURE §8 (notifications). New requirement — absent from docs 1–3.
 
 ### Context

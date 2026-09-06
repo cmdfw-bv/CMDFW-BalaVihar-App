@@ -1,6 +1,6 @@
 # ADR-0004: Multi-persona resolution via Postgres Custom Access Token Hook
 
-**Status:** Closed · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Auth/Access · **Date:** 2026-06-16 · **Deciders:** Project owner + architect
 **Supersedes:** the earlier draft "JWT custom claims via Edge Function" approach (from the removed root-level ARCHITECTURE_DECISIONS.md, preserved in git history).
 
 ### Context

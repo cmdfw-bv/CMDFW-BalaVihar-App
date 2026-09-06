@@ -6,7 +6,7 @@
 >
 > **Amended by [ADR-0036](0036-class-updates-shape-reconciliation.md):** this ADR's `sessions.meeting_weekday` column is not created. `sessions.day_of_week` (ADR-0031, already migrated/seeded/tested) is the single source of truth for session weekday, and `generate_class_meetings_for_session` reads it. The `class_meetings` calendar decision itself stands unchanged.
 
-**Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum, detailed at `/design`) · consumed by Coordinator → `compliance-dashboard` (`.docs/specs/coordinator/compliance-dashboard.md`) and, later, any Teacher/System item computing an "expected meeting dates" denominator.
 
 ### Context

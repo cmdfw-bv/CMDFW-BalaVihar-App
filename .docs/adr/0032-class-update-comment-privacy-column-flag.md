@@ -1,6 +1,6 @@
 # ADR-0032: Class-update comment privacy — column-flag RLS with scope-derived oversight
 
-**Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** Teacher → `class-update-and-home-feed` (`.docs/specs/teacher/class-update-and-home-feed.md`), issue #21.
 **Extends:** ADR-0015 (chat access model) — reuses its Teacher↔Parent private-channel *access* precedent, but deliberately diverges on *implementation shape* (see Decision). Does not touch ADR-0015's chat schema.
 

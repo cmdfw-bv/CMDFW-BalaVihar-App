@@ -1,6 +1,6 @@
 # ADR-0030: Teacher attendance roster resolves `enrollment_id` via direct `enrollments` read (ADR-0019/ADR-0021 addendum)
 
-**Status:** Closed · **Date:** 2026-07-23 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-23 · **Deciders:** Project owner + architect
 **Governs:** Teacher → `attendance-ui` (`.docs/specs/teacher/attendance-ui.md`). Resolves the brief's flagged hard dependency: `get_class_roster_for_staff` (ADR-0019) returns `setof students` with no `enrollment_id`, but `mark_attendance_for_staff` (ADR-0021) requires `p_enrollment_id` — and for a date with no existing `attendance` row, there is no `attendance` row to join through either. Does not modify ADR-0019 or ADR-0021's decisions; both stand unchanged.
 
 ### Context

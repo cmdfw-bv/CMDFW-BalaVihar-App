@@ -4,7 +4,7 @@
 >
 > **The "minimum shape" paragraph below is superseded by [ADR-0036](0036-class-updates-shape-reconciliation.md)** — under this ADR's own Consequences clause, Teacher's write requirements (body, homework, threaded comments) needed a shape this ADR did not anticipate. **The ownership decision below stands unchanged.**
 
-**Status:** Closed · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Data · **Date:** 2026-07-24 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum, detailed at `/design`) · consumed by Coordinator → `compliance-dashboard` (`.docs/specs/coordinator/compliance-dashboard.md`) and, later, Teacher's not-yet-refined "post class update" item.
 
 ### Context
