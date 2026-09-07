@@ -78,6 +78,7 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 | [ADR-0025](0025-cicd-residency-scan-and-codeowners.md) | CI residency/tracker-dependency scan + CODEOWNERS-required review (ADR-0024 addendum) | Closed | 2026-07-11 |
 | [ADR-2026-07-30-staging-builds-from-main](2026-07-30-staging-builds-from-main.md) | Staging deploys from `main` (no staging branch); prod deferred | Closed | 2026-07-30 |
 | [ADR-2026-08-21-adr-identifier-scheme](2026-08-21-adr-identifier-scheme.md) | Date-based ADR ids + a generated, categorized index | Closed | 2026-08-21 |
+| [ADR-2026-09-07-test-fixtures-never-in-migrations](2026-09-07-test-fixtures-never-in-migrations.md) | Test-only database objects install via the seed path, never a migration | Closed | 2026-09-07 |
 
 <!-- ADR-INDEX:END -->
 
