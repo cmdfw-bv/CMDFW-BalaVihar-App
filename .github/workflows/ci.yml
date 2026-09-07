@@ -24,6 +24,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: node scripts/check-unistyles-config.js
+      - name: No test-only DB objects in migrations (ADR-2026-09-07)
+        run: node scripts/check-migration-fixtures.js
       - name: ADR index is in sync with the ADR files
         run: node scripts/gen-adr-index.mjs --check
 
