@@ -167,7 +167,7 @@ The three function bodies, the `create schema`, the `create extension`, the `gra
 ### 8 · Consumers (cross-reference, not duplicated — §12.12)
 
 - All 26 existing pgTAP files: unchanged source, unchanged behavior. AC#3 is the proof.
-- **cloud-environment-provisioning (#9)**: gains AC#6 as a blocking runbook step before production B is declared ready.
+- **cloud-environment-provisioning (#9)**: gains AC#6 as a blocking runbook step before production B is declared ready. **Landed in this PR** — `cloud-environment-provisioning.md` §4.5 now spells prod-B creation as three steps with the absence check blocking the third, plus an unticked acceptance box. It lands here rather than in #88 because the check file and the ADR exist only on this branch; a step added in #88 would have cited files not yet on `main`. Staging is remediated separately by **#89**, the rehearsal for the same operation against real data.
 - **cicd-pipeline**: gains artifact 6 as an `app-tests` step.
 
 ---

@@ -105,7 +105,7 @@ Order is documented CLI behavior, not lexicographic luck — `seed.sql` calls `t
 
 Committed SQL an operator runs against a linked project: asserts no `tests` schema (`to_regnamespace`), no `pgtap` row in `pg_extension`, and no routine named `create_supabase_user` / `authenticate_as` / `clear_authentication` in **any** schema (`pg_proc`, not `public` alone — pgTAP lives in `extensions`). Raises on any hit; prints one confirmation line when clean.
 
-Recorded as a **blocking** step in the `cloud-environment-provisioning` (#9) row and cross-referenced from this spec. Not run here — no cloud credentials, and that is `/deploy-staging`'s job.
+Recorded as a **blocking** step in `cloud-environment-provisioning.md` §4.5 — added by this branch after #88 landed that document on `main` (2026-09-08). Not *run* here: no cloud credentials, and applying it to staging is **#89**.
 
 ## Task 8 — `/test`: full verification on an isolated stack
 
@@ -132,7 +132,7 @@ Spec + `_index.md` status → Built/Tested with the measured counts. Commit the 
 | 3 | Task 8.2–8.3 — reset + 28 files green + seed's 8 calls succeed |
 | 4 | Tasks 1–3 — unit tests, real-tree run, and the scratch-migration red-proof |
 | 5 | Task 4 `005_` + its mutation proof |
-| 6 | Task 7 + the #9 runbook step |
+| 6 | Task 7 + §4.5 of `cloud-environment-provisioning.md` (added here) + #89 for staging |
 
 **Deliberately not tested here:** that a *cloud* database ends up clean. No cloud credentials in this stage; that is `/deploy-staging`, and AC#6 is the step that proves it there.
 
