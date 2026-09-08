@@ -85,7 +85,7 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
    psql "$PROD_DB_URL" -f supabase/checks/cloud_fixture_absence.sql
    ```
 
-   Expect one line: `cloud fixture-absence check: PASS`. It exits non-zero and names what it found otherwise. **Provisioning is not complete until this passes** — do not tick the acceptance box, and do not point anything at project B, until it does.
+   Expect one line: `cloud fixture-absence check: PASS`, and exit status 0. On a finding it names what it found and **exits non-zero** — the file sets `ON_ERROR_STOP` itself, so that holds for any invocation and you do not need to remember a flag. **Provisioning is not complete until this passes** — do not tick the acceptance box, and do not point anything at project B, until it does.
 
 > **Why step 3 is blocking rather than advisory.** The failure it catches is a `db push` that dies *between* those two migrations — timeout, dropped connection, an interrupted run. The account factory is then left installed indefinitely, and a half-applied migration run does not announce where it stopped. That is the documented reason AC#6 was raised from "verifiable on demand" to blocking at `/architect` ([ADR-2026-09-07-test-fixtures-never-in-migrations](../../adr/2026-09-07-test-fixtures-never-in-migrations.md), Decision 7; spec [test-fixture-isolation](test-fixture-isolation.md)). If it fails, re-run `supabase db push` to apply the drop, then re-run the check — do not proceed on a failed check.
 

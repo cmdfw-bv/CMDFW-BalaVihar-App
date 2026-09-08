@@ -11,6 +11,15 @@
 --
 -- Holds no credentials. Takes the connection string from the caller's environment.
 -- Expected on a healthy cloud database: one line, "cloud fixture-absence check: PASS".
+--
+-- Self-contained exit-code contract. psql's default is to print an error and still exit 0, so
+-- without this the raise below would be *visible* but the process would report success — and a
+-- blocking gate whose exit status says "fine" is not a gate. Set here rather than relying on the
+-- caller passing -v ON_ERROR_STOP=1, so every invocation gets it. (Found in review of PR #86 by
+-- @arunasharad-coder: the runbook documented the bare `psql -f` form, while every test invocation
+-- had passed the flag.)
+\set ON_ERROR_STOP on
+
 do $$
 declare
   -- The ::text casts on every append are load-bearing: `text[] || 'literal'` is ambiguous

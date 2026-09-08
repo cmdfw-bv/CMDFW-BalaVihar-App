@@ -156,6 +156,24 @@ Verified on an isolated stack — `project_id = bv-fixture-isolation-verify`, 55
 | `typecheck` · `lint` | clean |
 | `check-secrets` · `check-trackers` · `check-unistyles-config` · `check-migration-fixtures` · `gen-adr-index --check` | all pass |
 
+### Review finding (PR #86, @arunasharad-coder, 2026-09-08) — the check failed open on exit status
+
+`cloud_fixture_absence.sql` raised correctly and printed the FAIL, but **exited 0** when invoked
+as §4.5 documented it (bare `psql -f`). psql's default is to report an error and still exit
+successfully. Every invocation in the verification above had passed `-v ON_ERROR_STOP=1`, so the
+harness was stricter than the shipped artifact and the gap survived all of it — a blocking gate
+whose exit status says "fine" is not a gate.
+
+Fixed by setting `\set ON_ERROR_STOP on` **inside** the file, so the contract holds for any
+caller rather than depending on the operator remembering a flag. Re-verified in all three
+combinations: seeded + no flag → exit 3; cloud-shaped + no flag → exit 0; seeded + flag → exit 3.
+Pinned by `scripts/__tests__/cloud-fixture-check.test.ts` (5 tests), mutation-proved by deleting
+the pragma and confirming red — the same source-scan idiom as `_signout-delegation-checks.js`,
+since CI can never run the check itself against a cloud project.
+
+**The lesson generalises:** test the artifact exactly as the runbook invokes it. A convenience
+flag in the harness hid a defect in the contract.
+
 ### Two deviations from this plan, both recorded rather than quietly absorbed
 
 1. **AC#1 turned out to be locally provable, contrary to the plan's "deliberately not tested here".** `supabase db reset --no-seed` produces exactly a cloud-shaped database — every migration applied, no seed file loaded. Running `cloud_fixture_absence.sql` against that state proves the migration path alone leaves no fixture surface, without any cloud credentials. The plan understated what was verifiable; AC#1 now has a local proof *and* the blocking cloud step, not just the latter.
