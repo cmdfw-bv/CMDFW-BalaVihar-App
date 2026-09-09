@@ -75,6 +75,24 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
 
 > 🔴 **Gated on #66 — ping @mehtamaulik-creator BEFORE creating project B.** #66 removes the `tests.create_supabase_user` auth-user factory from the cloud migration path; it must land *before* a database that will hold real minors' records exists. Once prod holds real data there is no clean second chance (Maulik ji's note on this issue, 2026-09-07).
 
+**Creating project B is three steps, and the third one blocks.** "#66 merged" proves the drop migration *exists*; it does not prove this project *ran* it.
+
+1. **Create** the project — same org, same region, `cmdfw-bv-prod`.
+2. **Apply migrations** — `supabase db push` against project B. Expect the `20260709022932` → `20260907120000` pair to create the pgTAP test-fixture surface and then drop it within this one run; that is by design (the July migration is never edited, because it is the record of what staging ran).
+3. **Verify absence — blocking.** Run the committed check against project B:
+
+   ```
+   psql "$PROD_DB_URL" -f supabase/checks/cloud_fixture_absence.sql
+   ```
+
+   Expect one line: `cloud fixture-absence check: PASS`, and exit status 0. On a finding it names what it found and **exits non-zero** — the file sets `ON_ERROR_STOP` itself, so that holds for any invocation and you do not need to remember a flag. **Provisioning is not complete until this passes** — do not tick the acceptance box, and do not point anything at project B, until it does.
+
+> **Why step 3 is blocking rather than advisory.** The failure it catches is a `db push` that dies *between* those two migrations — timeout, dropped connection, an interrupted run. The account factory is then left installed indefinitely, and a half-applied migration run does not announce where it stopped. That is the documented reason AC#6 was raised from "verifiable on demand" to blocking at `/architect` ([ADR-2026-09-07-test-fixtures-never-in-migrations](../../adr/2026-09-07-test-fixtures-never-in-migrations.md), Decision 7; spec [test-fixture-isolation](test-fixture-isolation.md)). If it fails, re-run `supabase db push` to apply the drop, then re-run the check — do not proceed on a failed check.
+
+> ⚠️ **Never point seeding at a cloud project.** `supabase db push --include-seed` and `supabase db reset --linked` both load `supabase/seed/`, which installs the fixture surface *and* fabricates ~60 synthetic `auth.users` rows; `db reset --linked` additionally drops every user-created entity in the target first. Neither belongs in any runbook (ADR-2026-09-07 Decision 5). Hook enforcement of this is tracked as **#87** — until it lands, this rule is carried by the operator, not by a rail.
+
+**Rehearse against staging first.** **#89** applies the same drop migration to `cmdfw-bv-staging` (which carries the fixture surface today) and runs this same check there. Doing it against staging proves the operation works on a real cloud project before the identical steps run against a database holding real family data.
+
 ### Hardening (small, non-blocking)
 `SUPABASE_SERVICE_ROLE_KEY` on Netlify is scoped **Builds, Functions, Runtime** — broader than the "Functions-only" intent. The published-bundle secret scan (#65 AC#4) came back **clean**, so there's no active leak (Expo only inlines `EXPO_PUBLIC_*`), but the scope should still be tightened to Functions-only as hygiene.
 
@@ -98,6 +116,7 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
 
 - [x] Staging Supabase project exists, US region, **all 34 migrations** applied and verified (`local == remote`)
 - [ ] Prod Supabase project exists, same region — **deferred, gated on #66** (§4.5)
+- [ ] **Prod project B passes `supabase/checks/cloud_fixture_absence.sql`** — blocking; provisioning is not complete without it (§4.5 step 3). Not tickable until project B exists
 - [x] Netlify site imported, building from `netlify.toml`
 - [x] Functions pinned to US-East (`us-east-2`)
 - [x] Per-context env vars set — service-role key scope to be tightened to Functions-only (§4 Hardening); no client leak, verified via #65 AC#4 scan

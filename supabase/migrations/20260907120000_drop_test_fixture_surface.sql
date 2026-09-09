@@ -1,0 +1,22 @@
+-- Removes the pgTAP test-fixture surface from every environment.
+-- ADR-2026-09-07-test-fixtures-never-in-migrations · issue #66
+--
+-- Why this file exists instead of an edit to 20260709022932_enable_pgtap_and_test_helpers.sql:
+-- that migration already ran against cloud staging in July 2026, and it stays byte-for-byte as
+-- the record of what staging executed (ADR Decision 2). Rewriting applied history would trade a
+-- truthful migration log for a slightly tidier end state.
+--
+-- What each environment does with this file:
+--   * cloud staging  — has the objects since July; loses them here.
+--   * a fresh cloud project — creates them in 20260709022932 and drops them here, inside the
+--     same `db push`. That transient window is the accepted cost of keeping history immutable;
+--     an interrupted run leaves them installed, which is why the post-provisioning absence
+--     check (supabase/checks/cloud_fixture_absence.sql) BLOCKS rather than merely reports.
+--   * local / CI — drops them here too, then reinstalls from supabase/seed/00_test_fixtures.sql,
+--     which `supabase db reset` loads and `supabase db push` never does.
+--
+-- `cascade` on the schema is bounded: it takes the three helpers and nothing else, because
+-- nothing outside `tests` depends on them. It is deliberately NOT used on the extension — a
+-- surprise dependency should fail loudly here rather than silently drop an application object.
+drop schema if exists tests cascade;
+drop extension if exists pgtap;
