@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all dev/test (local `db reset`, CI/pgTAP, RLS-adversarial, every persona UI) **+ #65 cloud staging seed** · **scope:** infra / test-data — a reusable, `tests.*`-free synthetic domain dataset loaded identically local + cloud · **governing ADR:** [ADR-2026-09-14-synthetic-seed-shared-data-per-env-accounts](../../adr/2026-09-14-synthetic-seed-shared-data-per-env-accounts.md) (the #19↔#65 seam — Option A) · **covers:** GitHub #19; the shared `domain.sql` consumed by #65
 
-> **Stage:** `/refine` ✓ → `/architect` ✓ (2026-09-14) → `/design` ✓ (2026-09-15) → next is `/plan`.
+> **Stage:** `/refine` ✓ → `/architect` ✓ (2026-09-14) → `/design` ✓ (2026-09-15) → `/plan` ✓ → `/build` ✓ (2026-09-16, PR #94 — in review).
 
 ## Requirements (refined)
 
@@ -120,6 +120,7 @@ After `domain.sql` loads, each environment creates its **own accounts** and the 
 - **Cloud account provisioning** (Auth Admin API) — **#65**.
 - **Per-year re-combination logic / who splits classes** — the class-config concern (program leadership, per registration); #19 snapshots this year only.
 - **Populating non-F3 sessions** — catalog names only.
+- **HS-band (grade 10–12) student coverage** — a consequence of the empty 10–12 class: no seeded student is in grades 10–12 at all, so any future scenario needing a grade-10/11/12 student has zero seed coverage. (The pilot's login-bearing students are the 7-8-9 class.) A later session that needs it would extend the seed.
 
 ### Handoff
 No `/migration` (no schema change). → **`/plan`**: tasks for authoring `domain.sql` (TDD — row-count/shape assertions), refactoring `seed.sql` to build on it, the `config.toml` + `DOMAIN_SQL_PATH` wiring, and updating the affected pgTAP/RLS fixtures to the new 6-class shape.
