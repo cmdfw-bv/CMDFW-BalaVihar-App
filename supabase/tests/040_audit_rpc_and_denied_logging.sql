@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(20);
 
 insert into families (id, label) values ('fd111111-0000-0000-0000-000000000001', 'Audit Family');
 select tests.create_supabase_user('audit-teacher-in@test.local') as v_teacher_in \gset
@@ -119,6 +119,61 @@ select tests.create_supabase_user('audit-coordinator-out@test.local') as v_coord
 select tests.authenticate_as(:'v_coord_out'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000099'::uuid);
 select is((select count(*) from audit_log)::int, 0,
   'coordinator scoped to an unrelated session sees zero audit_log rows');
+
+-- ---------------------------------------------------------------------------
+-- get_consents_for_staff success paths.
+--
+-- Coverage gap found by the RLS adversarial audit for issue #92: only the teacher-denial case
+-- (above) was asserted. Nothing covered a coordinator/bv_coordinator/admin actually receiving a
+-- row, and nothing asserted the audit trail keyed to target_table = 'consents'. That matters
+-- more now than it did: migration 20260915120000 revokes INSERT/UPDATE/TRUNCATE on `consents`
+-- (ADR-2026-09-15-consent-captured-at-registration), leaving these RPC reads as the table's only
+-- remaining staff access. If they silently broke, no test would notice.
+--
+-- Placed last on purpose: every call below writes an audit_log row, and the assertions above pin
+-- exact audit_log totals (6 / 6 / 0). Adding these earlier would break them.
+
+select tests.clear_authentication();
+insert into consents (student_id, consent_type, granted, granted_by) values
+  ('5e111111-0000-0000-0000-000000000001', 'participation', true, null);
+
+-- Coordinator scoped to the student's own session is authorized.
+select tests.authenticate_as(:'v_coord_in'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for a coordinator scoped to the student''s session');
+
+-- Coordinator scoped to an unrelated session is not — proves the scope check excludes.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_coord_out'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000099'::uuid);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 0,
+  'get_consents_for_staff returns nothing for a coordinator scoped to an unrelated session');
+
+-- Admin is org-wide and ignores scope_id.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for an org-scoped admin');
+
+-- bv_coordinator asserted separately from admin even though they share a branch: they are two
+-- string literals in the RPC's `v_role in (...)` list, and a typo in one would still pass if only
+-- the other were tested.
+select tests.clear_authentication();
+select tests.create_supabase_user('audit-bvcoord@test.local') as v_bvcoord \gset
+select tests.authenticate_as(:'v_bvcoord'::uuid, 'bv_coordinator', 'org', null);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for an org-scoped bv_coordinator');
+
+-- The audit trail the RPC is required to leave. Three authorized calls above logged one 'read'
+-- each (the RPC logs per returned row, and there is one consent row). The 'denied' count is 2,
+-- not 1: the out-of-scope coordinator just now, plus the teacher call earlier in this file, which
+-- is already counted in the audit_log totals asserted above.
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where target_table = 'consents' and action = 'read')::int, 3,
+  'get_consents_for_staff logged one read row per authorized call (coordinator, admin, bv_coordinator)');
+select is(
+  (select count(*) from audit_log where target_table = 'consents' and action = 'denied')::int, 2,
+  'get_consents_for_staff logged a denied row for each unauthorized call (out-of-scope coordinator + teacher)');
 
 select tests.clear_authentication();
 select * from finish();
