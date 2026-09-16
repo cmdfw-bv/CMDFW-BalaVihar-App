@@ -14,7 +14,7 @@ Future hosting option: @.docs/AWS_HOSTING_PATH.md
 3. **Schema is code.** All schema/RLS/auth-hook changes are timestamped SQL migrations in `supabase/migrations/`. Never edit prod via Studio (§6).
 4. **Test-Driven Development is non-negotiable.** Write the test first, confirm it fails (Red), then implement. RLS gets adversarial role × scope tests (§11.3) before any prod migration.
 5. **US data residency.** Every PII-touching service is US-region under DPA. No marketing/analytics trackers (§3).
-6. **Minors' data is minimized + audited.** Consent captured, audit_log on access, retention enforced (§11).
+6. **Minors' data is minimized + audited.** Consent is captured by the organization at registration, outside the app (ADR-2026-09-15); the app treats enrollment as the consent signal and adds no consent check of its own. `audit_log` on access, retention enforced (§11).
 
 ## How we work — the staged pipeline (§12.3)
 

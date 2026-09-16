@@ -9,5 +9,5 @@ paths: ["supabase/**"]
 - **Scope model (§5.4):** Parent=own-children · Student=self · Teacher=class · Coordinator=session · BV Coordinator=org · Admin=org · System=engine.
 - **Harden the auth hook (§5.5):** `grant execute on function <hook> to supabase_auth_admin;` and `revoke execute ... from anon, authenticated, public;`. The `user_roles` table needs an RLS policy permitting `supabase_auth_admin`.
 - **Chat (§9):** use Realtime **Broadcast from the database** (`realtime.broadcast_changes()`), never Postgres Changes. Private channels + RLS on `realtime.messages`. Durable history in own `messages`/`conversations` tables.
-- **Minors' data (§11):** minimal columns; `audit_log` on access; `consents` checked before exposure; retention fields populated.
+- **Minors' data (§11):** minimal columns; `audit_log` on access; **scope every minors'-data table by enrollment — that is the consent gate** (consent is captured at registration, outside the app; `consents` is inert — ADR-2026-09-15); retention fields populated.
 - **Every migration ships with a matching pgTAP test** in `supabase/tests/` (role × scope). Follow Supabase's official AI prompts for RLS policies, migrations, declarative schema, and the Postgres SQL style guide.

@@ -52,7 +52,7 @@ A **community-engagement + operations platform** for a weekly children's program
 ### Cross-cutting (required for the POC)
 - **Auth + onboarding:** coordinator/admin-provisioned accounts (no minor self-registration) · magic-link (passwordless) as the primary login method · enrollment import (CSV baseline)
 - **Notifications:** Web Push (VAPID) for the PWA + email via AWS SES (US region, DPA)
-- **Privacy & compliance:** parental + media consent capture (timestamped) · retention/deletion policy + delete mechanism · audit log on access to minors' records
+- **Privacy & compliance:** consent captured by the organization at registration, outside the app — enrollment is the consent signal (ADR-2026-09-15) · retention/deletion policy + delete mechanism · audit log on access to minors' records
 - **Security:** row-level access control on all tables · multi-persona resolution — one account, multiple scoped roles, active-role switch (each role carries a different access scope: own children → own class → own session → org-wide)
 - **Chat governance (required before POC ships):** who-can-DM-whom policy · message moderation/report mechanism · message retention policy — HS students are still minors; these must be defined before student P2P chat goes live
 
@@ -74,7 +74,7 @@ Does the Expo + Supabase stack satisfy a community platform, not just attendance
 | Push notifications (PWA) | Web Push VAPID + service worker + `push_subscriptions` table | ✅ |
 | Email notifications | AWS SES (US region, DPA) | ✅ |
 | Real-time chat (class group + student P2P) | Supabase Realtime (Broadcast + `messages` / `conversations` tables + RLS) — chat governance gate must be satisfied before shipping | ✅ |
-| Consent + audit + retention | Postgres tables (`consents`, `audit_log`) + RLS + scheduled deletion job | ✅ |
+| Audit + retention | Postgres `audit_log` + RLS + scheduled deletion job (consent captured at registration, outside the app — ADR-2026-09-15; `consents` retained but inert) | ✅ |
 | AI announcement drafting (deferred) | Claude API — deferred + privacy-gated; $0 during POC | ✅ |
 | File/syllabus upload (deferred) | Supabase Storage | ✅ when needed |
 | Gamification / social feed (deferred) | Postgres + RLS | ✅ later |

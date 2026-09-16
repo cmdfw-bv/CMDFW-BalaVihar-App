@@ -1,14 +1,3 @@
-> **DRAFT — not a recorded ADR.** This is the proposed text for
-> `ADR-2026-09-15-consent-captured-at-registration`, written for issue
-> [#92](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/92) and awaiting `/architect`.
-> It is **not** in `.docs/adr/`, so `scripts/gen-adr-index.mjs` does not see it and the generated
-> index does not list it. `/architect` places the final file, stamps Status/Date, and
-> `npm run gen:adr-index` then rebuilds the index.
->
-> The five doc amendments this decision requires are already applied to the working tree on this
-> branch and cite `ADR-2026-09-15`. If `/architect` stamps a different date, those five citations
-> must be updated to match.
-
 # ADR-2026-09-15-consent-captured-at-registration: The organization captures consent at registration; the app neither captures nor separately enforces it
 
 **Status:** Closed · **Category:** Privacy/Minors · **Date:** 2026-09-15 · **Deciders:** Maulik (issue [#92](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/92), decided 2026-09-15 after registration-team discovery)
