@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-// @ts-expect-error — plain JS checks module, no type declarations (repo pattern)
 import { findAccountRefs } from '../_domain-seed-checks.js';
 
 // Guards ADR-2026-09-14: supabase/seed/domain.sql must stay account-free (no tests.* fixture
