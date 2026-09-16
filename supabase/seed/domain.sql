@@ -35,6 +35,14 @@ declare
   v_fam_idx    int := 0;
   i int; j int; k int;
 begin
+  -- Not idempotent by design (no ON CONFLICT; the schema has no unique on centers.name /
+  -- sessions(center_id,name)). The caller MUST load this into a freshly-reset / empty DB
+  -- (local `db reset`; #65's cloud loader wipes first via --reset). Fail LOUD on a double-load
+  -- rather than silently creating a second Frisco/F3/6-more-classes (which would fail 107 as 12!=6).
+  if exists (select 1 from sessions where name = 'F3') then
+    raise exception 'domain.sql: an F3 session already exists — load only into a freshly-reset/empty DB';
+  end if;
+
   -- Centers (Frisco is the fully-populated pilot center; the others exist as catalog only).
   insert into centers (id, name) values
     (v_frisco, 'Frisco'), (v_saaket, 'Saaket'), (v_chitrakoot, 'Chitrakoot');
