@@ -52,6 +52,7 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 | [ADR-0019](0019-minors-record-read-audit.md) | Minors'-record read-audit mechanism — hybrid RPC for cross-scope reads | Closed | 2026-07-08 |
 | [ADR-0020](0020-teacher-attendance-write-audit-trigger.md) | Teacher attendance-write audit trigger (ADR-0019 addendum) | Superseded by [ADR-0021](0021-teacher-attendance-write-rpc.md) | 2026-07-09 |
 | [ADR-0027](0027-role-switcher-label-active-role-agnostic-self-scope-read.md) | Role-switcher labels are an active-role-agnostic self-scope read (ADR-0019 addendum) | Closed | 2026-07-17 |
+| [ADR-2026-09-15-consent-captured-at-registration](2026-09-15-consent-captured-at-registration.md) | The organization captures consent at registration; the app neither captures nor separately enforces it | Closed | 2026-09-15 |
 
 ### 💬 Chat & Notifications
 
