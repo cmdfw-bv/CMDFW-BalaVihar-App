@@ -1,6 +1,6 @@
 # ADR-0037: Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces
 
-**Status:** Closed · **Date:** 2026-07-29 · **Deciders:** Project owner + architect
+**Status:** Closed · **Category:** Auth/Access · **Date:** 2026-07-29 · **Deciders:** Project owner + architect
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum: `enrollments.withdrawn_at`) · Teacher → `class-update-and-home-feed` (`.docs/specs/teacher/class-update-and-home-feed.md`, its `class_updates`/`comments` policies and `is_parent_of_class`). Establishes the **org-wide convention** for enrollment-derived access to conversational content. Resolves [issue #58](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/58), deferred from PR #48 code review (Important #4). Complements ADR-0015 (chat access) and ADR-0032 (comment privacy); **changes no Closed ADR** and leaves the existing `classes_*_select`/`attendance_*_select` convention intact.
 
 ### Context
