@@ -59,7 +59,7 @@
 - [ ] **Step 2 — Run it, watch it FAIL** against the current seed (13 individual classes, no KG, no F3 grade_band='10, 11, 12'):
   `supabase test db` → expect `107` failing on the 6-class / empty-10-12 / KG assertions.
 - [ ] **Step 3 — Author `domain.sql`** — the account-free rows only: `Frisco`; `F3` (ADR-0031 schedule); the 6 classes (names mirror the attendance sheet, `grade_band` the combined label); ~20 `families`; ~33 `students` (`grade_level` set per §A grade→class map, `user_id` NULL, none in 10–12); one active `enrollment` per student; the other centers/sessions as **names only**. **No `tests.*`, nothing referencing `auth.users`.** (Class inserts fire the ADR-0038 trigger → `class_meetings` auto-populate.)
-- [ ] **Step 4 — Wire load order** — `config.toml` `sql_paths = ["./seed/00_test_fixtures.sql", "./seed/domain.sql", "./seed/seed.sql"]`; set `scripts/seed-staging.mjs` `DOMAIN_SQL_PATH = 'supabase/seed/domain.sql'`. **Temporarily** guard `seed.sql`'s now-duplicated domain block (comment it out) so `db reset` doesn't double-insert before Task 2 lands. *(This keeps the tree runnable between tasks.)*
+- [ ] **Step 4 — Wire load order** — `config.toml` `sql_paths = ["./seed/00_test_fixtures.sql", "./seed/domain.sql", "./seed/seed.sql"]`. **Note:** `scripts/seed-staging.mjs`'s `DOMAIN_SQL_PATH` wiring is **deferred to #65** (the loader lives on the #65 branch, not this PR) — done here: only the `config.toml` local-load wiring.
 - [ ] **Step 5 — Run it, watch `107` PASS** (`supabase test db`), and `supabase db reset` completes clean.
 - [ ] **Step 6 — Commit** `feat(#19): domain.sql — account-free F3 dataset (6 rows, real shape) + shape test`.
 

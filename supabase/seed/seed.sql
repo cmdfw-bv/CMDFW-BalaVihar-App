@@ -72,6 +72,8 @@ begin
       join enrollments e on e.student_id = st.id
       join classes c on c.id = e.class_id
      where c.session_id = v_f3 and c.grade_band = '7, 8, 9'
+     -- deterministic order so studentN@ ↔ student is stable across reseeds (UAT-11/12/13 depend on it)
+     order by st.grade_level, st.first_name
   loop
     i := i + 1;
     v_student_user_id := tests.create_supabase_user('student' || i || '@bv-seed.test.local');
@@ -80,7 +82,9 @@ begin
   end loop;
 
   -- Attendance + class_updates for each running class's last 4 completed scheduled meetings, with
-  -- a deliberate compliant / partial / non-compliant mix for the compliance-dashboard demo
+  -- a deliberate compliant / non-compliant mix for the compliance-dashboard demo (every class is
+  -- 0% or 100% on each metric, so no "at-risk/partial" 70-85% band here + the empty 10-12 is
+  -- unclassified; a richer at-risk case for the demo is #65's cloud-seed activity, not this local seed)
   -- (derived from class_meetings, not a hardcoded calendar). Non-compliance is chosen by EXPLICIT
   -- class label, not an incidental sort position, so the pilot '7, 8, 9' class (the only one with
   -- student logins) stays FULLY compliant and its students see a populated feed:

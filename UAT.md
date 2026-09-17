@@ -35,6 +35,8 @@ npm run dev           # starts the app at http://localhost:8888
 | `student1@bv-seed.test.local` (through `student9`) | Student (the F3 7, 8, 9 class has logins) |
 | `multirole@bv-seed.test.local` | Parent + Teacher + Coordinator + BV Coordinator |
 
+> **Note on numbering:** `parentNa`/`teacherN`/`studentN` are assigned in a stable but non-obvious order — `parentNa` does **not** line up with "Seed Family N" (guardians are numbered by text-sorted family label, so `Seed Family 10` sorts before `Seed Family 2`). Don't infer a family/child from the number; the scenarios below name the exact accounts to use. For the login-bearing class, `student1@` is `parent17a@`'s child, both in the F3 7, 8, 9 class.
+
 ---
 
 ## 2. Scenarios

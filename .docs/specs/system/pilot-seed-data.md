@@ -20,7 +20,7 @@ As the **System** (on behalf of the volunteer maintainers), I want the synthetic
 
 ### Acceptance criteria
 1. **`tests.*`-free domain dataset.** The synthetic domain data contains **no `tests.*` calls**, so it can load into a cloud project that has no fixture surface (post-#89).
-2. **Loads in both places, authored once.** The same dataset artifact is loaded by local `supabase db reset` (config.toml seed path) **and** is consumable by the #65 cloud loader (`scripts/seed-staging.mjs` → `applyDomainData`). No second copy.
+2. **Loads in both places, authored once.** The same dataset artifact is loaded by local `supabase db reset` (config.toml seed path). It is *designed to be* consumable by the #65 cloud loader (`scripts/seed-staging.mjs` → `applyDomainData`), verified via the standalone-load proxy (`db reset --no-seed` + `psql -f domain.sql`) — but **`seed-staging.mjs` lives in #65, not this PR, so the actual `DOMAIN_SQL_PATH` wiring is done in #65**, not here. No second copy of the data.
 3. **Real F3 shape — 6 class rows** (5 running combined classes + 1 kept-empty 10–12), matching the actual attendance sheet, names mirroring the sheet:
    - F3 Pre-K → **PreK**
    - F3 KG, 1st & 2nd → **KG, 1, 2**
@@ -31,7 +31,7 @@ As the **System** (on behalf of the volunteer maintainers), I want the synthetic
 4. **The 10–12 class is deliberately empty** (0 enrollments) — a real, realistic edge case (the sheet has it; registration is 0). Dashboards/queries must handle a 0-enrollment class gracefully.
 5. **Grade coverage** — students span PreK, KG, and grades 1–9 (the 10–12 class stays empty); each student's `grade_level` is set and each is enrolled in the class whose grade range contains their grade.
 6. **Realistic families/enrollments** — multiple families incl. multi-guardian + multi-child households (ADR-0018), students distributed across the 5 populated classes.
-7. **Demo-ready variety preserved** — attendance + class updates still produce a deliberate mix of compliant / partial / non-compliant classes (keep the current compliance-dashboard demo value), derived from `class_meetings` (not a hardcoded calendar).
+7. **Demo-ready variety preserved** — attendance + class updates produce a deliberate mix of **compliant / non-compliant** classes (derived from `class_meetings`, not a hardcoded calendar). Note: every class lands at 0% or 100% on each metric, so there's no "at-risk/partial" (70–85%) card, and the empty 10–12 class is unclassified. A richer at-risk case for the demo is #65's cloud-seed activity (the local seed keeps it simple).
 8. **No schema/migration change** — data only; tables + RLS unchanged. (A combined-class label fits `classes.grade_band` as a single text value; no new column — to be confirmed at `/architect`.)
 9. **Entirely synthetic — no real member data, ever** (non-negotiables #5/#6). PreK is what was called "Shishu Vihaar"; the app/data uses **PreK**.
 
@@ -95,7 +95,7 @@ After `domain.sql` loads, each environment creates its **own accounts** and the 
 - **Student logins** — **general rule: grade 9+ gets a login**; **pilot exception (per issue owner, this year): the whole `F3 7th, 8th & 9th` class gets logins** (all 9), so the student experience is demoable/pilotable. Set `students.user_id` for those; `user_roles(student, org, null)` (self-scope resolves via `students.user_id`). (Effectively 9 student logins, since 10–12 is empty.)
 - **Parents/guardians** → `family_members(family_id, user_id, 'guardian')` + `user_roles(parent, org, null)`; some families multi-guardian.
 - **Coordinator** (session), **bv_coordinator** (org), **admin** (org), and one **multi-role** account (parent+teacher+coordinator+bv_coordinator) — mirroring today's seed.
-- **Attendance + class_updates (demo variety, LOCAL)** — keep the existing deliberate mix of compliant / partial / non-compliant across the 5 populated classes (derived from `class_meetings`, not a hardcoded calendar); `marked_by`/`posted_by` = the class's teacher. **Cloud gets a lighter subset (#65's call), not byte-identical** (ADR trade-off).
+- **Attendance + class_updates (demo variety, LOCAL)** — a deliberate mix of **compliant / non-compliant** across the 5 populated classes (`3, 4` = no attendance; `PreK` = no updates; the rest incl. `7, 8, 9` fully compliant), derived from `class_meetings`; `marked_by`/`posted_by` = the class's teacher. Every class is 0%/100% per metric (no at-risk/partial band; empty 10–12 unclassified). **Cloud gets its own activity set — including any at-risk/partial class for the demo — as #65's call** (ADR trade-off).
 - **Consents** — per student: `participation=true`, `media` varied; `granted_by` = a guardian in the family.
 
 ### C. Load-order wiring
