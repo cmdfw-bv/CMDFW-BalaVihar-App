@@ -1,160 +1,136 @@
--- Entirely synthetic POC seed data (doc 2 §6 item 2). No real program-member data, ever.
--- Shaped after the actual pilot: one center (Frisco), one session (F3), covering the
--- full Shishu Vihaar (Kindergarten) through Gr12 grade range as 13 individual classes
--- (not the coarse grade-bands used by earlier drafts of this seed).
+-- supabase/seed/seed.sql
+-- Per-environment ACCOUNT LAYER for LOCAL dev (#19). Runs AFTER domain.sql (config.toml order:
+-- 00_test_fixtures.sql -> domain.sql -> seed.sql). domain.sql created the account-free structure
+-- (centers/sessions/classes/families/students/enrollments); this file adds the accounts (via
+-- tests.create_supabase_user -- LOCAL ONLY) and every row that references auth.users:
+-- user_roles, family_members, students.user_id, attendance, class_updates, consents.
+--
+-- In the CLOUD, #65 performs this same layer via the Auth Admin API instead of tests.* — that
+-- split is the governing decision: ADR-2026-09-14-synthetic-seed-shared-data-per-env-accounts.
+-- Entirely synthetic; no real member data, ever.
 do $$
 declare
-  v_center_id uuid := gen_random_uuid();
-  v_session uuid := gen_random_uuid();
-  v_class_ids uuid[] := array[]::uuid[];
-  v_class_id uuid;
-  v_family_id uuid;
-  v_student_id uuid;
+  v_f3 uuid;
+  v_class record;
+  v_student record;
+  v_family record;
+  v_teacher_user_id uuid;
   v_student_user_id uuid;
   v_parent_user_id uuid;
-  v_teacher_user_id uuid;
   v_coordinator_user_id uuid;
   v_bv_admin_user_id uuid;
   v_multirole_user_id uuid;
-  grade_bands text[] := array[
-    'Shishu Vihaar','Gr1','Gr2','Gr3','Gr4','Gr5','Gr6',
-    'Gr7','Gr8','Gr9','Gr10','Gr11','Gr12'
-  ];
-  v_grade_count int := 13;
-  i int;
-  j int;
+  v_first_class_id uuid;
+  v_teacher_by_class jsonb := '{}'::jsonb;   -- class_id::text -> teacher user_id::text
   d date;
+  i int := 0;
+  v_fam_i int := 0;
 begin
-  insert into centers (id, name) values (v_center_id, 'Frisco');
-  -- ADR-0031: Frisco F3 is the confirmed pilot session, Sundays 2:00-3:30PM (day_of_week 0=Sunday).
-  -- ADR-0036: this branch's superseded `meeting_weekday` value (2 = Tuesday) contradicted the
-  -- doc 1 §9a catalog; `day_of_week` is the single source of truth for session weekday.
-  insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
-    (v_session, v_center_id, 'F3', '2026-01-11', '2026-05-24', 0, '14:00', '15:30');
+  select id into v_f3 from sessions where name = 'F3';
+  -- One legible error if the account-free structure wasn't loaded first (config.toml order:
+  -- 00_test_fixtures -> domain.sql -> seed.sql). Matches supabase/tests/0000_..precheck's pattern.
+  if v_f3 is null then
+    raise exception 'seed.sql requires domain.sql to have run first (no F3 session found)';
+  end if;
 
-  -- 13 classes spanning Shishu Vihaar (KG) through Gr12, all within the single F3 session.
-  for i in 1..v_grade_count loop
-    v_class_id := gen_random_uuid();
-    v_class_ids := array_append(v_class_ids, v_class_id);
-    insert into classes (id, session_id, name, grade_band)
-    values (v_class_id, v_session, grade_bands[i] || ' Class', grade_bands[i]);
-
+  -- One teacher per F3 class (all 6 rows, incl. the empty 10-12 — a class still has a teacher).
+  -- Order the empty 10-12 class LAST so teacher1@ and v_first_class_id (the multirole account's
+  -- teacher class) land on a POPULATED class — not the empty one (a silent demo regression).
+  for v_class in
+    select id, grade_band from classes where session_id = v_f3
+     order by (grade_band = '10, 11, 12'), grade_band
+  loop
+    i := i + 1;
     v_teacher_user_id := tests.create_supabase_user('teacher' || i || '@bv-seed.test.local');
     insert into user_roles (user_id, role, scope_type, scope_id)
-      values (v_teacher_user_id, 'teacher', 'class', v_class_id);
+      values (v_teacher_user_id, 'teacher', 'class', v_class.id);
+    v_teacher_by_class := v_teacher_by_class || jsonb_build_object(v_class.id::text, v_teacher_user_id::text);
+    if v_first_class_id is null then v_first_class_id := v_class.id; end if;
   end loop;
 
-  -- No explicit calendar generation here. ADR-0038's `classes_generate_class_meetings` trigger
-  -- already built every class's meeting dates as each class was inserted in the loop above, so
-  -- the `generate_class_meetings_for_session` call this block used to make was a no-op
-  -- (`on conflict do nothing`) — and the only call site that made the RPC look load-bearing in
-  -- the seed path, which it no longer is (PR #50 review, @ssrinivas90). The RPC survives for
-  -- re-generation after a session's dates change and for the CSV skip-dates seam.
-
-  -- ~20 families, some multi-guardian / multi-child (ADR-0018), ~35 students across the 13 classes.
-  for i in 1..20 loop
-    v_family_id := gen_random_uuid();
-    insert into families (id, label) values (v_family_id, 'Seed Family ' || i);
-
-    v_parent_user_id := tests.create_supabase_user('parent' || i || 'a@bv-seed.test.local');
-    insert into family_members (family_id, user_id, relationship) values (v_family_id, v_parent_user_id, 'guardian');
+  -- Guardians: 1 per family, a 2nd for the first 6 (multi-guardian households, ADR-0018).
+  for v_family in select id from families order by label loop
+    v_fam_i := v_fam_i + 1;
+    v_parent_user_id := tests.create_supabase_user('parent' || v_fam_i || 'a@bv-seed.test.local');
+    insert into family_members (family_id, user_id, relationship) values (v_family.id, v_parent_user_id, 'guardian');
     insert into user_roles (user_id, role, scope_type, scope_id) values (v_parent_user_id, 'parent', 'org', null);
-
-    if i <= 6 then
-      -- multi-guardian household
-      declare
-        v_parent_b_user_id uuid := tests.create_supabase_user('parent' || i || 'b@bv-seed.test.local');
+    if v_fam_i <= 6 then
+      declare v_parent_b uuid := tests.create_supabase_user('parent' || v_fam_i || 'b@bv-seed.test.local');
       begin
-        insert into family_members (family_id, user_id, relationship) values (v_family_id, v_parent_b_user_id, 'guardian');
-        insert into user_roles (user_id, role, scope_type, scope_id) values (v_parent_b_user_id, 'parent', 'org', null);
+        insert into family_members (family_id, user_id, relationship) values (v_family.id, v_parent_b, 'guardian');
+        insert into user_roles (user_id, role, scope_type, scope_id) values (v_parent_b, 'parent', 'org', null);
       end;
     end if;
+  end loop;
 
-    -- 1 or 2 students per family (multi-child for the first 10 families).
-    for j in 1..(case when i <= 10 then 2 else 1 end) loop
-      v_class_id := v_class_ids[1 + ((i + j) % v_grade_count)];
-      v_student_id := gen_random_uuid();
-      -- Only Gr9-Gr12 students get a login (students.user_id) -- KG/Shishu Vihaar
-      -- through Gr8 have no login and can't be chat participants (§7 note).
-      v_student_user_id := case when (select grade_band from classes where id = v_class_id) in ('Gr9','Gr10','Gr11','Gr12')
-        then tests.create_supabase_user('student' || i || '_' || j || '@bv-seed.test.local')
-        else null
-      end;
-      insert into students (id, family_id, first_name, last_name, grade_level, user_id)
-      values (
-        v_student_id, v_family_id, 'Student' || i || '_' || j, 'Seed',
-        (select grade_band from classes where id = v_class_id),
-        v_student_user_id
-      );
+  -- Student logins -- PILOT EXCEPTION (#19): every student in the F3 "7, 8, 9" class gets a login,
+  -- not just grade 9 (the general Gr9+ rule; 10-12 is empty this year). Self-scope = org/null,
+  -- resolved via students.user_id (ROLE_SCOPE_TYPE.student), mirroring the prod auto-sweep.
+  i := 0;
+  for v_student in
+    select st.id from students st
+      join enrollments e on e.student_id = st.id
+      join classes c on c.id = e.class_id
+     where c.session_id = v_f3 and c.grade_band = '7, 8, 9'
+     -- deterministic order so studentN@ ↔ student is stable across reseeds (UAT-11/12/13 depend on it)
+     order by st.grade_level, st.first_name
+  loop
+    i := i + 1;
+    v_student_user_id := tests.create_supabase_user('student' || i || '@bv-seed.test.local');
+    update students set user_id = v_student_user_id where id = v_student.id;
+    insert into user_roles (user_id, role, scope_type, scope_id) values (v_student_user_id, 'student', 'org', null);
+  end loop;
 
-      -- #61/#53: a student with a login needs a matching 'student' role or they land on
-      -- /no-role and can't use the app. Org-scoped with a null scope_id, mirroring the
-      -- parent grant above (line 61) and the production auto-activation sweep
-      -- (role-sweep.ts) -- a student's "self" scope resolves via students.user_id, not
-      -- via scope_id (ROLE_SCOPE_TYPE.student = 'org').
-      if v_student_user_id is not null then
-        insert into user_roles (user_id, role, scope_type, scope_id)
-          values (v_student_user_id, 'student', 'org', null);
-      end if;
-
-      -- enrolled_at is pinned to the session's own start_date (well before any class_meetings
-      -- date) rather than left at its now()-at-seed-time default — otherwise, whenever this
-      -- seed is actually run, every student reads as enrolled *after* the compliance dashboard's
-      -- trailing window, so attendance_rate renders as an honest "—" for every class instead of
-      -- exercising the dashboard's primary content state.
-      insert into enrollments (student_id, class_id, session_id, status, enrolled_at)
-      values (v_student_id, v_class_id, (select session_id from classes where id = v_class_id), 'active', (select start_date from sessions where id = v_session));
-
-      -- Seed attendance + class_updates for each class's own last 4 completed scheduled
-      -- meetings (derived from class_meetings/current_date, not a hardcoded calendar range) —
-      -- so get_session_compliance_for_staff's trailing window always has real data to render,
-      -- regardless of how long ago F3's fixed Jan-May date range is relative to whenever this
-      -- seed actually runs.
-      for d in
-        select meeting_date from class_meetings
-        where class_id = v_class_id and status = 'scheduled' and meeting_date < current_date
-        order by meeting_date desc
-        limit 4
-      loop
+  -- Attendance + class_updates for each running class's last 4 completed scheduled meetings, with
+  -- a deliberate compliant / non-compliant mix for the compliance-dashboard demo (every class is
+  -- 0% or 100% on each metric, so no "at-risk/partial" 70-85% band here + the empty 10-12 is
+  -- unclassified; a richer at-risk case for the demo is #65's cloud-seed activity, not this local seed)
+  -- (derived from class_meetings, not a hardcoded calendar). Non-compliance is chosen by EXPLICIT
+  -- class label, not an incidental sort position, so the pilot '7, 8, 9' class (the only one with
+  -- student logins) stays FULLY compliant and its students see a populated feed:
+  --   * '3, 4'  -> no attendance    (non-compliant on attendance)
+  --   * 'PreK'  -> no class_updates (non-compliant on updates)
+  --   * every other running class (incl. '7, 8, 9') -> fully compliant
+  for v_class in
+    select c.id, c.grade_band from classes c
+     where c.session_id = v_f3 and c.grade_band <> '10, 11, 12'
+     order by c.grade_band
+  loop
+    v_teacher_user_id := (v_teacher_by_class ->> v_class.id::text)::uuid;
+    for d in
+      select meeting_date from class_meetings
+       where class_id = v_class.id and status = 'scheduled' and meeting_date < current_date
+       order by meeting_date desc limit 4
+    loop
+      if v_class.grade_band <> '3, 4' then
         insert into attendance (enrollment_id, class_meeting_date, status, marked_by)
-        select e.id, d, case when (i + j) % 5 = 0 then 'absent' else 'present' end,
-               (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1)
-        from enrollments e where e.student_id = v_student_id and e.class_id = v_class_id;
-
-        -- ADR-0034/0036: one class_updates row per class per scheduled meeting date (class-wide,
-        -- not per-student; F3 meets Sundays per ADR-0031's day_of_week, not the superseded
-        -- Tuesday) — skipped for classes divisible by 3 (by position in v_class_ids) to produce a
-        -- deliberate mix of fully-compliant / partial / non-compliant classes for the
-        -- compliance-dashboard demo data.
-        --
-        -- ADR-0036 changed two things here. `body` is NOT NULL on the canonical table
-        -- (20260724120400), so it must be supplied. And the previous `on conflict
-        -- (class_id, meeting_date) do nothing` no longer works: that constraint belonged to the
-        -- superseded table shape, and the canonical table deliberately has no such unique
-        -- (several updates per meeting are allowed). Dropping the clause outright would insert
-        -- one duplicate row per student, since this sits inside the per-student loop — so the
-        -- same once-per-class-per-date guarantee is kept with an explicit NOT EXISTS instead.
-        if (array_position(v_class_ids, v_class_id)) % 3 <> 0 then
-          insert into class_updates (class_id, meeting_date, posted_by, body)
-          select
-            v_class_id, d,
-            (select user_id from user_roles where scope_type = 'class' and scope_id = v_class_id and role = 'teacher' limit 1),
-            'Synthetic seed update for ' || to_char(d, 'Mon FMDD') || '.'
-          where not exists (
-            select 1 from class_updates cu where cu.class_id = v_class_id and cu.meeting_date = d
-          );
-        end if;
-      end loop;
-
-      insert into consents (student_id, consent_type, granted, granted_by) values
-        (v_student_id, 'participation', true, v_parent_user_id),
-        (v_student_id, 'media', (i % 4 <> 0), v_parent_user_id);
+        select e.id, d,
+               case when extract(day from d)::int % 5 = 0 then 'absent' else 'present' end,
+               v_teacher_user_id
+          from enrollments e where e.class_id = v_class.id;
+      end if;
+      if v_class.grade_band <> 'PreK' then
+        insert into class_updates (class_id, meeting_date, posted_by, body)
+        values (v_class.id, d, v_teacher_user_id, 'Synthetic seed update for ' || to_char(d, 'Mon FMDD') || '.');
+      end if;
     end loop;
   end loop;
 
-  -- Session-scoped Coordinator + org-scoped BV Coordinator/Admin.
+  -- Consents -- per student: participation always granted, media varied. granted_by = a guardian
+  -- of the student's family (every family has one, created above).
+  insert into consents (student_id, consent_type, granted, granted_by)
+  select st.id, 'participation', true,
+         (select fm.user_id from family_members fm where fm.family_id = st.family_id order by fm.created_at limit 1)
+    from students st;
+  insert into consents (student_id, consent_type, granted, granted_by)
+  select st.id, 'media',
+         (('x' || substr(md5(st.id::text), 1, 8))::bit(32)::bigint % 4) <> 0,
+         (select fm.user_id from family_members fm where fm.family_id = st.family_id order by fm.created_at limit 1)
+    from students st;
+
+  -- Session-scoped Coordinator + org-scoped BV Coordinator / Admin.
   v_coordinator_user_id := tests.create_supabase_user('coordinator1@bv-seed.test.local');
-  insert into user_roles (user_id, role, scope_type, scope_id) values (v_coordinator_user_id, 'coordinator', 'session', v_session);
+  insert into user_roles (user_id, role, scope_type, scope_id) values (v_coordinator_user_id, 'coordinator', 'session', v_f3);
 
   v_bv_admin_user_id := tests.create_supabase_user('bvcoordinator1@bv-seed.test.local');
   insert into user_roles (user_id, role, scope_type, scope_id) values (v_bv_admin_user_id, 'bv_coordinator', 'org', null);
@@ -162,37 +138,17 @@ begin
   insert into user_roles (user_id, role, scope_type, scope_id)
     values (tests.create_supabase_user('admin1@bv-seed.test.local'), 'admin', 'org', null);
 
-  -- Thinnest-slice multi-role coverage: one real account holding Parent+Teacher+Coordinator+BV Coordinator (doc 2 §5).
+  -- Thinnest-slice multi-role coverage: one account holding Parent+Teacher+Coordinator+BV Coordinator.
   v_multirole_user_id := tests.create_supabase_user('multirole@bv-seed.test.local');
+  -- Attach to a family that actually HAS a student, so the role-switcher's parent scope resolves to
+  -- real children (pins 090_multi_role_isolation to a stable property, not the incidental fam #1).
   insert into family_members (family_id, user_id, relationship)
-    values ((select id from families order by id limit 1), v_multirole_user_id, 'guardian');
+    values ((select f.id from families f join students s on s.family_id = f.id
+             order by f.label limit 1), v_multirole_user_id, 'guardian');
   insert into user_roles (user_id, role, scope_type, scope_id) values
-    (v_multirole_user_id, 'parent', 'org', null) -- parent has no scope_id concept; stored as org/null, resolved via family_members at read time
-    on conflict do nothing;
+    (v_multirole_user_id, 'parent', 'org', null) on conflict do nothing;
   insert into user_roles (user_id, role, scope_type, scope_id) values
-    (v_multirole_user_id, 'teacher', 'class', v_class_ids[1]),
-    (v_multirole_user_id, 'coordinator', 'session', v_session),
+    (v_multirole_user_id, 'teacher', 'class', v_first_class_id),
+    (v_multirole_user_id, 'coordinator', 'session', v_f3),
     (v_multirole_user_id, 'bv_coordinator', 'org', null);
-
-  -- ADR-0031 / doc 1 §9a: the real center/session catalog beyond the pilot slice
-  -- (Frisco F3 above). Names + schedule shape only (real business data, not PII;
-  -- doc 1 §9a) — no classes/families/students here, since only Frisco F3 is the
-  -- POC pilot target (doc 1 §4/§9) and gets full population.
-  declare
-    v_saaket_id uuid := gen_random_uuid();
-    v_chitrakoot_id uuid := gen_random_uuid();
-  begin
-    insert into centers (id, name) values
-      (v_saaket_id, 'Saaket'),
-      (v_chitrakoot_id, 'Chitrakoot');
-
-    insert into sessions (center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
-      (v_saaket_id, 'S4', '2026-01-11', '2026-05-24', 5, '18:45', '20:15'),
-      (v_saaket_id, 'S1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
-      (v_saaket_id, 'S2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
-      (v_center_id, 'F1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
-      (v_center_id, 'F2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30'),
-      (v_chitrakoot_id, 'C1', '2026-01-11', '2026-05-24', 0, '09:00', '10:30'),
-      (v_chitrakoot_id, 'C2', '2026-01-11', '2026-05-24', 0, '12:00', '13:30');
-  end;
 end $$;
