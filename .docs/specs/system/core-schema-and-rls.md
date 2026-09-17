@@ -530,3 +530,13 @@ Everything already listed in the item's "Out of scope" section above. Additional
 - [x] **Human sign-off on this addendum** (2026-07-24, mehta.maulik@gmail.com) — incl. the coordinated `compliance-dashboard.md` design → ready for **`/plan`** (extend `core-schema-and-rls.plan.md`) → **`/migration`**.
 
 ---
+
+## Architect addendum — ADR-0037 (`enrollments.withdrawn_at`, 2026-09-16)
+
+**Decided, not yet migrated.** [ADR-0037](../../adr/0037-enrollment-withdrawal-conversational-access.md) (issue #58) adds one column to this item's `enrollments` table; the build is tracked in [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96).
+
+- **`enrollments.withdrawn_at timestamptz` (nullable).** A trigger stamps `now()` on `active → withdrawn` and clears it on `withdrawn → active`. Null means currently enrolled. Until #96 lands, the table catalog above (`status ('active'/'withdrawn'), enrolled_at`) is still the as-built shape — do not read this addendum as migrated.
+- **Operational, not PII.** No new RLS surface: the existing `enrollments_*_select` policies already scope the row.
+- **This item's own policies are unchanged.** ADR-0037 Decision 6 keeps `classes_*`, `students_*`, `attendance_*`, `enrollments_*`, `centers`/`sessions` select policies unfiltered — a withdrawn family keeps their child's attendance and class record. The status/timestamp predicates land on the conversational policies owned by `teacher/class-update-and-home-feed`.
+- **Convention, for any later item:** enrollment-derived access to *reference and historical* data stays unfiltered; access to *conversational or participatory* surfaces is active-for-write and time-bounded-for-read. Cite ADR-0037 rather than re-deriving from `classes_*_select`.
+
