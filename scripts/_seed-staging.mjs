@@ -1,0 +1,145 @@
+// scripts/_seed-staging.mjs
+// Pure helpers for the cloud staging seed (scripts/seed-staging.mjs) — no fs, no network,
+// no process, so every rule below is unit-testable in isolation
+// (scripts/__tests__/seed-staging.test.ts), matching the _adr-index.mjs / _secret-checks.js
+// pattern. Spec: .docs/specs/system/staging-deploy-verification.md (#65), plan T1.
+//
+// This module is the safety-critical core of the seed: isStagingTarget() is the rail that keeps
+// the script off production, and assertSeedConfig() fails closed before any write happens.
+
+// The one cloud project the seed is ever allowed to touch (Supabase `cmdfw-bv-staging`).
+// A future prod project B has a different ref and must NOT pass this gate.
+export const STAGING_PROJECT_REF = 'ejjvqtleuuamgtlmtxkc';
+
+// Persona → role/scope contract. scopeType mirrors the authoritative DB map
+// (netlify/functions/lib/role-tiering.ts ROLE_SCOPE_TYPE) and the local seed inserts
+// (supabase/seed/seed.sql): student/parent/bv_coordinator/admin are org-scoped (scope_id null,
+// per the user_roles_org_scope_null_id check); teacher is class-scoped; coordinator is
+// session-scoped. `scopeRef` is a SYMBOLIC handle the I/O wrapper (T3) resolves to a concrete
+// id from the loaded synthetic data — null for org roles, 'class'/'session' for scoped ones.
+// The multirole account mirrors seed.sql: parent + teacher + coordinator + bv_coordinator.
+export const PERSONAS = [
+  { tag: 'student', roles: [{ role: 'student', scopeType: 'org', scopeRef: null }] },
+  { tag: 'parent', roles: [{ role: 'parent', scopeType: 'org', scopeRef: null }] },
+  { tag: 'teacher', roles: [{ role: 'teacher', scopeType: 'class', scopeRef: 'class' }] },
+  { tag: 'coordinator', roles: [{ role: 'coordinator', scopeType: 'session', scopeRef: 'session' }] },
+  { tag: 'bv_coordinator', roles: [{ role: 'bv_coordinator', scopeType: 'org', scopeRef: null }] },
+  { tag: 'admin', roles: [{ role: 'admin', scopeType: 'org', scopeRef: null }] },
+  {
+    tag: 'multirole',
+    roles: [
+      { role: 'parent', scopeType: 'org', scopeRef: null },
+      { role: 'teacher', scopeType: 'class', scopeRef: 'class' },
+      { role: 'coordinator', scopeType: 'session', scopeRef: 'session' },
+      { role: 'bv_coordinator', scopeType: 'org', scopeRef: null },
+    ],
+  },
+];
+
+// Turn a full-email base + a persona tag into a plus-addressed variant that all route to the
+// base's one inbox: resolvePersonaEmail('a@gmail.com','teacher') -> 'a+bv-teacher@gmail.com'.
+// Requires a FULL email (with @) so no domain is hard-coded; refuses a local part that already
+// carries a '+' (that would nest sub-addresses ambiguously).
+export function resolvePersonaEmail(base, tag) {
+  if (typeof base !== 'string' || base.trim() === '') {
+    throw new Error('resolvePersonaEmail: email base is required (a full email like name@domain)');
+  }
+  if (typeof tag !== 'string' || tag.trim() === '') {
+    throw new Error('resolvePersonaEmail: persona tag is required');
+  }
+  const at = base.indexOf('@');
+  if (at <= 0 || base.indexOf('@', at + 1) !== -1) {
+    throw new Error(`resolvePersonaEmail: "${base}" is not a full email (expected one name@domain)`);
+  }
+  const local = base.slice(0, at);
+  const domain = base.slice(at + 1);
+  if (local.includes('+')) {
+    throw new Error(`resolvePersonaEmail: base local part "${local}" already contains '+'`);
+  }
+  if (domain.trim() === '') {
+    throw new Error(`resolvePersonaEmail: "${base}" has no domain`);
+  }
+  return `${local}+bv-${tag}@${domain}`;
+}
+
+// The prod safety rail: only the staging ref passes. Anything else — a prod ref, empty,
+// undefined — is refused.
+export function isStagingTarget(projectRef) {
+  return projectRef === STAGING_PROJECT_REF;
+}
+
+// Fail-closed config check, run before the seed does anything. Throws a NAMED error if the
+// email base is missing/invalid or the target is not the staging project. Returns the
+// normalized config on success.
+export function assertSeedConfig(config) {
+  const emailBase = config?.emailBase;
+  const projectRef = config?.projectRef;
+  if (typeof emailBase !== 'string' || emailBase.trim() === '') {
+    throw new Error('assertSeedConfig: STAGING_SEED_EMAIL_BASE (a full email) is required');
+  }
+  // Reuse the email rule so an invalid base is rejected here, not mid-provisioning.
+  resolvePersonaEmail(emailBase, 'probe');
+  if (!isStagingTarget(projectRef)) {
+    throw new Error(
+      `assertSeedConfig: refusing to seed "${projectRef ?? '(none)'}" — not the staging project (${STAGING_PROJECT_REF})`,
+    );
+  }
+  return { emailBase, projectRef };
+}
+
+// Derive the project ref from a Supabase API URL (https://<ref>.supabase.co). The wrapper
+// feeds this into the guard, so the safety check is against the URL we actually connect to —
+// not a ref passed separately that could disagree with it.
+export function projectRefFromUrl(url) {
+  if (typeof url !== 'string' || url.trim() === '') {
+    throw new Error('projectRefFromUrl: url is required');
+  }
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error(`projectRefFromUrl: "${url}" is not a valid URL`);
+  }
+  const suffix = '.supabase.co';
+  if (!host.endsWith(suffix)) {
+    throw new Error(`projectRefFromUrl: "${host}" is not a <ref>.supabase.co host`);
+  }
+  const ref = host.slice(0, -suffix.length);
+  if (ref === '' || ref.includes('.')) {
+    throw new Error(`projectRefFromUrl: no project ref in "${host}"`);
+  }
+  return ref;
+}
+
+// Expand PERSONAS into the concrete list of accounts to provision, each with its plus-addressed
+// email resolved from the base. Pure — the I/O wrapper (T3) walks this to call the Auth Admin API.
+export function buildProvisioningPlan(emailBase) {
+  return PERSONAS.map((p) => ({
+    tag: p.tag,
+    email: resolvePersonaEmail(emailBase, p.tag),
+    roles: p.roles,
+  }));
+}
+
+// Minimal CLI arg parse: only --reset is supported (wipe-then-reseed, AC#9).
+export function parseArgs(argv) {
+  return { reset: Array.isArray(argv) && argv.includes('--reset') };
+}
+
+// Fail-closed env gate for the wrapper: reads the STAGING_* env, refuses if the service-role
+// key or URL is missing, and (via assertSeedConfig) if the email base is missing or the URL's
+// project ref is not staging. Returns the normalized config the wrapper needs.
+export function resolveConfig(env) {
+  const emailBase = env?.STAGING_SEED_EMAIL_BASE;
+  const url = env?.STAGING_SUPABASE_URL;
+  const serviceRoleKey = env?.STAGING_SUPABASE_SERVICE_ROLE_KEY;
+  if (typeof serviceRoleKey !== 'string' || serviceRoleKey.trim() === '') {
+    throw new Error('resolveConfig: STAGING_SUPABASE_SERVICE_ROLE_KEY is required');
+  }
+  if (typeof url !== 'string' || url.trim() === '') {
+    throw new Error('resolveConfig: STAGING_SUPABASE_URL is required');
+  }
+  const projectRef = projectRefFromUrl(url);
+  assertSeedConfig({ emailBase, projectRef });
+  return { emailBase, url, serviceRoleKey, projectRef };
+}

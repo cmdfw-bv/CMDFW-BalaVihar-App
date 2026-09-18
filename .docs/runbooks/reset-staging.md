@@ -1,0 +1,68 @@
+# Runbook: Reset the staging data to a clean baseline
+
+> Infra/data only — no application code, no schema change. Governs: `.docs/specs/system/staging-deploy-verification.md` AC#9.
+> Run this **any time** staging has drifted and you want a known-good starting point — e.g. **before a demo**, or after test churn. It is safe to re-run.
+>
+> **Status:** the command's config gate + prod-safety rail are live today. The data steps it
+> performs (load synthetic data, create accounts) become operational once the synthetic dataset
+> from **#19 (`pilot-seed-data`)** has landed and the loader is wired to it at the #65 verification
+> walk. Until then, the command fail-closes with a clear "waiting on #19" message.
+
+## What it does
+
+`npm run seed:staging -- --reset` returns the **staging** database to a clean, known baseline:
+
+1. **Refuses to run unless the target is staging** — the built-in guard checks the project ref
+   in your `STAGING_SUPABASE_URL`; anything other than `cmdfw-bv-staging` is rejected. It can
+   never touch production.
+2. **Wipes the synthetic data** — deletes the provisioned persona accounts and truncates the
+   synthetic domain tables (center/session/classes/families/students/enrollments).
+3. **Reloads** the synthetic dataset (#19) and **recreates the 7 sign-in accounts** on your
+   configured email base, then prints them.
+
+It writes **only synthetic rows** — staging holds no real family data, ever. It runs **no
+migrations** and **no pgTAP**; it is a data reset, not a schema change.
+
+## Prerequisites — three environment variables
+
+Set these in your terminal for the run (they are **not** committed anywhere):
+
+| Variable | What it is | Where to get it |
+|---|---|---|
+| `STAGING_SEED_EMAIL_BASE` | your full email; all persona logins fan out from it via `+` addressing (`you+bv-teacher@…`) | your own Gmail (e.g. `you@gmail.com`) |
+| `STAGING_SUPABASE_URL` | the staging project's API URL | Supabase dashboard → **cmdfw-bv-staging** → Connect (or Project Settings → API) → `https://ejjvqtleuuamgtlmtxkc.supabase.co` |
+| `STAGING_SUPABASE_SERVICE_ROLE_KEY` | the service-role secret (bypasses RLS — powerful) | Supabase dashboard → **cmdfw-bv-staging** → Project Settings → API → **`service_role` secret** |
+
+## Steps
+
+1. **If the project is paused** (free tier pauses after ~1 week idle), open the Supabase
+   dashboard and **resume** `cmdfw-bv-staging` first; wait until it shows *Healthy*.
+2. **Set the three variables** in your terminal (paste the service-role key at a prompt rather
+   than into a shared file):
+   ```bash
+   export STAGING_SEED_EMAIL_BASE='you@gmail.com'
+   export STAGING_SUPABASE_URL='https://ejjvqtleuuamgtlmtxkc.supabase.co'
+   read -rs "STAGING_SUPABASE_SERVICE_ROLE_KEY?service_role key: "; export STAGING_SUPABASE_SERVICE_ROLE_KEY   # zsh
+   ```
+3. **Run the reset:**
+   ```bash
+   npm run seed:staging -- --reset
+   ```
+4. **Confirm the output** lists the 7 persona accounts and ends with `seed-staging: done.` If it
+   refuses, read the message — a wrong `STAGING_SUPABASE_URL` (not the staging project) or a
+   missing key both fail closed on purpose.
+5. **Clear the key from memory** when finished: `unset STAGING_SUPABASE_SERVICE_ROLE_KEY`.
+
+To seed a *fresh* (empty) staging without wiping first, run the same command **without** `--reset`.
+
+## Notes
+
+- **Never point seeding at production.** The guard enforces this, but also never set
+  `STAGING_SUPABASE_URL` to a prod project ref. `supabase db push --include-seed` and
+  `supabase db reset --linked` are separately forbidden against any cloud project (they load the
+  test-fixture surface and fabricate auth users) — this script deliberately uses neither
+  (ADR-2026-09-07 Decision 5; hook enforcement tracked as #87).
+- **No secret is committed** — the service-role key lives only in your shell for the run, never
+  in the repo (constitution rule #2).
+- **Sign-in after a reset:** request a magic link for any persona email (e.g.
+  `you+bv-teacher@gmail.com`) on `balavihar-connect.netlify.app`; it lands in your one inbox.
