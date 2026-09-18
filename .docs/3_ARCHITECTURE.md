@@ -548,6 +548,7 @@ The architecture decomposes into **independent Units of Work** — *(owner perso
 - **Parallel:** feature units (isolated folders, isolated tests).
 - **Serialized seam:** the **database schema** — migrations are applied in order; `/migration` + the schema-guard hook keep concurrent schema work safe.
 - **Convergence:** **Promotion** is the single funnel — all units merge to `main`, where the migration-guard hook blocks prod unless RLS tests pass.
+- **Second serialized seam: generated and shared files.** `.docs/adr/README.md` (generated; its header carries a decision count) and the persona `_index.md` tables are touched by almost every PR. Two PRs that each add an ADR merge with **no conflict** and still leave the index wrong, because both write the same count — so after merging `main`, always regenerate and re-check, even when git reported nothing to resolve. When a shared row *does* conflict, keep **both** PRs' halves; resolving with `--ours`/`--theirs` silently discards shipped work. A clean merge is not evidence of a correct one (ADR-2026-09-18).
 
 ### 12.7 Skills sourcing policy
 
