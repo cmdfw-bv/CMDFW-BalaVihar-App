@@ -1,8 +1,17 @@
 # ADR-2026-09-18-require-up-to-date-branches: Require a branch to be current with `main` before it can merge
 
-**Status:** Proposed · **Category:** Infra/Process · **Date:** 2026-09-18 · **Deciders:** Maulik (proposer); **awaiting @arunasharad-coder's confirmation** — she carries the cost as the active reviewer. Part of issue [#56](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/56) (cross-branch decision integrity).
+**Status:** Closed · **Category:** Infra/Process · **Date:** 2026-09-18 · **Deciders:** Maulik (proposer) + @arunasharad-coder (confirmed on PR #99, 2026-09-18: "turn it on now… I'd rather absorb it here than have #65 be its first encounter"). Part of issue [#56](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/56) (cross-branch decision integrity).
 
-> **Nothing has been changed yet.** The repo setting stays as it is until this ADR is approved and merged. Merging it is what authorises the change; a "no" or "not yet" in review is a perfectly good answer and costs nothing to act on.
+> **Applied 2026-09-18**, after PR #99 was approved and merged (`82d8ff4`). Verified by re-reading the API rather than trusting the write response:
+>
+> ```
+> branches/main/protection → strict: true
+>   contexts: app-tests, db-and-rls, secrets-pii, residency-scan
+>   approvals: 1 · dismiss_stale: true · code-owner review: true · enforce_admins: false
+> repo → allow_update_branch: true · allow_auto_merge: true
+> ```
+>
+> Unchanged by this ADR: the one-approval requirement, code-owner review, approval dismissal on push, and the admin bypass.
 
 ### Context
 
@@ -34,9 +43,9 @@ The first case is the one that matters. A required check that cannot see the com
 
 ### Consequences
 
-- **The cost lands on the reviewer, and it is not trivial.** When `main` moves between an approval and a merge, the branch must be updated; that push re-runs CI **and dismisses the approval**, so the reviewer is asked a second time for the same change. With one consistently active reviewer, that is the binding constraint. This ADR is deliberately proposed to her for confirmation rather than decided over her.
+- **The cost lands on the reviewer, and it is not trivial.** When `main` moves between an approval and a merge, the branch must be updated; that push re-runs CI **and dismisses the approval**, so the reviewer is asked a second time for the same change. With one consistently active reviewer, that is the binding constraint. This ADR was deliberately put to her as a question rather than decided over her; she confirmed on #99.
 - **The cost is concentrated in the approval→merge window.** Merging promptly after approval largely avoids it. Where several PRs are open at once, whichever merges last pays the update; that is unavoidable and acceptable at one or two concurrent PRs, and gets worse with five.
-- **It is being enabled at the cheapest possible moment** — 2026-09-18, with zero open PRs. Enabling it later, once #65 (staging-deploy verification, nine acceptance criteria, migrations + seed + spec + §7 doc edits) is open, would force the rule's first real appearance to be a refresh-and-re-approve on the largest PR of the quarter.
+- **It was enabled at the cheapest possible moment** — 2026-09-18, with zero open PRs. Enabling it later, once #65 (staging-deploy verification, nine acceptance criteria, migrations + seed + spec + §7 doc edits) is open, would force the rule's first real appearance to be a refresh-and-re-approve on the largest PR of the quarter.
 - **Auto-merge is already enabled on the repo** and may absorb part of the manual step by updating and merging once requirements are met. Worth observing in practice rather than assuming; if it does, the practical cost is lower than the worst case above.
 - **`main` can still go red** for reasons this does not address — a flaky runner, an external break, a change whose failure only appears after merge for other reasons. This closes one specific class: individually-valid, jointly-invalid changes.
 - **Nothing in the repo enforces this**; it is a GitHub setting, so it is invisible in the tree and can be turned off by any admin without leaving a trace. That is precisely why it is recorded here — the ADR log is the only durable evidence that it was a decision rather than a default.
