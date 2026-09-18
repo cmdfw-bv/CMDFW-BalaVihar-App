@@ -11,6 +11,12 @@
 // A future prod project B has a different ref and must NOT pass this gate.
 export const STAGING_PROJECT_REF = 'ejjvqtleuuamgtlmtxkc';
 
+// The reusable, tests.*-free synthetic dataset authored by #19 (pilot-seed-data) and merged to
+// main; the loader (scripts/seed-staging.mjs applyDomainData) applies this same file to cloud
+// staging. Repo-relative. Pinned + existence-checked in the unit tests so a stale path fails in
+// CI, not only at the cloud walk. (config.toml loads it locally after 00_test_fixtures.sql.)
+export const DOMAIN_SQL_PATH = 'supabase/seed/domain.sql';
+
 // Persona → role/scope contract. scopeType mirrors the authoritative DB map
 // (netlify/functions/lib/role-tiering.ts ROLE_SCOPE_TYPE) and the local seed inserts
 // (supabase/seed/seed.sql): student/parent/bv_coordinator/admin are org-scoped (scope_id null,

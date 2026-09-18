@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   STAGING_PROJECT_REF,
   PERSONAS,
+  DOMAIN_SQL_PATH,
   resolvePersonaEmail,
   isStagingTarget,
   assertSeedConfig,
@@ -10,6 +14,9 @@ import {
   parseArgs,
   resolveConfig,
 } from '../_seed-staging.mjs';
+
+// Repo root, from this test file at scripts/__tests__/seed-staging.test.ts.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 // The persona → scope_type contract mirrors the DB's authoritative map
 // (netlify/functions/lib/role-tiering.ts ROLE_SCOPE_TYPE) and the local seed's inserts
@@ -24,6 +31,15 @@ const EXPECTED_SCOPE_TYPE: Record<string, string> = {
   bv_coordinator: 'org',
   admin: 'org',
 };
+
+describe('DOMAIN_SQL_PATH — the #19 dataset the loader applies', () => {
+  it('points at #19 pilot-seed-data domain.sql, and that file exists on disk', () => {
+    // The loader consumes the dataset #19 (pilot-seed-data) landed on main; a stale/placeholder
+    // path would fail closed only at the cloud walk, not in CI. Pin it to the real location.
+    expect(DOMAIN_SQL_PATH).toBe('supabase/seed/domain.sql');
+    expect(existsSync(resolve(REPO_ROOT, DOMAIN_SQL_PATH))).toBe(true);
+  });
+});
 
 describe('PERSONAS — the accounts the seed provisions', () => {
   it('provisions all six single-role personas plus one multi-role account', () => {

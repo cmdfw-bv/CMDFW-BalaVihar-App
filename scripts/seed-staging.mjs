@@ -16,11 +16,12 @@
 // at the #65 verification walk, when the dataset + cloud creds let each call be watched working.
 import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
-import { resolveConfig, parseArgs, buildProvisioningPlan } from './_seed-staging.mjs';
-
-// #19 (pilot-seed-data) authors the synthetic dataset as a reusable SQL file; this loader
-// applies it. Path is a placeholder until #19 fixes the location.
-const DOMAIN_SQL_PATH = 'supabase/seed/staging/domain.sql';
+import {
+  resolveConfig,
+  parseArgs,
+  buildProvisioningPlan,
+  DOMAIN_SQL_PATH,
+} from './_seed-staging.mjs';
 
 /** Apply #19's synthetic domain dataset (center/session/classes/families/students/enrollments). */
 async function applyDomainData(_client) {
