@@ -233,7 +233,7 @@ The canonical relational core — `centers → sessions → classes → enrollme
 | Table | Purpose | Access posture |
 |---|---|---|
 | `user_roles` | Many scoped roles per user (§5) | Read by auth hook (as `supabase_auth_admin`); not client-writable |
-| `consents` | Parental + media consent, timestamped, revocable | Scoped to subject's family/org |
+| `consents` | Parental + media consent, timestamped, revocable — **inert for the POC** (ADR-2026-09-15) | Scoped to subject's family/org; read-only |
 | `audit_log` | Every access to a minor's record (actor, action, target, at) | Append-only; admin/coordinator read-scoped |
 | `push_subscriptions` | Web Push endpoints/keys per user | RLS-scoped to owning user; payloads PII-free |
 | `conversations`, `conversation_participants`, `messages` | Chat durable history (POC-core — §9) | Private; RLS mirrors channel access |
@@ -440,7 +440,7 @@ The whole stack was chosen to make children's-data safety a **database-enforced*
 
 ### 11.2 Consent, audit & retention
 
-- **`consents`** — parental + media consent, timestamped, revocable (doc 1 §10). Captured at onboarding; enforced before media/feature exposure.
+- **`consents`** — parental + media consent, timestamped, revocable (doc 1 §10). **Inert for the POC:** consent is captured by the organization at registration, outside the app; enrollment is the consent signal and RLS enforces it transitively (ADR-2026-09-15-consent-captured-at-registration). The table is retained but not written — the parent write path is revoked. Media-consent gating is specced if and when a media surface lands (doc 2).
 - **`audit_log`** — append-only; actor, action, target, timestamp. Read-scoped to admin/coordinator. Pairs with chat oversight (§9.2).
 - **Retention/deletion** — retention fields + a **scheduled deletion job** (doc 1 §10). The policy needs **org + legal sign-off** before finalizing (doc 1 §11) — a precondition (§13).
 

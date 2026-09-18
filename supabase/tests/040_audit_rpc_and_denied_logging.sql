@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(24);
 
 insert into families (id, label) values ('fd111111-0000-0000-0000-000000000001', 'Audit Family');
 select tests.create_supabase_user('audit-teacher-in@test.local') as v_teacher_in \gset
@@ -120,6 +120,102 @@ select tests.authenticate_as(:'v_coord_out'::uuid, 'coordinator', 'session', 'a3
 select is((select count(*) from audit_log)::int, 0,
   'coordinator scoped to an unrelated session sees zero audit_log rows');
 
+-- ---------------------------------------------------------------------------
+-- get_consents_for_staff success paths.
+--
+-- Coverage gap found by the RLS adversarial audit for issue #92: only the teacher-denial case
+-- (above) was asserted. Nothing covered a coordinator/bv_coordinator/admin actually receiving a
+-- row, and nothing asserted the audit trail keyed to target_table = 'consents'. That matters
+-- more now than it did: migration 20260915120000 revokes INSERT/UPDATE/TRUNCATE on `consents`
+-- (ADR-2026-09-15-consent-captured-at-registration), leaving these RPC reads as the table's only
+-- remaining staff access. If they silently broke, no test would notice.
+--
+-- Placed last on purpose: every call below writes an audit_log row, and the assertions above pin
+-- exact audit_log totals (6 / 6 / 0). Adding these earlier would break them.
+
 select tests.clear_authentication();
+insert into consents (student_id, consent_type, granted, granted_by) values
+  ('5e111111-0000-0000-0000-000000000001', 'participation', true, null);
+
+-- Coordinator scoped to the student's own session is authorized.
+select tests.authenticate_as(:'v_coord_in'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000001'::uuid);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for a coordinator scoped to the student''s session');
+
+-- Coordinator scoped to an unrelated session is not — proves the scope check excludes.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_coord_out'::uuid, 'coordinator', 'session', 'a3111111-0000-0000-0000-000000000099'::uuid);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 0,
+  'get_consents_for_staff returns nothing for a coordinator scoped to an unrelated session');
+
+-- Admin is org-wide and ignores scope_id.
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for an org-scoped admin');
+
+-- bv_coordinator asserted separately from admin even though they share a branch: they are two
+-- string literals in the RPC's `v_role in (...)` list, and a typo in one would still pass if only
+-- the other were tested.
+select tests.clear_authentication();
+select tests.create_supabase_user('audit-bvcoord@test.local') as v_bvcoord \gset
+select tests.authenticate_as(:'v_bvcoord'::uuid, 'bv_coordinator', 'org', null);
+select is((select count(*) from get_consents_for_staff('5e111111-0000-0000-0000-000000000001'::uuid))::int, 1,
+  'get_consents_for_staff returns the row for an org-scoped bv_coordinator');
+
+-- The audit trail the RPC is required to leave. Three authorized calls above logged one 'read'
+-- each (the RPC logs per returned row, and there is one consent row). The 'denied' count is 2,
+-- not 1: the out-of-scope coordinator just now, plus the teacher call earlier in this file, which
+-- is already counted in the audit_log totals asserted above.
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where target_table = 'consents' and action = 'read')::int, 3,
+  'get_consents_for_staff logged one read row per authorized call (coordinator, admin, bv_coordinator)');
+select is(
+  (select count(*) from audit_log where target_table = 'consents' and action = 'denied')::int, 2,
+  'get_consents_for_staff logged a denied row for each unauthorized call (out-of-scope coordinator + teacher)');
+
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------------------------
+-- Malformed claims (#73): a 'teacher' JWT carrying NO scope_id must fail closed.
+--
+-- Both RPCs authorize a teacher with `v_authorized := (p_class_id = v_scope_id)`. When the
+-- scope_id claim is absent the auth hook drops it entirely, v_scope_id is NULL, and the
+-- comparison yields NULL -- not false. `if not v_authorized then ... return; end if;` does not
+-- take its branch on NULL, so the guard falls THROUGH into the authorized path and the caller
+-- receives the full class roster / attendance set. The guard fails OPEN.
+--
+-- Same shape fixed on PR #50 in 686e6ba for the coordinator branch of two other RPCs; these two
+-- are on a merged migration, so the fix is forward-only (§12.1 non-negotiable #3).
+--
+-- Asserting the denied audit_log row and not only the row count: a zero-row result alone cannot
+-- distinguish "the guard refused" from "the guard passed and the query matched nothing" -- that
+-- distinction is what made the equivalent test vacuous during the #50 fix.
+--
+-- Delta-based against a baseline, since a denied row for this target already exists from the
+-- out-of-class teacher assertion above.
+select (select count(*) from audit_log where actor_role = 'teacher' and action = 'denied' and target_table = 'classes' and target_id = 'c3111111-0000-0000-0000-000000000001')::int as v_denied_base \gset
+
+select tests.authenticate_as(:'v_teacher_in'::uuid, 'teacher');
+select is(
+  (select count(*) from get_class_roster_for_staff('c3111111-0000-0000-0000-000000000001'::uuid))::int,
+  0, 'get_class_roster_for_staff: teacher with a NULL scope_id claim gets zero rows (NULL must not fall through as authorized)');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'teacher' and action = 'denied' and target_table = 'classes' and target_id = 'c3111111-0000-0000-0000-000000000001')::int,
+  :'v_denied_base'::int + 1,
+  'get_class_roster_for_staff: the NULL-scope_id call writes exactly one additional denied audit_log row');
+
+select tests.authenticate_as(:'v_teacher_in'::uuid, 'teacher');
+select is(
+  (select count(*) from get_class_attendance_for_staff('c3111111-0000-0000-0000-000000000001'::uuid, '2026-01-01'::date, '2026-03-01'::date))::int,
+  0, 'get_class_attendance_for_staff: teacher with a NULL scope_id claim gets zero rows (NULL must not fall through as authorized)');
+select tests.clear_authentication();
+select is(
+  (select count(*) from audit_log where actor_role = 'teacher' and action = 'denied' and target_table = 'classes' and target_id = 'c3111111-0000-0000-0000-000000000001')::int,
+  :'v_denied_base'::int + 2,
+  'get_class_attendance_for_staff: the NULL-scope_id call writes exactly one additional denied audit_log row');
+
 select * from finish();
 rollback;

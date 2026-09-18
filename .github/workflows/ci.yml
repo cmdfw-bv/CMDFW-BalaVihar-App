@@ -26,6 +26,8 @@ jobs:
       - run: node scripts/check-unistyles-config.js
       - name: No test-only DB objects in migrations (ADR-2026-09-07)
         run: node scripts/check-migration-fixtures.js
+      - name: domain.sql stays account-free (ADR-2026-09-14)
+        run: node scripts/check-domain-seed.js
       - name: ADR index is in sync with the ADR files
         run: node scripts/gen-adr-index.mjs --check
 
