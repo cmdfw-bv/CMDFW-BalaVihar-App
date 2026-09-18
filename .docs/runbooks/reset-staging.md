@@ -23,7 +23,7 @@
 It writes **only synthetic rows** — staging holds no real family data, ever. It runs **no
 migrations** and **no pgTAP**; it is a data reset, not a schema change.
 
-## Prerequisites — three environment variables
+## Prerequisites — four environment variables
 
 Set these in your terminal for the run (they are **not** committed anywhere):
 
@@ -31,7 +31,10 @@ Set these in your terminal for the run (they are **not** committed anywhere):
 |---|---|---|
 | `STAGING_SEED_EMAIL_BASE` | your full email; all persona logins fan out from it via `+` addressing (`you+bv-teacher@…`) | your own Gmail (e.g. `you@gmail.com`) |
 | `STAGING_SUPABASE_URL` | the staging project's API URL | Supabase dashboard → **cmdfw-bv-staging** → Connect (or Project Settings → API) → `https://ejjvqtleuuamgtlmtxkc.supabase.co` |
-| `STAGING_SUPABASE_SERVICE_ROLE_KEY` | the service-role secret (bypasses RLS — powerful) | Supabase dashboard → **cmdfw-bv-staging** → Project Settings → API → **`service_role` secret** |
+| `STAGING_SUPABASE_SERVICE_ROLE_KEY` | the service-role secret (bypasses RLS — powerful; used for the Auth Admin account creation) | Supabase dashboard → **cmdfw-bv-staging** → Project Settings → API → **`service_role` secret** |
+| `STAGING_DB_URL` | the Postgres connection string (carries the DB password); used by `psql` to load the synthetic `domain.sql` and, on `--reset`, to truncate | Supabase dashboard → **cmdfw-bv-staging** → **Connect** → the pooler URI (`postgresql://postgres.ejjvqtleuuamgtlmtxkc:…@…pooler.supabase.com:6543/postgres`). Must be the **staging** project — the script refuses any other ref, and refuses if it disagrees with `STAGING_SUPABASE_URL`. |
+
+> **`psql` must be installed and on your PATH** (it ships with the Postgres client tools / the Supabase CLI). The script shells out to it to apply `domain.sql`.
 
 ## Steps
 
@@ -43,6 +46,7 @@ Set these in your terminal for the run (they are **not** committed anywhere):
    export STAGING_SEED_EMAIL_BASE='you@gmail.com'
    export STAGING_SUPABASE_URL='https://ejjvqtleuuamgtlmtxkc.supabase.co'
    read -rs "STAGING_SUPABASE_SERVICE_ROLE_KEY?service_role key: "; export STAGING_SUPABASE_SERVICE_ROLE_KEY   # zsh
+   read -rs "STAGING_DB_URL?staging Postgres connection URI: "; export STAGING_DB_URL                          # zsh
    ```
 3. **Run the reset:**
    ```bash
@@ -51,7 +55,7 @@ Set these in your terminal for the run (they are **not** committed anywhere):
 4. **Confirm the output** lists the 7 persona accounts and ends with `seed-staging: done.` If it
    refuses, read the message — a wrong `STAGING_SUPABASE_URL` (not the staging project) or a
    missing key both fail closed on purpose.
-5. **Clear the key from memory** when finished: `unset STAGING_SUPABASE_SERVICE_ROLE_KEY`.
+5. **Clear the secrets from memory** when finished: `unset STAGING_SUPABASE_SERVICE_ROLE_KEY STAGING_DB_URL` (both carry credentials).
 
 To seed a *fresh* (empty) staging without wiping first, run the same command **without** `--reset`.
 

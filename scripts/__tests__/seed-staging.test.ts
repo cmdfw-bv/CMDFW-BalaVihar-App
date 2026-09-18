@@ -10,10 +10,19 @@ import {
   isStagingTarget,
   assertSeedConfig,
   projectRefFromUrl,
+  projectRefFromDbUrl,
   buildProvisioningPlan,
   parseArgs,
   resolveConfig,
 } from '../_seed-staging.mjs';
+
+// Realistic staging Postgres connection strings (password redacted). Both forms carry the
+// project ref: the pooler encodes it in the username (postgres.<ref>), the direct connection in
+// the host (db.<ref>.supabase.co).
+const STAGING_DB_URL_POOLER =
+  'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
+const STAGING_DB_URL_DIRECT =
+  'postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres';
 
 // Repo root, from this test file at scripts/__tests__/seed-staging.test.ts.
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -162,6 +171,23 @@ describe('projectRefFromUrl — derive the target ref from the connection URL', 
   });
 });
 
+describe('projectRefFromDbUrl — derive the target ref from a Postgres connection string', () => {
+  it('extracts the ref from a pooler connection string (username postgres.<ref>)', () => {
+    expect(projectRefFromDbUrl(STAGING_DB_URL_POOLER)).toBe('ejjvqtleuuamgtlmtxkc');
+  });
+
+  it('extracts the ref from a direct connection string (host db.<ref>.supabase.co)', () => {
+    expect(projectRefFromDbUrl(STAGING_DB_URL_DIRECT)).toBe('ejjvqtleuuamgtlmtxkc');
+  });
+
+  it('throws on a non-Supabase or malformed connection string', () => {
+    expect(() => projectRefFromDbUrl('postgresql://postgres:pw@localhost:5432/postgres')).toThrow();
+    expect(() => projectRefFromDbUrl('postgresql://postgres@db..supabase.co:5432/x')).toThrow();
+    expect(() => projectRefFromDbUrl('not-a-url')).toThrow();
+    expect(() => projectRefFromDbUrl('')).toThrow();
+  });
+});
+
 describe('buildProvisioningPlan — the accounts to create, with resolved emails', () => {
   it('produces one entry per persona with its plus-addressed email and roles', () => {
     const plan = buildProvisioningPlan('arunasharad@gmail.com');
@@ -194,6 +220,7 @@ describe('resolveConfig — fail-closed env gate for the wrapper', () => {
     STAGING_SEED_EMAIL_BASE: 'arunasharad@gmail.com',
     STAGING_SUPABASE_URL: 'https://ejjvqtleuuamgtlmtxkc.supabase.co',
     STAGING_SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-value',
+    STAGING_DB_URL: STAGING_DB_URL_POOLER,
   };
 
   it('returns a normalized config for a valid staging env', () => {
@@ -202,6 +229,7 @@ describe('resolveConfig — fail-closed env gate for the wrapper', () => {
     expect(cfg.projectRef).toBe('ejjvqtleuuamgtlmtxkc');
     expect(cfg.url).toBe('https://ejjvqtleuuamgtlmtxkc.supabase.co');
     expect(cfg.serviceRoleKey).toBe('service-role-key-value');
+    expect(cfg.dbUrl).toBe(STAGING_DB_URL_POOLER);
   });
 
   it('refuses when the service-role key is missing', () => {
@@ -210,7 +238,7 @@ describe('resolveConfig — fail-closed env gate for the wrapper', () => {
     ).toThrow(/service.role/i);
   });
 
-  it('refuses when the URL points at a non-staging project', () => {
+  it('refuses when the API URL points at a non-staging project', () => {
     expect(() =>
       resolveConfig({ ...goodEnv, STAGING_SUPABASE_URL: 'https://someprodref000000.supabase.co' }),
     ).toThrow(/staging/i);
@@ -218,5 +246,22 @@ describe('resolveConfig — fail-closed env gate for the wrapper', () => {
 
   it('refuses a missing email base', () => {
     expect(() => resolveConfig({ ...goodEnv, STAGING_SEED_EMAIL_BASE: '' })).toThrow(/email/i);
+  });
+
+  it('refuses when the DB URL is missing', () => {
+    expect(() => resolveConfig({ ...goodEnv, STAGING_DB_URL: '' })).toThrow(/STAGING_DB_URL/i);
+  });
+
+  it('refuses when the DB URL points at a non-staging project (prod-safety rail)', () => {
+    const prodDbUrl =
+      'postgresql://postgres.someprodref000000:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
+    expect(() => resolveConfig({ ...goodEnv, STAGING_DB_URL: prodDbUrl })).toThrow(/staging/i);
+  });
+
+  it('refuses when the DB URL and API URL disagree on the project', () => {
+    // Both must resolve to the same staging ref — a mismatched pair is a misconfiguration.
+    expect(() =>
+      resolveConfig({ ...goodEnv, STAGING_DB_URL: STAGING_DB_URL_DIRECT.replace('ejjvqtleuuamgtlmtxkc', 'someotherref00000000') }),
+    ).toThrow(/staging/i);
   });
 });

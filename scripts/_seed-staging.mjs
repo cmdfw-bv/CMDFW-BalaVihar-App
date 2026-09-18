@@ -117,6 +117,43 @@ export function projectRefFromUrl(url) {
   return ref;
 }
 
+// Derive the project ref from a Postgres connection string (for the psql-based steps —
+// applyDomainData / reset). Handles both forms Supabase hands out:
+//   - pooler:  postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres
+//   - direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
+// The ref lets us apply the same prod-safety rail to the DB URL as to the API URL.
+export function projectRefFromDbUrl(dbUrl) {
+  if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
+    throw new Error('projectRefFromDbUrl: connection string is required');
+  }
+  let parsed;
+  try {
+    parsed = new URL(dbUrl);
+  } catch {
+    throw new Error(`projectRefFromDbUrl: "${dbUrl}" is not a valid connection string`);
+  }
+  const host = parsed.hostname;
+  const directSuffix = '.supabase.co';
+  if (host.startsWith('db.') && host.endsWith(directSuffix)) {
+    const ref = host.slice('db.'.length, -directSuffix.length);
+    if (ref === '' || ref.includes('.')) {
+      throw new Error(`projectRefFromDbUrl: no project ref in host "${host}"`);
+    }
+    return ref;
+  }
+  if (host.endsWith('.pooler.supabase.com')) {
+    // Pooler encodes the ref in the username: postgres.<ref>
+    const user = decodeURIComponent(parsed.username);
+    const dot = user.indexOf('.');
+    const ref = dot === -1 ? '' : user.slice(dot + 1);
+    if (ref === '' || ref.includes('.')) {
+      throw new Error(`projectRefFromDbUrl: no project ref in pooler username "${user}"`);
+    }
+    return ref;
+  }
+  throw new Error(`projectRefFromDbUrl: "${host}" is not a Supabase database host`);
+}
+
 // Expand PERSONAS into the concrete list of accounts to provision, each with its plus-addressed
 // email resolved from the base. Pure — the I/O wrapper (T3) walks this to call the Auth Admin API.
 export function buildProvisioningPlan(emailBase) {
@@ -139,13 +176,26 @@ export function resolveConfig(env) {
   const emailBase = env?.STAGING_SEED_EMAIL_BASE;
   const url = env?.STAGING_SUPABASE_URL;
   const serviceRoleKey = env?.STAGING_SUPABASE_SERVICE_ROLE_KEY;
+  const dbUrl = env?.STAGING_DB_URL;
   if (typeof serviceRoleKey !== 'string' || serviceRoleKey.trim() === '') {
     throw new Error('resolveConfig: STAGING_SUPABASE_SERVICE_ROLE_KEY is required');
   }
   if (typeof url !== 'string' || url.trim() === '') {
     throw new Error('resolveConfig: STAGING_SUPABASE_URL is required');
   }
+  if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
+    throw new Error('resolveConfig: STAGING_DB_URL (the Postgres connection string) is required');
+  }
   const projectRef = projectRefFromUrl(url);
   assertSeedConfig({ emailBase, projectRef });
-  return { emailBase, url, serviceRoleKey, projectRef };
+  // Same prod-safety rail on the DB URL: its ref must be the staging project AND agree with the
+  // API URL's ref — a mismatched pair is a misconfiguration we refuse rather than psql the wrong DB.
+  const dbRef = projectRefFromDbUrl(dbUrl);
+  if (!isStagingTarget(dbRef) || dbRef !== projectRef) {
+    throw new Error(
+      `resolveConfig: refusing STAGING_DB_URL for "${dbRef}" — not the staging project ` +
+        `(${STAGING_PROJECT_REF})${dbRef !== projectRef ? ` or disagrees with the API URL ref "${projectRef}"` : ''}`,
+    );
+  }
+  return { emailBase, url, serviceRoleKey, dbUrl, projectRef };
 }
