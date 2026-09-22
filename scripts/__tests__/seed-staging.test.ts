@@ -12,6 +12,8 @@ import {
   projectRefFromUrl,
   projectRefFromDbUrl,
   buildProvisioningPlan,
+  buildUserRoleRows,
+  buildDomainTruncateSql,
   parseArgs,
   resolveConfig,
 } from '../_seed-staging.mjs';
@@ -202,6 +204,57 @@ describe('buildProvisioningPlan — the accounts to create, with resolved emails
     const multi = plan.find((p) => p.tag === 'multirole');
     expect(multi!.email).toBe('arunasharad+bv-multirole@gmail.com');
     expect(multi!.roles).toHaveLength(4);
+  });
+});
+
+describe('buildUserRoleRows — resolve a persona\'s symbolic scope to concrete user_roles rows', () => {
+  const resolved = { classId: 'class-uuid-1', sessionId: 'session-uuid-1' };
+
+  it('maps an org role to scope_id null', () => {
+    const rows = buildUserRoleRows([{ role: 'admin', scopeType: 'org', scopeRef: null }], resolved);
+    expect(rows).toEqual([{ role: 'admin', scope_type: 'org', scope_id: null }]);
+  });
+
+  it('maps a class role to the resolved class id', () => {
+    const rows = buildUserRoleRows([{ role: 'teacher', scopeType: 'class', scopeRef: 'class' }], resolved);
+    expect(rows).toEqual([{ role: 'teacher', scope_type: 'class', scope_id: 'class-uuid-1' }]);
+  });
+
+  it('maps a session role to the resolved session id', () => {
+    const rows = buildUserRoleRows(
+      [{ role: 'coordinator', scopeType: 'session', scopeRef: 'session' }],
+      resolved,
+    );
+    expect(rows).toEqual([{ role: 'coordinator', scope_type: 'session', scope_id: 'session-uuid-1' }]);
+  });
+
+  it('maps the multirole account\'s four roles in one pass', () => {
+    const multi = PERSONAS.find((p) => p.tag === 'multirole')!;
+    const rows = buildUserRoleRows(multi.roles, resolved);
+    expect(rows).toEqual([
+      { role: 'parent', scope_type: 'org', scope_id: null },
+      { role: 'teacher', scope_type: 'class', scope_id: 'class-uuid-1' },
+      { role: 'coordinator', scope_type: 'session', scope_id: 'session-uuid-1' },
+      { role: 'bv_coordinator', scope_type: 'org', scope_id: null },
+    ]);
+  });
+
+  it('fails closed when a scoped role has no resolved id (never writes a null-scope class role)', () => {
+    expect(() =>
+      buildUserRoleRows([{ role: 'teacher', scopeType: 'class', scopeRef: 'class' }], { sessionId: 's' }),
+    ).toThrow(/class/i);
+  });
+});
+
+describe('buildDomainTruncateSql — the --reset wipe of synthetic domain tables', () => {
+  it('truncates the domain tables with CASCADE, restarting identities', () => {
+    const sql = buildDomainTruncateSql();
+    expect(sql).toMatch(/truncate/i);
+    expect(sql).toMatch(/cascade/i);
+    // Must cover the account-free domain tables domain.sql populates.
+    for (const t of ['centers', 'sessions', 'classes', 'families', 'students', 'enrollments']) {
+      expect(sql).toContain(t);
+    }
   });
 });
 

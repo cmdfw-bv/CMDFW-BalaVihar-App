@@ -164,6 +164,37 @@ export function buildProvisioningPlan(emailBase) {
   }));
 }
 
+// Resolve a persona's roles (each {role, scopeType, scopeRef}) into concrete user_roles rows,
+// filling scope_id from the ids resolved out of the loaded domain data. Pure so the mapping —
+// including the fail-closed "a scoped role must have an id" rule — is unit-tested; the I/O
+// wrapper (provisionAccounts) inserts what this returns. Mirrors supabase/seed/seed.sql's rows.
+export function buildUserRoleRows(roles, resolved) {
+  return roles.map((r) => {
+    let scopeId;
+    if (r.scopeRef === null) scopeId = null;
+    else if (r.scopeRef === 'class') scopeId = resolved?.classId;
+    else if (r.scopeRef === 'session') scopeId = resolved?.sessionId;
+    else throw new Error(`buildUserRoleRows: unknown scopeRef "${r.scopeRef}" for role ${r.role}`);
+    // Fail closed: never write a class/session role with a null scope_id (the user_roles CHECK
+    // would reject it, or worse, an org-null slip would over-grant). Require a resolved id.
+    if (r.scopeRef !== null && !scopeId) {
+      throw new Error(
+        `buildUserRoleRows: role ${r.role} needs a resolved ${r.scopeRef} id, but none was provided`,
+      );
+    }
+    return { role: r.role, scope_type: r.scopeType, scope_id: scopeId };
+  });
+}
+
+// The --reset wipe (AC#9): truncate the account-free synthetic domain tables domain.sql populates.
+// CASCADE clears the account-linked rows (attendance/class_updates/consents/class_meetings) that
+// FK to them; the provisioned auth users are deleted separately via the Auth Admin API (they live
+// in auth.users, not these). RESTART IDENTITY keeps any serial columns clean across reseeds.
+export function buildDomainTruncateSql() {
+  const tables = ['enrollments', 'students', 'classes', 'sessions', 'families', 'centers'];
+  return `truncate table ${tables.map((t) => `public.${t}`).join(', ')} restart identity cascade;`;
+}
+
 // Minimal CLI arg parse: only --reset is supported (wipe-then-reseed, AC#9).
 export function parseArgs(argv) {
   return { reset: Array.isArray(argv) && argv.includes('--reset') };
