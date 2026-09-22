@@ -29,8 +29,8 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 | [ADR-0005](0005-auth-magic-link.md) | Auth — magic link (passwordless), provisioned accounts | Closed | 2026-06-16 |
 | [ADR-0023](0023-active-role-storage-and-switch.md) | Active-role storage, switch mechanism & auto-activation placement | Closed | 2026-07-10 |
 | [ADR-0026](0026-user-role-approval-tiering-and-audit.md) | user-role-approval — tiered privilege-escalation guard; grant/revoke audited via structured log, not `audit_log` | Closed | 2026-07-11 |
-| [ADR-0037](0037-enrollment-withdrawal-conversational-access.md) | Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces | Closed | 2026-07-29 |
-| [ADR-2026-09-19-withdrawal-revokes-conversational-access](2026-09-19-withdrawal-revokes-conversational-access.md) | Withdrawal revokes conversational access outright; the Teacher's own record is untouched | Proposed | 2026-09-19 |
+| [ADR-0037](0037-enrollment-withdrawal-conversational-access.md) | Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces | Superseded in part by [ADR-2026-09-19](2026-09-19-withdrawal-revokes-conversational-access.md) | 2026-07-29 |
+| [ADR-2026-09-19-withdrawal-revokes-conversational-access](2026-09-19-withdrawal-revokes-conversational-access.md) | Withdrawal revokes conversational access outright; the Teacher's own record is untouched | Closed | 2026-09-19 |
 
 ### 🗄️ Data Model & DB Logic
 
