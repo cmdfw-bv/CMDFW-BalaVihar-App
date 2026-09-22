@@ -482,13 +482,13 @@ flowchart TB
 
 ### 12.1 GOVERN — hooks (safety rails that don't depend on memory)
 
-Deterministic `PreToolUse` / `UserPromptExpansion` hooks in `.claude/settings.json`. They **block**, not advise — the right tool for non-technical owners of minors' data, because they hold even if Claude forgets a rule or a human rushes.
+Deterministic `PreToolUse` / `UserPromptExpansion` hooks in `.claude/settings.json`. **Five of the six block** — the right tool for non-technical owners of minors' data, because they hold even if Claude forgets a rule or a human rushes. **`schema-guard` is deliberately advisory** and warns instead: it fires when security-critical SQL is *written*, which is a necessary action with no precondition to satisfy, so blocking it would make authoring a migration impossible. Enforcement for that SQL sits at the gates it must pass — code-owner review on `supabase/migrations/` (CODEOWNERS), the `db-and-rls` CI check, and `migration-guard` before any cloud push.
 
 | Hook | Fires on | Blocks |
 |---|---|---|
 | **secret-scan** | Write/Edit, pre-commit | Service-role / VAPID / SES keys, `.env`, or PII in client code or Git (§3) |
 | **migration-guard** | prod migration / `/promote` | Any prod DB change unless the RLS test suite passed (§6.3, §11.3) |
-| **schema-guard** | edits to consent/audit/RLS/auth-hook migrations | Silent changes to security-critical SQL — forces explicit review |
+| **schema-guard** *(advisory — warns, never blocks)* | edits to consent/audit/RLS/auth-hook migrations | Nothing. Prints a reminder to pair the change with adversarial pgTAP tests and human review (§11.3). The blocking gates are CODEOWNERS review, `db-and-rls`, and `migration-guard` |
 | **residency-guard** | new external endpoints/deps | Non-US processors or marketing/analytics trackers (§3) |
 | **pr-guard** | `gh pr create` (any stage, incl. `/promote`) | Opening a PR unless `/test` passed for exactly this source tree (§12.1, §12.3) — TDD non-negotiable |
 
@@ -546,7 +546,7 @@ The **`rls-adversarial-tester` subagent** (`.claude/agents/`) runs in its own co
 The architecture decomposes into **independent Units of Work** — *(owner persona, functionality)* pairs (§12.12), realized as `features/` units. Each flows through Design → Development → Testing **on its own branch/worktree** (`superpowers:using-git-worktrees`), so the three maintainers + Claude deliver several in parallel.
 
 - **Parallel:** feature units (isolated folders, isolated tests).
-- **Serialized seam:** the **database schema** — migrations are applied in order; `/migration` + the schema-guard hook keep concurrent schema work safe.
+- **Serialized seam:** the **database schema** — migrations are applied in order. Concurrent schema work is kept safe by `/migration`, **code-owner review on `supabase/migrations/`**, the **`db-and-rls`** check (fresh database + full pgTAP suite on every PR), and **`migration-guard`** before any cloud push. The schema-guard hook contributes a reminder, not a gate — it is advisory (§12.1).
 - **Convergence:** **Promotion** is the single funnel — all units merge to `main`, where the migration-guard hook blocks prod unless RLS tests pass.
 - **Second serialized seam: generated and shared files.** `.docs/adr/README.md` (generated; its header carries a decision count) and the persona `_index.md` tables are touched by almost every PR. Two PRs that each add an ADR merge with **no conflict** and still leave the index wrong, because both write the same count — so after merging `main`, always regenerate and re-check, even when git reported nothing to resolve. When a shared row *does* conflict, keep **both** PRs' halves; resolving with `--ours`/`--theirs` silently discards shipped work. A clean merge is not evidence of a correct one (ADR-2026-09-18).
 
