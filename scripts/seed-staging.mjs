@@ -116,8 +116,13 @@ async function provisionAccounts(client, config) {
     }
 
     // Roles: resolve symbolic scope -> concrete scope_id (pure, unit-tested), attach user_id, insert.
+    // Plain insert (mirrors supabase/seed/seed.sql; is_active uses its column default) — NOT upsert:
+    // user_roles' only unique index is on coalesce(scope_id,…), an expression PostgREST's
+    // .upsert(onConflict:) can't target (see 20260711230332_user_roles_grant_identity_idx.sql).
+    // Re-seeding is via --reset (deletes the users → cascades user_roles), so duplicates can't accrue:
+    // a re-run without --reset fails earlier at applyDomainData's F3 guard, before this line.
     const rows = buildUserRoleRows(p.roles, scope).map((r) => ({ ...r, user_id: user.id }));
-    const { error: re } = await client.from('user_roles').upsert(rows, { onConflict: 'user_id,role,scope_type,scope_id' });
+    const { error: re } = await client.from('user_roles').insert(rows);
     if (re) throw new Error(`seed-staging: assigning roles to ${p.email}: ${re.message}`);
 
     console.log(`  provisioned ${p.tag.padEnd(15)} ${p.email} (${rows.length} role${rows.length > 1 ? 's' : ''})`);
