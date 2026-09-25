@@ -1,6 +1,11 @@
 # ADR-0037: Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces
 
-**Status:** Closed · **Category:** Auth/Access · **Date:** 2026-07-29 · **Deciders:** Project owner + architect
+**Status:** Superseded in part by [ADR-2026-09-19](2026-09-19-withdrawal-revokes-conversational-access.md) · **Category:** Auth/Access · **Date:** 2026-07-29 · **Deciders:** Project owner + architect
+
+> **Two corrections, both in [ADR-2026-09-19](2026-09-19-withdrawal-revokes-conversational-access.md); the text below is unchanged.**
+>
+> 1. **Decision 3 (time-bounded read) and Decision 1 (`withdrawn_at` + trigger) are superseded** — withdrawal now revokes conversational read access outright, and no withdrawal timestamp is recorded. Decisions 2, 4 and 6 stand. Decision 5's conclusion stands on different reasoning.
+> 2. **The Context below contains a factual error.** Its claim that *every* parent/student policy across `centers`, `sessions`, `classes`, `students`, `enrollments` and `attendance` joins `enrollments` is incorrect: `students_parent_select` is family-derived and joins no enrollment at all. The "unfiltered convention is absolute" argument built on that claim does not hold. Access in this schema derives three different ways — enrollment, relationship/identity, and membership — and **only the first can be revoked with a predicate.** See the superseding ADR's Context fact 4 before citing anything below about how enrollment-derived access works.
 **Governs:** System → `core-schema-and-rls` (`.docs/specs/system/core-schema-and-rls.md`, schema addendum: `enrollments.withdrawn_at`) · Teacher → `class-update-and-home-feed` (`.docs/specs/teacher/class-update-and-home-feed.md`, its `class_updates`/`comments` policies and `is_parent_of_class`). Establishes the **org-wide convention** for enrollment-derived access to conversational content. Resolves [issue #58](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/58), deferred from PR #48 code review (Important #4). Complements ADR-0015 (chat access) and ADR-0032 (comment privacy); **changes no Closed ADR** and leaves the existing `classes_*_select`/`attendance_*_select` convention intact.
 
 ### Context
