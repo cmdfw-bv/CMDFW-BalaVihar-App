@@ -470,3 +470,185 @@ silently inconsistent.
   1. **Decision #2** (oversight roles get a full, plain scope-based DB read of `class_updates` and all `comments`, public and private) — human-directed during this `/design` pass, superseding an earlier draft that scoped oversight to private comments only.
   2. **Decision #4** (Teacher's stacked-thread UI) — confirmed interactively during this `/design` pass (stacked threads, one per Parent).
 - → ready for **`/plan`**.
+
+---
+
+## Design addendum — ADR-2026-09-19 (withdrawal revokes conversational access, 2026-09-25)
+
+**Governing ADR:** [ADR-2026-09-19](../../adr/2026-09-19-withdrawal-revokes-conversational-access.md) (Closed) · **issue:** [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96) · **supersedes** the read rule in [ADR-0037](../../adr/0037-enrollment-withdrawal-conversational-access.md) (its Decisions 2, 4 and 6 still govern).
+
+This addendum designs the build for #96. It closes the `## Open question → /architect` section above: that question is answered, and the unfiltered behavior described there is what this addendum replaces.
+
+**Why the design lands here and not on `system/core-schema-and-rls`.** Every object #96 changes — seven policies, `is_parent_of_class`, `resolve_parent_family_label` — is defined by this item's migrations (`20260724120426`, `20260724120526`) and proven by this item's pgTAP files (`170_`, `171_`). `core-schema-and-rls` owns `enrollments.status`, which this change *reads* and does not alter; now that `withdrawn_at` is deferred to [#82](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/82) (ADR Decision 6), that item gets no schema change at all. Its stale ADR-0037 addendum is corrected in place with a superseded banner and a pointer here — cross-reference, not duplication (§12.12).
+
+### Behavior
+
+**Trigger.** One enrollment row moving `active → withdrawn` mid-year. Per-enrollment, not per-account (ADR Context fact 2): the same user may hold other active enrollments and keeps everything those grant.
+
+**Who loses what**, for the withdrawn enrollment's class:
+
+| Role | Class updates | Public comments | Private thread | Post a comment |
+|---|---|---|---|---|
+| Parent (withdrawn) | revoked | revoked | **revoked** | revoked |
+| Student (withdrawn) | revoked | revoked | n/a (students have none) | revoked |
+| Teacher (class) | unchanged | unchanged | unchanged — still reads it | **revoked, for that parent** |
+| Coordinator / BV Coordinator / Admin | unchanged | unchanged | unchanged | n/a (oversight is read-only) |
+
+Revocation is immediate and total; there is no timestamp and no grace window. A class update the family could read yesterday, posted while they were enrolled, is not readable today — **this is the specific behavior that distinguishes ADR-2026-09-19 from ADR-0037**, and the assertion most likely to pass vacuously if the test fixture builds its withdrawn state by direct `insert` rather than by `update`.
+
+**What is deliberately not revoked** (ADR Decision 5): the child's attendance history, class record, enrollment row, and the center/session reference data. `classes_*_select`, `students_*_select`, `attendance_*_select`, `enrollments_*_select`, `centers`/`sessions` are untouched. The family keeps their records; they lose the conversation.
+
+**The Teacher's asymmetry is intentional, and it is new.** The Teacher's *read* of a private thread derives from teaching the class and having authored half of it — neither fact changes when a family withdraws (ADR Context fact 3, Decision 4). The Teacher's *write* derives from the family's enrollment, through `is_parent_of_class`. So after this change the Teacher can read a thread they cannot answer. The UI section below handles that; without it the Teacher hits a bare `42501` on send.
+
+**Correction to #96's step 3.** The issue says the effect on `is_parent_of_class` is that "a Teacher cannot open a **new** private thread with a withdrawn Parent." That understates it. `comments_teacher_insert`'s `with check` calls `is_parent_of_class` on **every** private insert, not once per thread, so the predicate blocks every subsequent private reply — including into a thread already in progress. That is the correct reading of ADR Decision 2 ("write access is revoked"), and it is what this design builds; #96's wording should be read as describing the common case, not a narrower rule.
+
+### Data & RLS impact
+
+One new timestamped migration. No schema change: no column added, dropped or altered, no new table, no new function. Nine existing objects are redefined.
+
+Policies are replaced with `drop policy if exists … ;` + `create policy …`, matching the repo's established replayable-replacement convention (`20260729093000:127`, `20260729090000:27`, `20260709180853:6`). Functions use `create or replace function`, preserving each one's existing `revoke … from public, anon` / `grant execute … to authenticated` posture — the migration must not silently widen it.
+
+**1a — four enrollment-derived read policies gain a filter.** Each already joins `enrollments`; each gains `and e.status = 'active'` on that join. No other change.
+
+- `class_updates_student_select`
+- `class_updates_parent_select`
+- `comments_student_public_select`
+- `comments_parent_public_select`
+
+**1b — the identity-derived private-thread policy is rewritten, not filtered.** `comments_target_parent_select` today is `active_role = 'parent' and is_private and target_parent_id = auth.uid()` — no `enrollments` join exists to filter. It gains one while keeping the identity check:
+
+```sql
+drop policy if exists comments_target_parent_select on comments;
+
+create policy comments_target_parent_select on comments for select
+using (
+  auth.jwt()->>'active_role' = 'parent'
+  and comments.is_private = true
+  and comments.target_parent_id = auth.uid()
+  and exists (
+    select 1 from class_updates cu
+    join enrollments e on e.class_id = cu.class_id
+    join students s on s.id = e.student_id
+    join family_members fm on fm.family_id = s.family_id
+    where cu.id = comments.class_update_id
+      and fm.user_id = auth.uid()
+      and e.status = 'active'
+  )
+);
+```
+
+**1a without 1b is not this decision.** A migration that filters the four read policies and leaves this one alone produces orphaned comments: a withdrawn family reading their private thread hanging off a class update they can no longer see. State nobody designed.
+
+**2 — two insert policies and one helper gain the same predicate.**
+
+- `comments_parent_insert` — `and e.status = 'active'` on its existing join.
+- `comments_student_insert` — same.
+- `is_parent_of_class` — `and e.status = 'active'` inside its `exists (…)`, added **alongside** the `auth.jwt()` role/scope gate from #52, not replacing it. Its one call site is `comments_teacher_insert`'s private branch.
+
+**4 — `resolve_parent_family_label` drops `and e.status = 'active'`.** The line exists today at `20260724120526:23`. Removing it is the one relaxation in this change, and it is the reason ATTACK 4f inverts. Two checks, both confirmed against the function body: it returns `families.label` and never a student-derived value (so no minor's data widens, §12.1 #6), and the widening is from "currently-enrolled parent of my class" to "ever-enrolled parent of my class" — which reveals nothing new, because Decision 5 leaves `enrollments_*_select` unfiltered and the caller is already gated to that class's Teacher or an oversight role.
+
+**`comments_teacher_insert` is not redefined, but its behavior changes.** Its `with check` calls `is_parent_of_class`, so the predicate reaches it through the helper. `/migration` must not restate the policy — redefining it would also have to re-copy the `20260729093000` meeting-date gate, which is how that gate gets dropped by accident.
+
+**Not touched:** `class_updates_teacher_select`, `class_updates_teacher_insert`, `class_updates_coordinator_select`, `class_updates_org_select`, `comments_teacher_public_select`, `comments_poster_teacher_private_select`, `comments_coordinator_select`, `comments_org_select`. All are scope- or authorship-derived; none joins `enrollments`; none has a withdrawal question to answer.
+
+**Performance — the [#105](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/105) interaction, identified 2026-09-29 and not addressed by ADR-2026-09-19.**
+
+`class_updates` reads **already time out on cloud staging** — `57014`, ~50s, reproducible on retry, with **zero rows in the table** (#105, found during #65's verification walk). It is therefore the RLS policy plan on the nested `classes → sessions → centers` embed, not row volume. Every predicate this addendum adds pushes in that direction:
+
+| Policy | Today | After #96 |
+| --- | --- | --- |
+| `class_updates_student_select` | 2-table join | 2-table join + `status` filter |
+| `class_updates_parent_select` | 3-table join | 3-table join + `status` filter |
+| `comments_{student,parent}_public_select` | 3–4-table join | same + `status` filter |
+| **`comments_target_parent_select`** | **no join at all** — `target_parent_id = auth.uid()` | **4-table join** (Decision 1b) |
+
+The last row is the one to watch: 1b turns the cheapest policy on `comments` into one of the most expensive, and it is not optional — 1a without it produces orphaned comments.
+
+**This is a risk to carry, not a blocker.** #105's measured timeout is on `class_updates_teacher_select`, which this change does not touch, and the free-tier `statement_timeout` is the proximate cause. But the diagnosis applies to the parent/student policies this change *does* touch, so #96 must not be promoted on local pgTAP alone — see the cloud check under pgTAP additions below.
+
+**The `(select auth.jwt())` question is deliberately left to #105.** Wrapping the claim lookups so Postgres evaluates them once as an InitPlan rather than per row is the standard mitigation, and #105 names un-wrapped calls as a suspect. It is **not** adopted here: the wrapped form appears nowhere in this codebase (0 occurrences, against 58 bare calls in `20260709032818` and 40 in `20260724120426`), and `.claude/rules/supabase-sql.md` documents the bare `auth.jwt()->>'active_role'` form as the convention. Adopting it in nine policies while ~100 other call sites keep the old form would leave the codebase worse than either uniform choice, and a convention change of that reach is architecturally significant (§12.10) — `/architect`'s call, applied everywhere at once, on #105's evidence. **#96 keeps the existing bare form and introduces no new idiom.**
+
+### UI
+
+**No new visual is introduced.** Both changes are visibility conditions on components this item already ships. Design mirror references consulted, unchanged and not refreshed (nothing new to pull): `design/sankalp/bv-connect/components/comments/CommentComposer.jsx` + `.prompt.md`, `design/sankalp/bv-connect/components/comments/CommentThread.jsx` + `.prompt.md`.
+
+**Parent — no client change at all (decided 2026-09-25).** A withdrawn child's feed simply returns no rows and `HomeFeedScreen`'s existing empty state renders. This matches chat, which under ADR-0015 has always removed withdrawn families without explanation. A worded empty state ("this class is no longer active for …") was considered and declined for this item: it would add a client change to an otherwise database-only fix, and it needs the app to read `enrollments.status` purely to phrase a message. If the pilot shows families are confused by the silence, that is a follow-up issue, not a blocker here.
+
+**Teacher — the private-thread composer is not rendered for a withdrawn family.** `ClassUpdateDetailScreen` today renders `CommentComposer` inside every thread group whenever `canComment` is true (`:139`), and `canComment` is role-derived only. It gains a per-group condition: for a **private** group, the composer renders only if the group's target parent still holds an active enrollment in the class.
+
+The signal is `is_parent_of_class(targetParentId, classId)` — the same RPC, carrying the same predicate, that `comments_teacher_insert` gates on. Using it rather than a second lookup means the button and the policy cannot drift apart: if the RPC says false, the insert would have been refused. It is already `security definer`, already granted to `authenticated`, and already gated to the class's Teacher or an oversight role, so no grant changes and no new object. It resolves per private group key, in the same `useEffect` shape that already batch-resolves thread labels (`:76`).
+
+**A side effect worth naming:** the `{parentLabels.get(g.key) ?? "Private thread"}` fallback at `:128` is the unintended behavior ADR-2026-09-19 Decision 4 set out to fix. Once the `active` filter comes off `resolve_parent_family_label`, a withdrawn family's thread resolves its real label, so the anonymous "Private thread" card stops appearing for them. No code change needed for that — it follows from the function change.
+
+**A muted note replaces the composer (decided 2026-09-25).** A composer present on some thread cards and absent on others is legible to whoever wrote this screen and puzzling to a Teacher, so the withdrawn thread says why:
+
+> This family has withdrawn — replies are closed.
+
+- **Where it goes:** `CommentThread`'s `children` slot, documented in the mirror's `CommentThread.d.ts` as "Composer slot, rendered after the list." The note renders *in place of* `CommentComposer`, so the mirror component needs no new prop and no change. Nothing to refresh from `DesignSync`.
+- **Style:** the muted-note treatment this file already uses for `emptyComments` — `theme.fonts.body`, `theme.type.scale.sm`, `theme.colors.ink3`, centered — **not** `styles.threadLabel`, which is a bold uppercase eyebrow and would shout a sentence. Tokens only, no hex (§12.13 DoD).
+- **Private groups only, and only for a withdrawn target.** A withdrawn family does not affect the *public* thread: `comments_teacher_insert`'s public branch never calls `is_parent_of_class`, so the Teacher keeps posting public comments on that update and the public group's composer is untouched. The note is scoped to a private group whose target parent has no active enrollment.
+- **This is not a permission-denied state**, which the DoD forbids (nav is role-derived; out-of-scope routes redirect home, ADR-0014). The Teacher is legitimately in scope here. The note describes the *family's enrollment state*, which is why the copy names the withdrawal rather than the Teacher's access.
+- **`/test` obligation:** the string is new user-visible copy, so it needs the playwright-cli design review at 360/768/1024/1440. If it wraps badly at 360, shorten to "Withdrawn — replies closed" rather than truncating.
+
+### Edge cases
+
+- **Sibling still enrolled in the same class** — retains full access. Every predicate is inside `exists (…)` over `enrollments`; the active sibling's row satisfies it. No special guard (ADR Decision 3 / ADR-0037 Decision 4).
+- **One child withdrawn, another active in a *different* class** — access to the active child's class is untouched; only the withdrawn class goes dark. Withdrawal is per-enrollment.
+- **Re-enrolment** — restores access completely and automatically the moment `status` returns to `'active'`. Nothing to un-stamp, because nothing was stamped.
+- **Year-end rollover — explicitly undecided, and the one trap in this design.** `status = 'active'` is the predicate, and rollover is also an `active → not-active` transition, so read literally this change would drop every family's prior-year private threads at rollover. ADR Decision 8 scopes this ADR to mid-year withdrawal only and hands rollover to #82, unarchitected. `/migration` should carry a comment on the predicate saying so, so the next reader does not mistake the current behavior for a decided one.
+- **A family that withdraws having never opened their thread** — no special case; there is nothing to preserve and no notification owed.
+- **The Teacher's own past replies** — retained, readable, and attributable. Correspondence is not deleted by this change; retention (§11.2) governs removal, and the §11 export path does not exist yet and is not promised here.
+- **Oversight roles** — unchanged throughout. A Coordinator/BV Coordinator/Admin reviewing a complaint after a withdrawal still sees the whole thread, which is the point of oversight being scope-derived.
+- **Push notifications** — already compliant, no change owed. `netlify/functions/push-send.ts:119` already filters `status = 'active'` when resolving recipients, so a withdrawn family receives no new push.
+- **Nothing can withdraw an enrollment today.** `upsertEnrollment` only ever writes `status: 'active'` and no other path writes `'withdrawn'` (ADR Decision 6). This change is therefore latent in production until #82 builds the withdrawal path — which is exactly why it is cheap to land now, and why pgTAP is the only place its behavior can be observed.
+
+### pgTAP additions (the merge gate — §11.3, non-negotiable #4)
+
+Extends `170_`/`171_`. Every assertion must be shown **Red** before the migration and **Green** after; a suite that was already green proves nothing here.
+
+- withdrawn parent cannot read a class update posted **before** withdrawal — the assertion that distinguishes this ADR from ADR-0037
+- withdrawn parent cannot read a class update posted after withdrawal
+- withdrawn parent cannot read public comments; withdrawn student likewise
+- **withdrawn parent cannot read their own private thread** — Decision 1b's assertion, and the one that passes vacuously if 1b is skipped
+- withdrawn parent cannot insert a comment; withdrawn student likewise
+- Teacher cannot open a new private thread with a withdrawn parent (via `is_parent_of_class`)
+- **Teacher cannot reply into an *existing* private thread with a withdrawn parent** — the correction to #96 step 3; a test asserting only the "new thread" case does not cover the built behavior
+- sibling still enrolled in the same class retains read and write
+- re-enrolment restores access
+- Teacher's label resolution for a withdrawn family resolves (no `"Private thread"` fallback)
+
+**Fixture warning (carried from #96, and it applies to more than one assertion now).** `171_…:55` builds its withdrawn enrollment by direct `insert … 'withdrawn'`, not by updating an active row. Any assertion about a *transition* — above all "cannot read an update posted before withdrawal" — passes vacuously against that fixture, because the family was never enrolled when the update was posted. Those assertions need the withdrawn state built by `update`, with the class update inserted first, while active.
+
+**ATTACK 4f is inverted, not deleted** (ADR Decision 7), under three binding conditions:
+
+1. **Invert, never delete.** It becomes an explicit ALLOW carrying a comment that names ADR-2026-09-19 and states why the resolution is authorized. Today it asserts Teacher D gets `null` for Parent 1 via Class D (`171_…:313`; #96's body cites `:310`, which is its comment block); after Decision 4 that call returns `'Adv Family A'`.
+2. **Relabel and relocate.** A slot named `ATTACK 4f DENY` asserting an allow is unreadable. It moves beside the org-wide `CONTROL` assertion that follows it (`171_…:322`) and is renamed accordingly.
+3. **Confirm the perimeter still holds.** ATTACK 4c (`171_…:288` — Teacher A resolving Parent 2, whose child is in Class B) must still pass — it independently proves the RPC refuses an unrelated family. 4f was the only Group 4 assertion whose caller sat legitimately inside the perimeter; its own comment concedes "the family/class/teacher-scope join otherwise lines up." It tested an implementation accident, not an authorization boundary.
+
+**A cloud check is required before promotion — local pgTAP cannot see #105's failure mode.** Local runs on a fast machine against a tiny dataset and is instant; the timeout is cloud-only, which is exactly the point #105 makes. So alongside the assertions above, `/test` (or `/deploy-staging`) must confirm on cloud staging, signed in as a seeded **Parent** and **Student**:
+
+- the home feed loads — no `57014` — for a family with an **active** enrollment
+- the same read returns empty rather than hanging for a **withdrawn** one
+- ideally `EXPLAIN (ANALYZE, BUFFERS)` on the parent feed read before and after the migration, so the added `enrollments` join's cost is a recorded number rather than an assumption
+
+If the parent/student feed regresses on cloud the way the teacher feed already has, that means #105's fix must land first — not that this migration is reverted. Record the result either way; a green local suite is not evidence about this.
+
+### Out of scope
+
+- **`enrollments.withdrawn_at`** — deferred to [#82](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/82) with the withdrawal path that would stamp it (ADR Decision 6). Whoever builds that path must add the column in the same change; deferring past it makes every withdrawal before it unreconstructable.
+- **Annual rollover** — ADR Decision 8. Deliberately undecided; #82, and it needs `/architect` before it needs code.
+- **The withdrawal path itself** — nothing in the app writes `'withdrawn'` today. #82.
+- **Chat** — already compliant via `enrollments_sync_participants` (ADR-0015, `20260709043451`), sibling guard included. Nothing owed.
+- **Reference and historical data** — ADR Decision 5, listed under Data & RLS impact above.
+- **Staff read paths** — the eight untouched policies listed above.
+- **A worded empty state for the withdrawn parent** — declined for this item (see UI); a follow-up if the pilot warrants it.
+- **A §11 data-export path for a withdrawn family** — does not exist, and this addendum does not promise it.
+
+### Sign-off
+
+- [ ] **Human sign-off on this addendum** — including the two decisions taken during this `/design` pass:
+  1. **Parent-side UI:** generic empty state, no client change (so #96 stays migration + tests, plus the Teacher composer condition).
+  2. **Teacher-side UI:** composer hidden per private thread via `is_parent_of_class`, and the correction to #96's step 3 recorded (all private replies blocked, not only new threads).
+  3. **The muted note** replacing that composer — "This family has withdrawn — replies are closed." — confirmed 2026-09-25, in `CommentThread`'s existing composer slot, styled as this file's `emptyComments` note. No open UI questions remain.
+- [ ] **Risk acknowledged:** the [#105](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/105) cloud-timeout interaction, the decision to keep the bare `auth.jwt()` form rather than fork the convention here, and the cloud-verification obligation — all added 2026-09-29, after the original pass.
+- → then **`/plan`**.
