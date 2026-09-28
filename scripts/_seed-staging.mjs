@@ -195,6 +195,16 @@ export function buildDomainTruncateSql() {
   return `truncate table ${tables.map((t) => `public.${t}`).join(', ')} restart identity cascade;`;
 }
 
+// Decide whether to (re)load the domain dataset. This is what makes a plain re-run ADDITIVE —
+// safe for provisioning a second/third tester (Maulik, Srinath) on their own email base without
+// wiping the shared data or tripping domain.sql's "F3 already exists" guard:
+//   - --reset            -> load (resetStaging wiped first, so reload the domain)
+//   - domain absent      -> load (fresh empty DB)
+//   - domain present      -> SKIP (accounts-only: just provision this base's accounts)
+export function shouldLoadDomain({ reset, domainExists }) {
+  return reset || !domainExists;
+}
+
 // Minimal CLI arg parse: only --reset is supported (wipe-then-reseed, AC#9).
 export function parseArgs(argv) {
   return { reset: Array.isArray(argv) && argv.includes('--reset') };

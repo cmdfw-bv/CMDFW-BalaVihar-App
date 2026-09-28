@@ -59,6 +59,17 @@ Set these in your terminal for the run (they are **not** committed anywhere):
 
 To seed a *fresh* (empty) staging without wiping first, run the same command **without** `--reset`.
 
+## Adding another tester (additive mode)
+
+To let another person sign in as the personas on **their own** inbox — without wiping the existing data or accounts — run the seed **without `--reset`**, pointing `STAGING_SEED_EMAIL_BASE` at their email:
+
+```bash
+export STAGING_SEED_EMAIL_BASE='theiremail@gmail.com'   # keep the other three vars as-is
+npm run seed:staging
+```
+
+Because the domain data already exists, the script prints *"accounts-only (additive) mode"*, skips the data load, and just provisions that person's 7 persona accounts (`theiremail+bv-teacher@…`, etc.) alongside everyone else's. They then sign in with their own inbox. Each tester's **student** persona automatically claims a different (unlinked) student from the pilot class, so testers don't collide — the pilot class has 9 students, enough for several testers. `--reset` remains the full wipe-and-reload for everyone.
+
 ## Notes
 
 - **Never point seeding at production.** The guard enforces this, but also never set

@@ -14,6 +14,7 @@ import {
   buildProvisioningPlan,
   buildUserRoleRows,
   buildDomainTruncateSql,
+  shouldLoadDomain,
   parseArgs,
   resolveConfig,
 } from '../_seed-staging.mjs';
@@ -255,6 +256,21 @@ describe('buildDomainTruncateSql — the --reset wipe of synthetic domain tables
     for (const t of ['centers', 'sessions', 'classes', 'families', 'students', 'enrollments']) {
       expect(sql).toContain(t);
     }
+  });
+});
+
+describe('shouldLoadDomain — additive (multi-tester) vs fresh vs reset', () => {
+  it('loads the domain on a fresh, empty DB', () => {
+    expect(shouldLoadDomain({ reset: false, domainExists: false })).toBe(true);
+  });
+
+  it('SKIPS the domain load when data already exists — accounts-only/additive (a second tester)', () => {
+    expect(shouldLoadDomain({ reset: false, domainExists: true })).toBe(false);
+  });
+
+  it('loads the domain on --reset regardless of prior state (reset wipes, then reloads)', () => {
+    expect(shouldLoadDomain({ reset: true, domainExists: true })).toBe(true);
+    expect(shouldLoadDomain({ reset: true, domainExists: false })).toBe(true);
   });
 });
 

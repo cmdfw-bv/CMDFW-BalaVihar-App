@@ -9,12 +9,17 @@
 // Run:  STAGING_SUPABASE_URL=… STAGING_SUPABASE_SERVICE_ROLE_KEY=… \
 //       STAGING_SEED_EMAIL_BASE=you@gmail.com  npm run seed:staging        [-- --reset]
 //
-// Build status (2026-09-22): all steps implemented. The pure decision-logic (config + prod
-// rails, provisioning plan, symbolic→concrete scope resolution, the reset truncate SQL) lives in
-// _seed-staging.mjs and is unit-tested (37 tests). The I/O bodies below — applyDomainData (psql),
-// provisionAccounts (Auth Admin API + service-role table writes) and resetStaging — make real
-// cloud calls and so cannot be unit-tested; their FIRST real run is watched at the #65
-// verification walk (cloud creds in hand), which may surface adjustments to the live calls.
+// Build status (2026-09-28): verified live against cloud staging (2026-09-25 walk) — domain load
+// + all 7 personas provisioned, personas sign in. Pure decision-logic (config + prod rails,
+// provisioning plan, symbolic→concrete scope resolution, reset truncate SQL, additive-mode
+// decision) lives in _seed-staging.mjs and is unit-tested (40 tests). The I/O bodies below —
+// applyDomainData (psql), provisionAccounts (Auth Admin API + service-role writes) and
+// resetStaging — make real cloud calls and can't be unit-tested.
+//
+// Modes: plain run on a fresh DB loads domain + accounts; plain run when the domain already
+// exists is ADDITIVE (accounts-only) — provisions another tester's accounts on their email base
+// without wiping (each tester's student persona claims a distinct unlinked pilot-class student);
+// --reset wipes everything and reloads.
 import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -24,6 +29,7 @@ import {
   buildProvisioningPlan,
   buildUserRoleRows,
   buildDomainTruncateSql,
+  shouldLoadDomain,
   DOMAIN_SQL_PATH,
 } from './_seed-staging.mjs';
 
@@ -72,7 +78,10 @@ async function ensureUser(client, email) {
 }
 
 /** Resolve the concrete ids the persona scopes need out of the loaded domain data: the F3
- *  session, the pilot class, and one student (+ its family) in that class. */
+ *  session, the pilot class, and one UNLINKED student (+ its family) in that class.
+ *  Picking a student whose user_id IS NULL is what makes multi-tester safe: students.user_id is
+ *  1:1, so each tester's "student" persona must claim a *different* student — reusing one would
+ *  overwrite the previous tester's link. The pilot class has 9 students, ample for several testers. */
 async function resolveScopeIds(client) {
   const { data: session, error: se } = await client
     .from('sessions').select('id').eq('name', 'F3').single();
@@ -82,12 +91,32 @@ async function resolveScopeIds(client) {
     .from('classes').select('id').eq('session_id', session.id).eq('grade_band', PILOT_CLASS_GRADE_BAND).single();
   if (ce || !klass) throw new Error(`seed-staging: could not find the "${PILOT_CLASS_GRADE_BAND}" class (${ce?.message ?? 'no row'})`);
 
-  const { data: enr, error: ee } = await client
-    .from('enrollments').select('students(id, family_id)').eq('class_id', klass.id).limit(1);
-  if (ee || !enr?.length) throw new Error(`seed-staging: no student enrolled in the pilot class (${ee?.message ?? 'none'})`);
-  const student = enr[0].students;
+  // An unlinked student enrolled in the pilot class (deterministic order so it's reproducible).
+  const { data: students, error: ee } = await client
+    .from('students')
+    .select('id, family_id, enrollments!inner(class_id)')
+    .eq('enrollments.class_id', klass.id)
+    .is('user_id', null)
+    .order('first_name')
+    .limit(1);
+  if (ee) throw new Error(`seed-staging: querying an unlinked pilot-class student failed (${ee.message})`);
+  if (!students?.length) {
+    throw new Error(
+      `seed-staging: no unlinked student left in the "${PILOT_CLASS_GRADE_BAND}" class — every one is already ` +
+        `claimed by a tester's student persona. Run with --reset to start clean, or add more students to the seed.`,
+    );
+  }
+  const student = students[0];
 
   return { sessionId: session.id, classId: klass.id, studentId: student.id, familyId: student.family_id };
+}
+
+/** True if the synthetic domain data is already loaded (the F3 session exists). Drives additive
+ *  (accounts-only) mode for a second/third tester — see shouldLoadDomain. */
+async function domainDataExists(client) {
+  const { data, error } = await client.from('sessions').select('id').eq('name', 'F3').limit(1);
+  if (error) throw new Error(`seed-staging: could not check for existing domain data (${error.message})`);
+  return (data?.length ?? 0) > 0;
 }
 
 /** Create an auth account per persona (idempotent) + assign roles/scope, mirroring
@@ -164,7 +193,16 @@ async function main() {
   for (const p of plan) console.log(`  - ${p.tag.padEnd(15)} ${p.email}`); // emails only, no secrets
 
   if (args.reset) await resetStaging(client, config);
-  applyDomainData(config);
+
+  // Additive by default: load the domain only on a fresh/reset DB. If the data is already there,
+  // this is a second/third tester joining — skip the load (which domain.sql would refuse anyway)
+  // and just provision this base's accounts alongside the existing ones.
+  const domainExists = await domainDataExists(client);
+  if (shouldLoadDomain({ reset: args.reset, domainExists })) {
+    applyDomainData(config);
+  } else {
+    console.log('  domain data already present — accounts-only (additive) mode; skipping domain load.');
+  }
   await provisionAccounts(client, config);
 
   console.log('seed-staging: done.');
