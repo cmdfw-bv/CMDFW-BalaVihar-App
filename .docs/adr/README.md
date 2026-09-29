@@ -29,7 +29,8 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 | [ADR-0005](0005-auth-magic-link.md) | Auth — magic link (passwordless), provisioned accounts | Closed | 2026-06-16 |
 | [ADR-0023](0023-active-role-storage-and-switch.md) | Active-role storage, switch mechanism & auto-activation placement | Closed | 2026-07-10 |
 | [ADR-0026](0026-user-role-approval-tiering-and-audit.md) | user-role-approval — tiered privilege-escalation guard; grant/revoke audited via structured log, not `audit_log` | Closed | 2026-07-11 |
-| [ADR-0037](0037-enrollment-withdrawal-conversational-access.md) | Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces | Closed | 2026-07-29 |
+| [ADR-0037](0037-enrollment-withdrawal-conversational-access.md) | Enrollment withdrawal revokes participation and future content, not history — time-bounded read on conversational surfaces | Superseded in part by [ADR-2026-09-19](2026-09-19-withdrawal-revokes-conversational-access.md) | 2026-07-29 |
+| [ADR-2026-09-19-withdrawal-revokes-conversational-access](2026-09-19-withdrawal-revokes-conversational-access.md) | Withdrawal revokes conversational access outright; the Teacher's own record is untouched | Closed | 2026-09-19 |
 
 ### 🗄️ Data Model & DB Logic
 
@@ -83,7 +84,7 @@ _Generated from the ADR files by `npm run gen:adr-index` — do not edit this bl
 | [ADR-2026-08-21-adr-identifier-scheme](2026-08-21-adr-identifier-scheme.md) | Date-based ADR ids + a generated, categorized index | Closed | 2026-08-21 |
 | [ADR-2026-09-07-test-fixtures-never-in-migrations](2026-09-07-test-fixtures-never-in-migrations.md) | Test-only database objects install via the seed path, never a migration | Closed | 2026-09-07 |
 | [ADR-2026-09-14-synthetic-seed-shared-data-per-env-accounts](2026-09-14-synthetic-seed-shared-data-per-env-accounts.md) | Synthetic seed splits account-free shared data from per-environment account-linked rows | Closed | 2026-09-14 |
-| [ADR-2026-09-18-require-up-to-date-branches](2026-09-18-require-up-to-date-branches.md) | Require a branch to be current with `main` before it can merge | Proposed | 2026-09-18 |
+| [ADR-2026-09-18-require-up-to-date-branches](2026-09-18-require-up-to-date-branches.md) | Require a branch to be current with `main` before it can merge | Closed | 2026-09-18 |
 
 <!-- ADR-INDEX:END -->
 
