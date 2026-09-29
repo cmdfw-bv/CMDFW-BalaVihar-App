@@ -111,3 +111,23 @@ N/A — no new screen. The features being *verified* (feed, dashboard, etc.) are
 
 ### Next
 `/plan` — turn the `seed-staging` script (domain SQL + Auth-Admin provisioning + `--reset`) into tasks; run the SES request to the IT/AWS admin as a parallel track for the demo.
+
+---
+
+## Verification walk — results (2026-09-25, re-confirmed 2026-09-28)
+
+Run against cloud staging (`balavihar-connect.netlify.app` / project `ejjvqtleuuamgtlmtxkc`).
+
+**Setup performed (the one-time cloud config the walk surfaced):**
+- Pushed migrations #91 + #95 → staging at **37**, matches `main` (AC — env current).
+- Ran `npm run seed:staging`: domain loaded + **all 7 personas provisioned** (verified: 3 centers · 6 classes · 33 students · 33 enrollments · 10 roles). AC#5 ✓.
+- **Auth hook registered** (`custom_access_token_hook`) — was present as a migration but *not registered* (the documented gotcha; without it everyone lands on `/no-role`). Now enabled.
+- **Site URL + redirect allowlist** set to `https://balavihar-connect.netlify.app` (were `localhost`/empty).
+- Additive multi-tester mode used to provision two more testers on their own email bases (each claims a distinct unlinked pilot-class student).
+
+**Walked (AC#3/#6/#7):**
+- ✅ **Sign-in** — teacher persona via magic link → landed on Teacher home with the correct **role + scope badge** (Teacher · Frisco · F3 · 7-8-9), i.e. the auth hook + JWT scope claims + RLS all work on real cloud infra. Magic-link email delivered to the tester's inbox (built-in sender; rate-limited — space sign-ins out, AC#8 note).
+- ✅ **Attendance** — real roster (the nine 7-8-9 students), present/absent, submit; ADR-0038 auto-generated meetings present.
+- ⏳ **Feed** — **fails on cloud** with a Postgres statement timeout (57014). Root cause: an RLS-cascade / un-wrapped-`auth.jwt()` perf issue in the `class_updates` read that only bites on the free-tier DB (instant locally). Filed as **[#105](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/105)** with root-cause + fix direction; it's a follow-up, not a blocker for landing this tooling. (Classes/Chat are unbuilt placeholders — expected.)
+
+**Net:** `main` → staging deploys, cloud Supabase attached, synthetic data + sign-in-able accounts, personas sign in and use the app. AC#5/#6/#7 verified; AC#8 (email) confirmed via built-in-paced; the feed's cloud read is #105.
