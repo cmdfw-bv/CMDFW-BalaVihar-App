@@ -13,6 +13,16 @@
 >
 > Unchanged by this ADR: the one-approval requirement, code-owner review, approval dismissal on push, and the admin bypass.
 
+> **Observed in practice 2026-09-22.** The last Consequence below asked for this rather than assuming it; this records what happened, and corrects it. Evidence: PRs #100, #101, #103.
+>
+> 1. **Auto-merge does not update a branch that is behind.** #100 sat at `BEHIND` with auto-merge armed *and* an approval in place, unchanged for over three minutes and with no event pending that would have moved it. GitHub's auto-merge waits for requirements to be satisfied; it does not satisfy them. `allow_update_branch: true` enables the manual "Update branch" button — it does not automate it. (A merge queue does; this repo has none.)
+> 2. **Once the remaining requirement is met, auto-merge finishes the job.** On #100: `gh pr update-branch 100` → CI re-ran → auto-merge merged on green, with no further human action. Confirmed again on #103, where the last missing requirement was the review — approval landed at 19:38 and the merge completed 52 seconds later, unattended.
+> 3. **The "Update branch" merge commit did not dismiss the approval.** #100's `reviewDecision` stayed `APPROVED` across the update and through to merge, so no second approval was requested. *Scope of this evidence: GitHub's Update-branch operation on a branch whose diff against `main` is otherwise unchanged. A push that also changes content is a different case and was not tested — assume it dismisses.*
+>
+> **Net effect: the cost falls on whoever merges (one command), not on the reviewer.** The Consequence below expects auto-merge to "absorb part of the manual step **by updating and merging**." It merges; it does not update. Half right, and the wrong half is the one that matters when planning a large PR.
+>
+> **Forced re-approval cycles to date: zero.** Decision 5's review trigger (three in two weeks) is not near, and the merge-queue lever is not yet warranted on those grounds.
+
 ### Context
 
 `main` requires four status checks (`app-tests`, `db-and-rls`, `secrets-pii`, `residency-scan`), one approving review, all review threads resolved, and dismisses approvals on every push. It does **not** require a branch to be up to date before merging (`required_status_checks.strict = false`).
