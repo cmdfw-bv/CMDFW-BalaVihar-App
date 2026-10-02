@@ -11,6 +11,7 @@ import {
   assertSeedConfig,
   projectRefFromUrl,
   projectRefFromDbUrl,
+  splitDbUrlSecret,
   buildProvisioningPlan,
   buildUserRoleRows,
   buildDomainTruncateSql,
@@ -188,6 +189,52 @@ describe('projectRefFromDbUrl — derive the target ref from a Postgres connecti
     expect(() => projectRefFromDbUrl('postgresql://postgres@db..supabase.co:5432/x')).toThrow();
     expect(() => projectRefFromDbUrl('not-a-url')).toThrow();
     expect(() => projectRefFromDbUrl('')).toThrow();
+  });
+
+  it('rejects a libpq host= query-param override (would bypass the staging-only rail)', () => {
+    // A pooler URL whose ref is staging but whose ?host= points at a prod direct host — libpq would
+    // connect to the prod host, so the ref-based guard must refuse it.
+    expect(() =>
+      projectRefFromDbUrl(
+        'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres?host=db.someprodref000000.supabase.co',
+      ),
+    ).toThrow(/param/i);
+  });
+
+  it('rejects a user= query-param override', () => {
+    expect(() =>
+      projectRefFromDbUrl(
+        'postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?user=postgres.someprodref000000',
+      ),
+    ).toThrow(/param/i);
+  });
+
+  it('allows a bare sslmode query param', () => {
+    expect(
+      projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=require'),
+    ).toBe('ejjvqtleuuamgtlmtxkc');
+  });
+
+  it('never echoes the password in an error message', () => {
+    // A malformed URL carrying a password must not have that password surface in the thrown message.
+    try {
+      projectRefFromDbUrl('postgres://user:SUPERSECRETPW@ bad url');
+      throw new Error('expected a throw');
+    } catch (e) {
+      expect(String((e as Error).message)).not.toContain('SUPERSECRETPW');
+    }
+  });
+});
+
+describe('splitDbUrlSecret — keep the DB password out of psql argv', () => {
+  it('returns the password separately and a URL with no password in it', () => {
+    const { safeUrl, password } = splitDbUrlSecret(
+      'postgresql://postgres.ejjvqtleuuamgtlmtxkc:Secret123@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+    );
+    expect(password).toBe('Secret123');
+    expect(safeUrl).not.toContain('Secret123');
+    expect(safeUrl).toContain('aws-0-us-east-1.pooler.supabase.com');
+    expect(safeUrl).toContain('ejjvqtleuuamgtlmtxkc');
   });
 });
 

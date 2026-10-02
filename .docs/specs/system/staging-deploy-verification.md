@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all 6 personas (every built feature is verified here) · **scope:** infra / delivery — prove `main` → staging deploys, cloud Supabase attached, dev-equivalent synthetic data, every persona can sign in · **governing ADR:** [ADR-2026-07-30-staging-builds-from-main](../../adr/2026-07-30-staging-builds-from-main.md) + [ADR-2026-07-30-synthetic-staging-seed-and-accounts](../../adr/2026-07-30-synthetic-staging-seed-and-accounts.md) (both decided at the 2026-07-30 architect review, formally recorded as date-based ADRs on 2026-09-06; the originally-intended "ADR-0037/0038" numbers were never written and later collided — see [ADR-2026-08-21-adr-identifier-scheme](../../adr/2026-08-21-adr-identifier-scheme.md)) · **covers:** GitHub #65; doc 3 §7 (hosting/deploy); the first cloud/deployed run of six Built/Merged items
 
-**Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ (2026-09-08 — email transport decided, cloud-safe seed + reset designed; see the Design section) → next is `/plan`.
+**Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ → `/plan` ✓ → `/build` ✓ (the `seed-staging` tooling) → verified live against cloud staging (see the Verification walk results at the end). Remaining ACs tracked as follow-ups (see that section).
 
 **Related:** starts where **#9** (Netlify + cloud Supabase provisioning) ends. Consumes **#19** (pilot-seed-data — the realistic synthetic seed). Security-hardening sibling **#66** (keep pgTAP `tests.*` helpers out of cloud DBs) and **#73** (fail-open staff RPC guards) both intersect the seed + guard ACs below.
 
@@ -86,7 +86,7 @@ A single maintainer-run script (Node; uses the cloud URL + service-role key; **n
 2. **Persona accounts via the Auth Admin API** (`auth.admin.createUser`, service-role) — the 6 personas + one multi-role account (for AC#7's switcher). Emails come from a **configurable base** (`STAGING_SEED_EMAIL_BASE`) using `+`-addressing (`<base>+bv-teacher`, `<base>+bv-parent`, …):
    - **#65 verification:** base = the tester's own Gmail (a personal Gmail account), so every magic-link lands in the tester's own inbox — fully self-serve, no dependency on the `bvportal` group or the IT/AWS admin.
    - **Demo/prod:** base points at team mailboxes (`bvportal`/dedicated) — the SES + team-mailbox path.
-3. **Roles** — insert `user_roles` (+ `students.user_id` / `family_members` links) and set `is_active`, mirroring the local seed pattern.
+3. **Roles** — insert `user_roles` (+ `students.user_id` / `family_members` links) via the `insert_user_role_grant` RPC (idempotent on re-run), mirroring the local seed pattern. **`is_active` is left false** — the auth hook auto-activates a role on first sign-in, so the seed does not pre-activate.
 - **Provision-a-tester (hands-on for invited people):** because emails are configurable, onboarding a tester (e.g. a stakeholder or the registration team) = add their email + persona and re-run the seed → they sign in with their **own** Gmail and use the app as that persona (multi-role account or `+tags` for several personas). The app is **provision-only** (ADR-0005), so an *un-provisioned* email lands on the no-role screen — a stranger can't get in.
 
 ### C. Repeatable reset (AC#9)
@@ -130,4 +130,14 @@ Run against cloud staging (`balavihar-connect.netlify.app` / project `ejjvqtleuu
 - ✅ **Attendance** — real roster (the nine 7-8-9 students), present/absent, submit; ADR-0038 auto-generated meetings present.
 - ⏳ **Feed** — **fails on cloud** with a Postgres statement timeout (57014). Root cause: an RLS-cascade / un-wrapped-`auth.jwt()` perf issue in the `class_updates` read that only bites on the free-tier DB (instant locally). Filed as **[#105](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/105)** with root-cause + fix direction; it's a follow-up, not a blocker for landing this tooling. (Classes/Chat are unbuilt placeholders — expected.)
 
-**Net:** `main` → staging deploys, cloud Supabase attached, synthetic data + sign-in-able accounts, personas sign in and use the app. AC#5/#6/#7 verified; AC#8 (email) confirmed via built-in-paced; the feed's cloud read is #105.
+**Net:** `main` → staging deploys, cloud Supabase attached, synthetic data + sign-in-able accounts, a persona signs in and uses the app. AC#1/#2/#3/#5 verified; AC#8 (email) confirmed via built-in-paced; the feed's cloud read is #105.
+
+**Deviation from ADR-2026-07-30-synthetic-staging-seed-and-accounts:** that (Closed) ADR specifies **team-controlled mailboxes**; this verification used testers' **personal Gmail** via `+`-addressing (the ADR's own "configurable base" path), which is self-serve and needs no `bvportal`/IT-admin dependency. The team-mailbox/SES path remains the demo/prod route.
+
+**ACs not yet fully walked — tracked as follow-ups (not blockers for landing the tooling):**
+- **AC#6** — magic-link sign-in was walked for the **teacher** persona only; the other personas' sign-ins are owed. → follow-up.
+- **AC#7** — role-switch (multirole) + web-reload-keeps-session not walked. → follow-up.
+- **AC#4** — `/.netlify/functions/health`, US-region check, and the `dist` key-prefix grep not recorded. → follow-up.
+- **AC#12** — fail-closed staff-RPC guards (no-scope → zero rows + `audit_log` `denied`) on the deployed DB not recorded (plan T7). → follow-up.
+
+Because of these, this item stays **open**: the PR that lands the tooling says **Refs #65** (not Closes), and each unwalked AC is filed as its own issue.

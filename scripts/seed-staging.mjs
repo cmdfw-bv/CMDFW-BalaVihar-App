@@ -6,7 +6,7 @@
 // config gate, prod safety rail, provisioning plan, arg parse — lives in _seed-staging.mjs and
 // is covered by scripts/__tests__/seed-staging.test.ts. This file is the I/O that drives it.
 //
-// Run:  STAGING_SUPABASE_URL=… STAGING_SUPABASE_SERVICE_ROLE_KEY=… \
+// Run:  STAGING_SUPABASE_URL=… STAGING_SUPABASE_SERVICE_ROLE_KEY=… STAGING_DB_URL=… \
 //       STAGING_SEED_EMAIL_BASE=you@gmail.com  npm run seed:staging        [-- --reset]
 //
 // Build status (2026-09-28): verified live against cloud staging (2026-09-25 walk) — domain load
@@ -30,8 +30,19 @@ import {
   buildUserRoleRows,
   buildDomainTruncateSql,
   shouldLoadDomain,
+  splitDbUrlSecret,
   DOMAIN_SQL_PATH,
 } from './_seed-staging.mjs';
+
+// Run psql against the staging DB with the password supplied via PGPASSWORD (env), never on argv
+// (where `ps` would expose it). `safeUrl` carries no password; libpq falls back to PGPASSWORD.
+function runPsql(config, psqlArgs) {
+  const { safeUrl, password } = splitDbUrlSecret(config.dbUrl);
+  return spawnSync('psql', [safeUrl, '--set', 'ON_ERROR_STOP=1', ...psqlArgs], {
+    stdio: ['ignore', 'inherit', 'inherit'],
+    env: { ...process.env, PGPASSWORD: password },
+  });
+}
 
 // The F3 class every student-login persona attaches to (the pilot class with student logins +
 // content, mirroring supabase/seed/seed.sql). Kept as a named constant, not scattered literals.
@@ -49,9 +60,7 @@ function applyDomainData(config) {
     );
   }
   console.log(`  applying ${DOMAIN_SQL_PATH} via psql …`);
-  const res = spawnSync('psql', [config.dbUrl, '--set', 'ON_ERROR_STOP=1', '-f', DOMAIN_SQL_PATH], {
-    stdio: ['ignore', 'inherit', 'inherit'],
-  });
+  const res = runPsql(config, ['-f', DOMAIN_SQL_PATH]);
   if (res.error) {
     throw new Error(
       `seed-staging: could not run psql (${res.error.message}). Is psql installed and on PATH?`,
@@ -65,24 +74,31 @@ function applyDomainData(config) {
   }
 }
 
+/** Find an auth user by email (read-only), or null. */
+async function findUserByEmail(client, email) {
+  const { data, error } = await client.auth.admin.listUsers({ perPage: 1000 });
+  if (error) throw new Error(`seed-staging: listing users failed (${error.message})`);
+  return data.users.find((u) => u.email === email) ?? null;
+}
+
 /** Create-or-reuse an auth user by email (idempotent). createUser fails if the email already
- *  exists, so on that path we find the existing user via listUsers. */
+ *  exists, so on that path we find the existing user. */
 async function ensureUser(client, email) {
   const { data, error } = await client.auth.admin.createUser({ email, email_confirm: true });
   if (!error) return data.user;
-  const { data: list, error: listErr } = await client.auth.admin.listUsers({ perPage: 1000 });
-  if (listErr) throw listErr;
-  const existing = list.users.find((u) => u.email === email);
+  const existing = await findUserByEmail(client, email);
   if (existing) return existing;
   throw error; // a real failure, not "already registered"
 }
 
 /** Resolve the concrete ids the persona scopes need out of the loaded domain data: the F3
- *  session, the pilot class, and one UNLINKED student (+ its family) in that class.
- *  Picking a student whose user_id IS NULL is what makes multi-tester safe: students.user_id is
- *  1:1, so each tester's "student" persona must claim a *different* student — reusing one would
- *  overwrite the previous tester's link. The pilot class has 9 students, ample for several testers. */
-async function resolveScopeIds(client) {
+ *  session, the pilot class, and ONE student (+ its family) in that class — tied to this base.
+ *
+ *  Idempotent per base: if this base's student login already owns a student (a re-run), reuse THAT
+ *  student + family so the parent/multirole links stay on the same family. Only on a first run do
+ *  we claim a fresh UNLINKED student (students.user_id is 1:1, so each tester must take a different
+ *  one — the pilot class has 9, ample). Ordered by (first_name, id) for a stable, reproducible pick. */
+async function resolveScopeIds(client, studentEmail) {
   const { data: session, error: se } = await client
     .from('sessions').select('id').eq('name', 'F3').single();
   if (se || !session) throw new Error(`seed-staging: could not find the F3 session (${se?.message ?? 'no row'})`);
@@ -91,13 +107,25 @@ async function resolveScopeIds(client) {
     .from('classes').select('id').eq('session_id', session.id).eq('grade_band', PILOT_CLASS_GRADE_BAND).single();
   if (ce || !klass) throw new Error(`seed-staging: could not find the "${PILOT_CLASS_GRADE_BAND}" class (${ce?.message ?? 'no row'})`);
 
-  // An unlinked student enrolled in the pilot class (deterministic order so it's reproducible).
+  // Re-run: reuse the student this base's login already owns.
+  const existingStudentUser = await findUserByEmail(client, studentEmail);
+  if (existingStudentUser) {
+    const { data: owned, error: oe } = await client
+      .from('students').select('id, family_id').eq('user_id', existingStudentUser.id).limit(1);
+    if (oe) throw new Error(`seed-staging: checking the base's existing student failed (${oe.message})`);
+    if (owned?.length) {
+      return { sessionId: session.id, classId: klass.id, studentId: owned[0].id, familyId: owned[0].family_id };
+    }
+  }
+
+  // First run: claim an unlinked student enrolled in the pilot class.
   const { data: students, error: ee } = await client
     .from('students')
     .select('id, family_id, enrollments!inner(class_id)')
     .eq('enrollments.class_id', klass.id)
     .is('user_id', null)
     .order('first_name')
+    .order('id')
     .limit(1);
   if (ee) throw new Error(`seed-staging: querying an unlinked pilot-class student failed (${ee.message})`);
   if (!students?.length) {
@@ -125,59 +153,78 @@ async function domainDataExists(client) {
  *  First real run is watched at the #65 verification walk. */
 async function provisionAccounts(client, config) {
   const plan = buildProvisioningPlan(config.emailBase);
-  const scope = await resolveScopeIds(client);
+  const studentEmail = plan.find((p) => p.tag === 'student').email;
+  const scope = await resolveScopeIds(client, studentEmail);
 
   for (const p of plan) {
     const user = await ensureUser(client, p.email);
 
-    // Persona-specific data links (mirrors seed.sql): a student login owns a student row; a
-    // parent/guardian (incl. the multirole account) is a family_member of a real family.
+    // Student login owns a student row (students.user_id is 1:1). Idempotent: skip if this login
+    // already owns one (resolveScopeIds reused it, so scope.studentId is already theirs).
     if (p.tag === 'student') {
-      const { error } = await client.from('students').update({ user_id: user.id }).eq('id', scope.studentId);
-      if (error) throw new Error(`seed-staging: linking student ${p.email}: ${error.message}`);
+      const { data: owned, error: oe } = await client.from('students').select('id').eq('user_id', user.id).limit(1);
+      if (oe) throw new Error(`seed-staging: checking student link for ${p.email}: ${oe.message}`);
+      if (!owned?.length) {
+        const { error } = await client.from('students').update({ user_id: user.id }).eq('id', scope.studentId);
+        if (error) throw new Error(`seed-staging: linking student ${p.email}: ${error.message}`);
+      }
     }
+    // Parent/guardian (incl. multirole) is a family_member. Idempotent: skip if already a member.
     if (p.tag === 'parent' || p.tag === 'multirole') {
-      const { error } = await client
-        .from('family_members').insert({ family_id: scope.familyId, user_id: user.id, relationship: 'guardian' });
-      if (error && !/duplicate|already exists/i.test(error.message)) {
-        throw new Error(`seed-staging: linking guardian ${p.email}: ${error.message}`);
+      const { data: mem, error: me } = await client
+        .from('family_members').select('id').eq('family_id', scope.familyId).eq('user_id', user.id).limit(1);
+      if (me) throw new Error(`seed-staging: checking guardian link for ${p.email}: ${me.message}`);
+      if (!mem?.length) {
+        const { error } = await client
+          .from('family_members').insert({ family_id: scope.familyId, user_id: user.id, relationship: 'guardian' });
+        if (error) throw new Error(`seed-staging: linking guardian ${p.email}: ${error.message}`);
       }
     }
 
-    // Roles: resolve symbolic scope -> concrete scope_id (pure, unit-tested), attach user_id, insert.
-    // Plain insert (mirrors supabase/seed/seed.sql; is_active uses its column default) — NOT upsert:
-    // user_roles' only unique index is on coalesce(scope_id,…), an expression PostgREST's
-    // .upsert(onConflict:) can't target (see 20260711230332_user_roles_grant_identity_idx.sql).
-    // Re-seeding is via --reset (deletes the users → cascades user_roles), so duplicates can't accrue:
-    // a re-run without --reset fails earlier at applyDomainData's F3 guard, before this line.
+    // Roles via the insert_user_role_grant RPC — it does `on conflict (…coalesce(scope_id)…) do
+    // nothing`, matching user_roles' only unique index (an expression PostgREST's .upsert can't
+    // target), so re-runs are idempotent. is_active=false; the auth hook auto-activates on sign-in.
     const rows = buildUserRoleRows(p.roles, scope).map((r) => ({ ...r, user_id: user.id }));
-    const { error: re } = await client.from('user_roles').insert(rows);
-    if (re) throw new Error(`seed-staging: assigning roles to ${p.email}: ${re.message}`);
+    for (const r of rows) {
+      const { error: re } = await client.rpc('insert_user_role_grant', {
+        p_user_id: r.user_id,
+        p_role: r.role,
+        p_scope_type: r.scope_type,
+        p_scope_id: r.scope_id,
+        p_is_active: false,
+      });
+      if (re) throw new Error(`seed-staging: assigning ${r.role} to ${p.email}: ${re.message}`);
+    }
 
     console.log(`  provisioned ${p.tag.padEnd(15)} ${p.email} (${rows.length} role${rows.length > 1 ? 's' : ''})`);
   }
 }
 
-/** --reset: delete the provisioned auth users + truncate the synthetic domain tables (main then
- *  reloads + reprovisions). Auth users live in auth.users, so they are removed via the Admin API;
- *  the domain tables are truncated via psql (CASCADE clears the account-linked rows). */
+/** --reset: wipe the synthetic data + every provisioned persona account (main then reloads +
+ *  reprovisions). Order matters: TRUNCATE first, THEN delete users.
+ *
+ *  Truncate CASCADE on the domain tables removes the content that references auth.users with
+ *  ON DELETE RESTRICT (class_updates.posted_by, comments.author_user_id/target_parent_id) plus
+ *  audit_log (via target_student_id), comments and consents — so the user deletes below aren't
+ *  blocked. (It also leaves conversations/messages with stale scope_ids; fine for synthetic staging.)
+ *  Deleting users BEFORE truncating fails the moment any persona has posted — the bug this fixes.
+ *
+ *  Deletes ALL provisioned persona accounts (emails carry the `+bv-` tag), across every tester —
+ *  not just the current base — otherwise other testers keep user_roles with now-dangling scope_ids. */
 async function resetStaging(client, config) {
-  console.log('  --reset: deleting provisioned auth users + truncating synthetic domain tables …');
-  const plan = buildProvisioningPlan(config.emailBase);
-  const emails = new Set(plan.map((p) => p.email));
+  console.log('  --reset: truncating synthetic domain tables, then deleting all provisioned accounts …');
+  const res = runPsql(config, ['-c', buildDomainTruncateSql()]);
+  if (res.error) throw new Error(`seed-staging: --reset psql failed (${res.error.message}). Is psql on PATH?`);
+  if (res.status !== 0) throw new Error(`seed-staging: --reset psql exited ${res.status} truncating domain tables.`);
+
   const { data: list, error: listErr } = await client.auth.admin.listUsers({ perPage: 1000 });
   if (listErr) throw new Error(`seed-staging: --reset could not list users: ${listErr.message}`);
   for (const u of list.users) {
-    if (emails.has(u.email)) {
+    if (u.email && u.email.includes('+bv-')) {
       const { error } = await client.auth.admin.deleteUser(u.id);
       if (error) throw new Error(`seed-staging: --reset could not delete ${u.email}: ${error.message}`);
     }
   }
-  const res = spawnSync('psql', [config.dbUrl, '--set', 'ON_ERROR_STOP=1', '-c', buildDomainTruncateSql()], {
-    stdio: ['ignore', 'inherit', 'inherit'],
-  });
-  if (res.error) throw new Error(`seed-staging: --reset psql failed (${res.error.message}). Is psql on PATH?`);
-  if (res.status !== 0) throw new Error(`seed-staging: --reset psql exited ${res.status} truncating domain tables.`);
 }
 
 async function main() {

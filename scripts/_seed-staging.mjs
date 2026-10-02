@@ -130,7 +130,18 @@ export function projectRefFromDbUrl(dbUrl) {
   try {
     parsed = new URL(dbUrl);
   } catch {
-    throw new Error(`projectRefFromDbUrl: "${dbUrl}" is not a valid connection string`);
+    // Never echo the raw URL — it may carry the password.
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL is not a valid connection string');
+  }
+  // libpq honors query params like ?host= / ?user= that would override the host/user we derive the
+  // ref from — a prod host could ride in on a staging-looking ref. Refuse anything but sslmode so
+  // the ref we check is the one actually connected to.
+  for (const key of parsed.searchParams.keys()) {
+    if (key.toLowerCase() !== 'sslmode') {
+      throw new Error(
+        `projectRefFromDbUrl: STAGING_DB_URL carries a disallowed query param "${key}" — only sslmode is allowed`,
+      );
+    }
   }
   const host = parsed.hostname;
   const directSuffix = '.supabase.co';
@@ -152,6 +163,25 @@ export function projectRefFromDbUrl(dbUrl) {
     return ref;
   }
   throw new Error(`projectRefFromDbUrl: "${host}" is not a Supabase database host`);
+}
+
+// Split the DB password out of the connection string so it can be passed to psql via the
+// PGPASSWORD env var instead of on argv (where `ps` would expose it). Returns the password
+// (decoded) and a safeUrl with the password removed; libpq falls back to PGPASSWORD when the URL
+// carries none. Pure.
+export function splitDbUrlSecret(dbUrl) {
+  if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
+    throw new Error('splitDbUrlSecret: connection string is required');
+  }
+  let parsed;
+  try {
+    parsed = new URL(dbUrl);
+  } catch {
+    throw new Error('splitDbUrlSecret: STAGING_DB_URL is not a valid connection string');
+  }
+  const password = parsed.password ? decodeURIComponent(parsed.password) : '';
+  parsed.password = '';
+  return { safeUrl: parsed.toString(), password };
 }
 
 // Expand PERSONAS into the concrete list of accounts to provision, each with its plus-addressed
@@ -187,9 +217,11 @@ export function buildUserRoleRows(roles, resolved) {
 }
 
 // The --reset wipe (AC#9): truncate the account-free synthetic domain tables domain.sql populates.
-// CASCADE clears the account-linked rows (attendance/class_updates/consents/class_meetings) that
-// FK to them; the provisioned auth users are deleted separately via the Auth Admin API (they live
-// in auth.users, not these). RESTART IDENTITY keeps any serial columns clean across reseeds.
+// CASCADE reaches wider than just the domain tables — it also clears everything that FKs to them:
+// attendance, class_meetings, class_updates, comments, consents, and audit_log (via
+// target_student_id). It does NOT touch conversations/messages, which keep now-dangling scope_ids —
+// acceptable because staging is synthetic and gets reloaded. The provisioned auth users are deleted
+// separately via the Auth Admin API (they live in auth.users). RESTART IDENTITY keeps serials clean.
 export function buildDomainTruncateSql() {
   const tables = ['enrollments', 'students', 'classes', 'sessions', 'families', 'centers'];
   return `truncate table ${tables.map((t) => `public.${t}`).join(', ')} restart identity cascade;`;

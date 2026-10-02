@@ -3,20 +3,22 @@
 > Infra/data only — no application code, no schema change. Governs: `.docs/specs/system/staging-deploy-verification.md` AC#9.
 > Run this **any time** staging has drifted and you want a known-good starting point — e.g. **before a demo**, or after test churn. It is safe to re-run.
 >
-> **Status:** the command's config gate + prod-safety rail are live today. The data steps it
-> performs (load synthetic data, create accounts) become operational once the synthetic dataset
-> from **#19 (`pilot-seed-data`)** has landed and the loader is wired to it at the #65 verification
-> walk. Until then, the command fail-closes with a clear "waiting on #19" message.
+> **Status:** live and operational (verified against cloud staging). The command loads #19's
+> synthetic dataset and provisions the sign-in accounts; `--reset` wipes and reseeds.
 
 ## What it does
 
 `npm run seed:staging -- --reset` returns the **staging** database to a clean, known baseline:
 
 1. **Refuses to run unless the target is staging** — the built-in guard checks the project ref
-   in your `STAGING_SUPABASE_URL`; anything other than `cmdfw-bv-staging` is rejected. It can
-   never touch production.
-2. **Wipes the synthetic data** — deletes the provisioned persona accounts and truncates the
-   synthetic domain tables (center/session/classes/families/students/enrollments).
+   in your `STAGING_SUPABASE_URL` **and** `STAGING_DB_URL` (and refuses if they disagree, or if the
+   DB URL carries any query param other than `sslmode`); anything other than `cmdfw-bv-staging` is
+   rejected. It can never touch production.
+2. **Wipes the synthetic data** — truncates the synthetic domain tables
+   (center/session/classes/families/students/enrollments). CASCADE also clears everything that
+   references them: attendance, class_meetings, class_updates, comments, consents, and audit_log.
+   Then it deletes **all** provisioned persona accounts (every tester's `+bv-` logins). It leaves
+   conversations/messages with stale scope_ids — harmless on synthetic staging, which gets reloaded.
 3. **Reloads** the synthetic dataset (#19) and **recreates the 7 sign-in accounts** on your
    configured email base, then prints them.
 
@@ -40,7 +42,7 @@ Set these in your terminal for the run (they are **not** committed anywhere):
 
 1. **If the project is paused** (free tier pauses after ~1 week idle), open the Supabase
    dashboard and **resume** `cmdfw-bv-staging` first; wait until it shows *Healthy*.
-2. **Set the three variables** in your terminal (paste the service-role key at a prompt rather
+2. **Set the four variables** in your terminal (paste the secrets at a prompt rather
    than into a shared file):
    ```bash
    export STAGING_SEED_EMAIL_BASE='you@gmail.com'
