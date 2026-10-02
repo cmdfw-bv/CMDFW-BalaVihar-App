@@ -1,8 +1,8 @@
 # Teacher — Class update & home feed
 
-> **owner:** Teacher · **consumers:** Student (own class, read + comment), Parent (each child's class, read + comment), Coordinator/BV Coordinator/Admin (oversight read of class updates + all comments, public and private, ADR-0032 extended during `/design`), System (`notifications-infra` — `push-send` second caller, ADR-0033) · **scope:** Teacher=class (post, own class only) · Student=self (read/comment, own class) · Parent=own-children (read/comment, each enrolled child's class) · Coordinator=session / BV Coordinator·Admin=org (oversight read — class updates + all comments, ADR-0032 extended) — §5.4 · **governing ADR:** ADR-0032 (comment privacy — column-flag RLS + scope-derived oversight), ADR-0033 (`push-send` discriminated event reference, ADR-0028 addendum), ADR-0037 (enrollment withdrawal — revokes this item's writes, time-bounds its reads; migration owed in #96) · **covers:** doc 2 Teacher POC-core "post class update (+ optional homework)"; doc 2 Student/Parent POC-core "home feed" + "two-way comments (public + private)"; doc 1 §5 thinnest-slice step 2–3 (Teacher posts, Student/Parent receive push + comment); doc 3 §6.2 (new table, flagged not yet in the canonical list); GitHub issue #21
+> **owner:** Teacher · **consumers:** Student (own class, read + comment), Parent (each child's class, read + comment), Coordinator/BV Coordinator/Admin (oversight read of class updates + all comments, public and private, ADR-0032 extended during `/design`), System (`notifications-infra` — `push-send` second caller, ADR-0033) · **scope:** Teacher=class (post, own class only) · Student=self (read/comment, own class) · Parent=own-children (read/comment, each enrolled child's class) · Coordinator=session / BV Coordinator·Admin=org (oversight read — class updates + all comments, ADR-0032 extended) — §5.4 · **governing ADR:** ADR-0032 (comment privacy — column-flag RLS + scope-derived oversight), ADR-0033 (`push-send` discriminated event reference, ADR-0028 addendum), ADR-2026-09-19 (enrollment withdrawal — revokes this item's conversational writes **and** reads outright; supersedes ADR-0037's time-bounded read, and carries the identity-derived `comments_target_parent_select` rewrite; migration owed in #96), ADR-0037 (its Decisions 2, 4 and 6 still govern; the rest superseded) · **covers:** doc 2 Teacher POC-core "post class update (+ optional homework)"; doc 2 Student/Parent POC-core "home feed" + "two-way comments (public + private)"; doc 1 §5 thinnest-slice step 2–3 (Teacher posts, Student/Parent receive push + comment); doc 3 §6.2 (new table, flagged not yet in the canonical list); GitHub issue #21
 
-**Stage:** Refined ✓ → `/architect` ✓ (ADR-0032, ADR-0033) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/170_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → `/test` ✓ (2026-07-25, two GREEN gate passes after an initial NOT-GREEN one — see the `UAT.md` sign-off log) → PR #48 opened → **code review 2026-07-29 (ssrinivas90): no Critical findings; 8 Important, fixes applied 2026-07-28** (see Review follow-ups below) → next: re-review, then `/deploy-staging`.
+**Stage:** Refined ✓ → `/architect` ✓ (ADR-0032, ADR-0033; revisited 2026-09-16 → ADR-0037, and 2026-09-25 → ADR-2026-09-19 which supersedes it in part) → `/design` ✓ (signed off 2026-07-24 — see Sign-off below) → `/plan` ✓ (`class-update-and-home-feed.plan.md`) → `/migration` ✓ (2026-07-24 — Stage 1 landed: `class_updates`/`comments` tables, RLS, `is_parent_of_class`, `resolve_parent_family_label`; `supabase/tests/170_class_updates_and_comments_rls.sql` green, 25/25, full suite 194/194) → `/build` ✓ (2026-07-24 — Stages 2–5 landed: `push-send`'s `class_update_id` branch, pure logic, data layer, screens/routes; typecheck/lint/vitest/pgTAP all green — see the plan's W8 note for what still needs a real-browser pass) → `/test` ✓ (2026-07-25, two GREEN gate passes after an initial NOT-GREEN one — see the `UAT.md` sign-off log) → PR #48 opened → **code review 2026-07-29 (ssrinivas90): no Critical findings; 8 Important, fixes applied 2026-07-28** (see Review follow-ups below) → next: re-review, then `/deploy-staging`.
 
 ---
 
@@ -405,17 +405,30 @@ were resolved as deliberate non-fixes and are recorded here so the reasoning is 
 
 ### Open question → `/architect`: does withdrawal revoke access to conversational content?
 
-> **Resolved (2026-09-16) — [ADR-0037](../../adr/0037-enrollment-withdrawal-conversational-access.md).**
+> **Resolved (2026-09-25) — [ADR-2026-09-19](../../adr/2026-09-19-withdrawal-revokes-conversational-access.md), superseding part of [ADR-0037](../../adr/0037-enrollment-withdrawal-conversational-access.md).**
 > Conversational content follows the **chat** precedent, not the `classes_*_select` one: on withdrawal,
 > `comments_parent_insert`, `comments_student_insert` and `is_parent_of_class` require `status = 'active'`,
-> and this item's enrollment-derived read policies admit a row only while the family is active **or** the
-> row predates `enrollments.withdrawn_at` (so a family keeps the history they could already see, including
-> their own private thread). `resolve_parent_family_label` drops its `active` filter; `dispatchClassUpdate`
-> keeps it. `classes_*_select` and the other reference/operational policies stay unfiltered.
+> and this item's read access is **revoked outright** — not time-bounded. `enrollments.withdrawn_at` is not
+> added; it moves to [#82](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/82) with the withdrawal path that would stamp it.
+> `resolve_parent_family_label` drops its `active` filter; `dispatchClassUpdate` keeps it. `classes_*_select`
+> and the other reference/operational policies stay unfiltered.
 >
-> **Not yet built.** The migration and its adversarial pgTAP are [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96). Until that ships, the
-> unfiltered behavior described below is still what runs. The text below is kept as the record of the
-> question as it was posed.
+> ADR-0037 reached the opposite answer on reads (time-bounded, keeping the family's own private thread).
+> That is superseded. Its Decisions 2 (write revoke), 4 (no sibling guard needed) and 6 (reference tables
+> unfiltered) still govern this item.
+>
+> **Two things the superseding ADR added that this section did not anticipate:**
+>
+> 1. **Revocation is not uniform across this item's policies.** Four read policies are enrollment-derived and
+>    take a `status` filter; `comments_target_parent_select` is **identity-derived** (`target_parent_id = auth.uid()`,
+>    no `enrollments` join) and must be **rewritten** to carry one. Filtering alone would leave a withdrawn family
+>    reading their private thread under an update they can no longer see. See ADR-2026-09-19 Decisions 1a/1b.
+> 2. **Scope is mid-year withdrawal only.** Annual rollover is also an `active` → not-`active` transition and is
+>    deliberately undecided; it belongs to #82 (ADR-2026-09-19 Decision 8).
+>
+> **Not yet built.** The migration and its adversarial pgTAP are [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96), re-scoped 2026-09-22. Until that
+> ships, the unfiltered behavior described below is still what runs. The text below is kept as the record of
+> the question as it was posed.
 
 **Deferred deliberately (human decision, 2026-07-28) — not an oversight, and not fixed in PR #48.**
 Tracked as **[issue #58](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/58)**.
@@ -445,6 +458,10 @@ themselves wrote; not filtering leaves a minors'-data retention exposure under �
 **`/architect` owns the decision** and, if it changes the convention, the resulting ADR + migration.
 Until then this feature's unfiltered behavior stands as-is and is documented here rather than
 silently inconsistent.
+
+> **Closed.** `/architect` took the decision twice — ADR-0037 (2026-09-16) and ADR-2026-09-19
+> (2026-09-25, superseding its read rule). The migration is [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96) and is still owed, so the
+> unfiltered behavior above continues to run until it ships.
 
 ---
 
