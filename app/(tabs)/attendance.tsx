@@ -1,5 +1,5 @@
 import "../../lib/unistyles";
-import { View, Text } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useRoleGuard } from "../../lib/auth/useRoleGuard";
 import { useSession } from "../../lib/auth/SessionProvider";
@@ -80,11 +80,11 @@ function TeacherAttendanceScreen() {
           </View>
         ) : null}
         <DateNav selectedDate={selectedDate} dateBounds={dateBounds} onPrevious={goToPrevious} onNext={goToNext} />
-        <View style={styles.list}>
+        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
           {rows.map((row) => (
             <AttendanceRosterRow key={row.enrollmentId} row={row} mark={marks[row.enrollmentId]} onChange={markLocal} />
           ))}
-        </View>
+        </ScrollView>
         <Button variant="primary" size="lg" fullWidth disabled={isSubmitting} onClick={failedCount > 0 ? retryFailed : submit}>
           {isSubmitting ? "Submitting…" : failedCount > 0 ? `Retry (${failedCount} failed)` : allSaved ? "Submitted" : "Submit"}
         </Button>
@@ -109,6 +109,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: {
     flex: 1,
+  },
+  listContent: {
+    paddingBottom: theme.space["2"],
   },
   placeholder: {
     flex: 1,
