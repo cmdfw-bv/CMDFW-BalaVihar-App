@@ -68,6 +68,19 @@ export function resolvePersonaEmail(base, tag) {
   return `${local}+bv-${tag}@${domain}`;
 }
 
+// Match ONLY an email this seed itself provisioned: a plus-address whose local part ends in
+// `+bv-<one of our persona tags>`. The --reset wipe keys off this so it deletes our synthetic
+// accounts across every tester base — and never a bystander whose own sub-address happens to
+// contain "+bv-" (e.g. "+bv-newsletter"). Anchored to the exact tag set, at the end of the local
+// part, so "+bv-teacher-notes" does not match either.
+const PROVISIONED_EMAIL_RE = new RegExp(`\\+bv-(?:${PERSONAS.map((p) => p.tag).join('|')})$`);
+export function isProvisionedPersonaEmail(email) {
+  if (typeof email !== 'string') return false;
+  const at = email.indexOf('@');
+  if (at <= 0) return false;
+  return PROVISIONED_EMAIL_RE.test(email.slice(0, at));
+}
+
 // The prod safety rail: only the staging ref passes. Anything else — a prod ref, empty,
 // undefined — is refused.
 export function isStagingTarget(projectRef) {
@@ -122,9 +135,27 @@ export function projectRefFromUrl(url) {
 //   - pooler:  postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres
 //   - direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
 // The ref lets us apply the same prod-safety rail to the DB URL as to the API URL.
+// sslmode values that actually encrypt the connection. disable/allow/prefer can fall back to
+// plaintext — never acceptable for a URL carrying a service-role-adjacent DB password.
+const ENCRYPTED_SSLMODES = new Set(['require', 'verify-ca', 'verify-full']);
+
 export function projectRefFromDbUrl(dbUrl) {
   if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
     throw new Error('projectRefFromDbUrl: connection string is required');
+  }
+  // A '#' starts a URI fragment, which the WHATWG URL parser peels off into parsed.hash — so query
+  // params hidden after it (?...#host=db.prod...) never reach the param guard below. Nothing in a
+  // Postgres connection string legitimately needs a fragment, so refuse it outright.
+  if (dbUrl.includes('#')) {
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL must not contain a "#" fragment');
+  }
+  // libpq accepts a comma-separated multi-host authority (host1,host2) and connects to the first
+  // that answers — a prod host could ride in ahead of the staging one while the parser still reads
+  // a staging-looking ref. The WHATWG parser folds the whole comma list into one hostname, so check
+  // the raw authority (between the last '@' and the path/query) for a comma ourselves.
+  const authority = dbUrl.slice(dbUrl.lastIndexOf('@') + 1).split(/[/?#]/)[0];
+  if (authority.includes(',')) {
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL must not list multiple hosts');
   }
   let parsed;
   try {
@@ -135,11 +166,16 @@ export function projectRefFromDbUrl(dbUrl) {
   }
   // libpq honors query params like ?host= / ?user= that would override the host/user we derive the
   // ref from — a prod host could ride in on a staging-looking ref. Refuse anything but sslmode so
-  // the ref we check is the one actually connected to.
-  for (const key of parsed.searchParams.keys()) {
+  // the ref we check is the one actually connected to; and require sslmode to be an encrypting mode.
+  for (const [key, value] of parsed.searchParams.entries()) {
     if (key.toLowerCase() !== 'sslmode') {
       throw new Error(
         `projectRefFromDbUrl: STAGING_DB_URL carries a disallowed query param "${key}" — only sslmode is allowed`,
+      );
+    }
+    if (!ENCRYPTED_SSLMODES.has(value.toLowerCase())) {
+      throw new Error(
+        `projectRefFromDbUrl: STAGING_DB_URL sslmode="${value}" is not encrypted — use require, verify-ca, or verify-full`,
       );
     }
   }
@@ -165,23 +201,48 @@ export function projectRefFromDbUrl(dbUrl) {
   throw new Error(`projectRefFromDbUrl: "${host}" is not a Supabase database host`);
 }
 
-// Split the DB password out of the connection string so it can be passed to psql via the
-// PGPASSWORD env var instead of on argv (where `ps` would expose it). Returns the password
-// (decoded) and a safeUrl with the password removed; libpq falls back to PGPASSWORD when the URL
-// carries none. Pure.
-export function splitDbUrlSecret(dbUrl) {
-  if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
-    throw new Error('splitDbUrlSecret: connection string is required');
+// decodeURIComponent, but fall back to the raw value when it isn't a valid percent-escape — a DB
+// password or username may legitimately contain a literal '%'.
+function safeDecode(value) {
+  if (!value) return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
+}
+
+// Decompose a validated staging connection string into DISCRETE psql connection values, so the I/O
+// wrapper can pass host/port/user/dbname as separate argv and the password/sslmode via env — and
+// NEVER hand a connection string to psql to be re-parsed. That re-parse is the whole attack surface:
+// libpq and the WHATWG URL parser disagree about where a URL ends (a '#' fragment, a comma-separated
+// multi-host), so a prod host can ride in past a staging-looking ref check. Pulling the fields apart
+// once, here, closes that entire class — there is nothing left for psql to misinterpret. We still
+// run the full prod-safety rail (projectRefFromDbUrl: staging ref + reject #/multi-host/plaintext
+// sslmode) as defense in depth. Pure.
+export function buildPsqlConnParams(dbUrl) {
+  if (typeof dbUrl !== 'string' || dbUrl.trim() === '') {
+    throw new Error('buildPsqlConnParams: connection string is required');
+  }
+  // Validates the ref AND rejects the parser-disagreement shapes before we read any field.
+  projectRefFromDbUrl(dbUrl);
   let parsed;
   try {
     parsed = new URL(dbUrl);
   } catch {
-    throw new Error('splitDbUrlSecret: STAGING_DB_URL is not a valid connection string');
+    throw new Error('buildPsqlConnParams: STAGING_DB_URL is not a valid connection string');
   }
-  const password = parsed.password ? decodeURIComponent(parsed.password) : '';
-  parsed.password = '';
-  return { safeUrl: parsed.toString(), password };
+  // sslmode is already validated by the rail to be an encrypting mode when present; default to
+  // 'require' when absent so the connection is never silently plaintext.
+  const sslmode = (parsed.searchParams.get('sslmode') || 'require').toLowerCase();
+  return {
+    host: parsed.hostname,
+    port: parsed.port || '5432',
+    user: safeDecode(parsed.username),
+    dbname: safeDecode(parsed.pathname.replace(/^\//, '')) || 'postgres',
+    sslmode,
+    password: safeDecode(parsed.password),
+  };
 }
 
 // Expand PERSONAS into the concrete list of accounts to provision, each with its plus-addressed
@@ -218,10 +279,17 @@ export function buildUserRoleRows(roles, resolved) {
 
 // The --reset wipe (AC#9): truncate the account-free synthetic domain tables domain.sql populates.
 // CASCADE reaches wider than just the domain tables — it also clears everything that FKs to them:
-// attendance, class_meetings, class_updates, comments, consents, and audit_log (via
-// target_student_id). It does NOT touch conversations/messages, which keep now-dangling scope_ids —
-// acceptable because staging is synthetic and gets reloaded. The provisioned auth users are deleted
-// separately via the Auth Admin API (they live in auth.users). RESTART IDENTITY keeps serials clean.
+// attendance, class_meetings, class_updates, comments, and consents.
+//
+// audit_log also references students, but via ON DELETE SET NULL (20260709040853) — so a row-level
+// DELETE of a student would KEEP the audit row and null its target_student_id (constitution #6:
+// minors'-access audit trail is retained). TRUNCATE ... CASCADE does NOT honor ON DELETE actions,
+// though: it truncates audit_log wholesale. That's acceptable here ONLY because this is synthetic
+// staging data (no real minors) that gets reloaded, and the staging-only guard keeps --reset off
+// prod — where the retention property must hold. It does NOT touch conversations/messages, which
+// keep now-dangling scope_ids — also acceptable on synthetic staging. The provisioned auth users
+// are deleted separately via the Auth Admin API (they live in auth.users). RESTART IDENTITY keeps
+// serials clean.
 export function buildDomainTruncateSql() {
   const tables = ['enrollments', 'students', 'classes', 'sessions', 'families', 'centers'];
   return `truncate table ${tables.map((t) => `public.${t}`).join(', ')} restart identity cascade;`;
@@ -237,9 +305,11 @@ export function shouldLoadDomain({ reset, domainExists }) {
   return reset || !domainExists;
 }
 
-// Minimal CLI arg parse: only --reset is supported (wipe-then-reseed, AC#9).
+// CLI arg parse: --reset wipes-then-reseeds (AC#9); --yes skips the destructive-reset
+// confirmation prompt (for non-interactive/CI use). Everything defaults off.
 export function parseArgs(argv) {
-  return { reset: Array.isArray(argv) && argv.includes('--reset') };
+  const has = (f) => Array.isArray(argv) && argv.includes(f);
+  return { reset: has('--reset'), yes: has('--yes') };
 }
 
 // Fail-closed env gate for the wrapper: reads the STAGING_* env, refuses if the service-role

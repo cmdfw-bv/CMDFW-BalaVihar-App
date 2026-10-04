@@ -11,13 +11,14 @@ import {
   assertSeedConfig,
   projectRefFromUrl,
   projectRefFromDbUrl,
-  splitDbUrlSecret,
+  buildPsqlConnParams,
   buildProvisioningPlan,
   buildUserRoleRows,
   buildDomainTruncateSql,
   shouldLoadDomain,
   parseArgs,
   resolveConfig,
+  isProvisionedPersonaEmail,
 } from '../_seed-staging.mjs';
 
 // Realistic staging Postgres connection strings (password redacted). Both forms carry the
@@ -224,17 +225,98 @@ describe('projectRefFromDbUrl — derive the target ref from a Postgres connecti
       expect(String((e as Error).message)).not.toContain('SUPERSECRETPW');
     }
   });
+
+  // Bypass cases Maulik found: the staging-only rail must hold against each.
+  it('rejects a "#" fragment (query params hidden after # slip past the param guard)', () => {
+    expect(() =>
+      projectRefFromDbUrl(
+        'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres#host=db.someprodref000000.supabase.co',
+      ),
+    ).toThrow(/#|fragment/i);
+  });
+
+  it('rejects a comma-separated multi-host (libpq host1,host2) where a prod host rides first', () => {
+    expect(() =>
+      projectRefFromDbUrl(
+        'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@db.someprodref000000.supabase.co,aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+      ),
+    ).toThrow(/host/i);
+  });
+
+  it('rejects sslmode=disable (would send password + data in plaintext)', () => {
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=disable'),
+    ).toThrow(/sslmode/i);
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=prefer'),
+    ).toThrow(/sslmode/i);
+  });
+
+  it('still allows an encrypted sslmode', () => {
+    expect(
+      projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=verify-full'),
+    ).toBe('ejjvqtleuuamgtlmtxkc');
+  });
 });
 
-describe('splitDbUrlSecret — keep the DB password out of psql argv', () => {
-  it('returns the password separately and a URL with no password in it', () => {
-    const { safeUrl, password } = splitDbUrlSecret(
+describe('buildPsqlConnParams — decompose the URL into discrete psql connection values', () => {
+  it('splits a pooler URL into host/port/user/dbname + password (nothing re-parsed downstream)', () => {
+    const p = buildPsqlConnParams(
       'postgresql://postgres.ejjvqtleuuamgtlmtxkc:Secret123@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
     );
-    expect(password).toBe('Secret123');
-    expect(safeUrl).not.toContain('Secret123');
-    expect(safeUrl).toContain('aws-0-us-east-1.pooler.supabase.com');
-    expect(safeUrl).toContain('ejjvqtleuuamgtlmtxkc');
+    expect(p.host).toBe('aws-0-us-east-1.pooler.supabase.com');
+    expect(p.port).toBe('6543');
+    expect(p.user).toBe('postgres.ejjvqtleuuamgtlmtxkc');
+    expect(p.dbname).toBe('postgres');
+    expect(p.password).toBe('Secret123');
+  });
+
+  it('splits a direct URL and defaults the port to 5432 when absent', () => {
+    const p = buildPsqlConnParams(
+      'postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co/postgres',
+    );
+    expect(p.host).toBe('db.ejjvqtleuuamgtlmtxkc.supabase.co');
+    expect(p.port).toBe('5432');
+    expect(p.user).toBe('postgres');
+  });
+
+  it('defaults sslmode to an encrypting mode, and preserves an explicit encrypting one', () => {
+    expect(
+      buildPsqlConnParams('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres').sslmode,
+    ).toBe('require');
+    expect(
+      buildPsqlConnParams(
+        'postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=verify-full',
+      ).sslmode,
+    ).toBe('verify-full');
+  });
+
+  it('keeps a literal "%" in the password instead of throwing on a bad percent-escape', () => {
+    // '%pw' is not a valid percent-escape; decodeURIComponent would throw. We must fall back to raw.
+    const p = buildPsqlConnParams(
+      'postgresql://postgres.ejjvqtleuuamgtlmtxkc:ab%pw12@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+    );
+    expect(p.password).toBe('ab%pw12');
+  });
+
+  it('never surfaces the password on any non-password field (nothing to re-parse into argv)', () => {
+    const p = buildPsqlConnParams(
+      'postgresql://postgres.ejjvqtleuuamgtlmtxkc:Secret123@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+    );
+    for (const field of ['host', 'port', 'user', 'dbname', 'sslmode'] as const) {
+      expect(p[field]).not.toContain('Secret123');
+    }
+  });
+
+  it('applies the full prod-safety rail — rejects #, multi-host, and plaintext sslmode', () => {
+    const base = 'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
+    expect(() => buildPsqlConnParams(base + '#host=db.prod000000000000.supabase.co')).toThrow(/#|fragment/i);
+    expect(() =>
+      buildPsqlConnParams(
+        'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@db.prod000000000000.supabase.co,aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+      ),
+    ).toThrow(/host/i);
+    expect(() => buildPsqlConnParams(base + '?sslmode=disable')).toThrow(/sslmode/i);
   });
 });
 
@@ -323,11 +405,40 @@ describe('shouldLoadDomain — additive (multi-tester) vs fresh vs reset', () =>
 
 describe('parseArgs — CLI flags', () => {
   it('detects --reset', () => {
-    expect(parseArgs(['--reset'])).toEqual({ reset: true });
+    expect(parseArgs(['--reset'])).toEqual({ reset: true, yes: false });
   });
 
-  it('defaults reset to false when absent', () => {
-    expect(parseArgs([])).toEqual({ reset: false });
+  it('defaults both flags to false when absent', () => {
+    expect(parseArgs([])).toEqual({ reset: false, yes: false });
+  });
+
+  it('detects --yes (skip the destructive --reset confirmation prompt)', () => {
+    expect(parseArgs(['--reset', '--yes'])).toEqual({ reset: true, yes: true });
+  });
+});
+
+describe('isProvisionedPersonaEmail — anchor the --reset wipe to our persona tags', () => {
+  it('matches a provisioned persona email for any tester base', () => {
+    expect(isProvisionedPersonaEmail('arunasharad+bv-teacher@gmail.com')).toBe(true);
+    expect(isProvisionedPersonaEmail('mehta.maulik+bv-multirole@gmail.com')).toBe(true);
+  });
+
+  it('does NOT match a bystander email that merely contains "+bv-"', () => {
+    // A real user whose own sub-address happens to include +bv- but not one of OUR persona tags
+    // must never be swept by --reset.
+    expect(isProvisionedPersonaEmail('someone+bv-newsletter@gmail.com')).toBe(false);
+    expect(isProvisionedPersonaEmail('someone+bv-teacher-notes@gmail.com')).toBe(false);
+  });
+
+  it('does not match a plain address or a non-string', () => {
+    expect(isProvisionedPersonaEmail('plainuser@gmail.com')).toBe(false);
+    expect(isProvisionedPersonaEmail(undefined as unknown as string)).toBe(false);
+  });
+
+  it('matches every tag buildProvisioningPlan emits', () => {
+    for (const p of buildProvisioningPlan('arunasharad@gmail.com')) {
+      expect(isProvisionedPersonaEmail(p.email)).toBe(true);
+    }
   });
 });
 

@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** all 6 personas (every built feature is verified here) · **scope:** infra / delivery — prove `main` → staging deploys, cloud Supabase attached, dev-equivalent synthetic data, every persona can sign in · **governing ADR:** [ADR-2026-07-30-staging-builds-from-main](../../adr/2026-07-30-staging-builds-from-main.md) + [ADR-2026-07-30-synthetic-staging-seed-and-accounts](../../adr/2026-07-30-synthetic-staging-seed-and-accounts.md) (both decided at the 2026-07-30 architect review, formally recorded as date-based ADRs on 2026-09-06; the originally-intended "ADR-0037/0038" numbers were never written and later collided — see [ADR-2026-08-21-adr-identifier-scheme](../../adr/2026-08-21-adr-identifier-scheme.md)) · **covers:** GitHub #65; doc 3 §7 (hosting/deploy); the first cloud/deployed run of six Built/Merged items
 
-**Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ → `/plan` ✓ → `/build` ✓ (the `seed-staging` tooling) → verified live against cloud staging (see the Verification walk results at the end). Remaining ACs tracked as follow-ups (see that section).
+**Stage:** `/refine` ✓ → `/architect` ✓ → `/design` ✓ → `/plan` ✓ → `/build` ✓ (the `seed-staging` tooling) → plain seed + sign-in + attendance verified live against cloud staging (see the Verification walk results at the end); the `--reset`/idempotency path + #108 security hardening are unit-tested and pending a fresh live re-verification. Remaining ACs tracked as follow-ups (see that section).
 
 **Related:** starts where **#9** (Netlify + cloud Supabase provisioning) ends. Consumes **#19** (pilot-seed-data — the realistic synthetic seed). Security-hardening sibling **#66** (keep pgTAP `tests.*` helpers out of cloud DBs) and **#73** (fail-open staff RPC guards) both intersect the seed + guard ACs below.
 
@@ -139,5 +139,6 @@ Run against cloud staging (`balavihar-connect.netlify.app` / project `ejjvqtleuu
 - **AC#7** — role-switch (multirole) + web-reload-keeps-session not walked. → follow-up.
 - **AC#4** — `/.netlify/functions/health`, US-region check, and the `dist` key-prefix grep not recorded. → follow-up.
 - **AC#12** — fail-closed staff-RPC guards (no-scope → zero rows + `audit_log` `denied`) on the deployed DB not recorded (plan T7). → follow-up.
+- **AC#9 (`--reset`)** — the wipe-and-reseed path (and the #108 idempotency + security hardening) is unit-tested but **not yet re-walked live** after the round-1/round-2 fixes. The 2026-09-25 walk predates those fixes. → owed on the next staging run (it needs the master key and wipes the project).
 
 Because of these, this item stays **open**: the PR that lands the tooling says **Refs #65** (not Closes), and each unwalked AC is filed as its own issue.

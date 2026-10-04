@@ -9,12 +9,16 @@
 // Run:  STAGING_SUPABASE_URL=… STAGING_SUPABASE_SERVICE_ROLE_KEY=… STAGING_DB_URL=… \
 //       STAGING_SEED_EMAIL_BASE=you@gmail.com  npm run seed:staging        [-- --reset]
 //
-// Build status (2026-09-28): verified live against cloud staging (2026-09-25 walk) — domain load
-// + all 7 personas provisioned, personas sign in. Pure decision-logic (config + prod rails,
-// provisioning plan, symbolic→concrete scope resolution, reset truncate SQL, additive-mode
-// decision) lives in _seed-staging.mjs and is unit-tested (40 tests). The I/O bodies below —
-// applyDomainData (psql), provisionAccounts (Auth Admin API + service-role writes) and
-// resetStaging — make real cloud calls and can't be unit-tested.
+// Build status: the plain seed + additive mode are verified live against cloud staging (2026-09-25
+// walk) — domain load + all 7 personas provisioned, personas sign in. The safety-critical decision
+// logic (config + prod rails incl. the hardened DB-URL validation, provisioning plan, symbolic→
+// concrete scope resolution, reset truncate SQL, additive-mode decision, the +bv- persona-email
+// matcher) lives in _seed-staging.mjs and is unit-tested (scripts/__tests__/seed-staging.test.ts).
+// The I/O bodies below — applyDomainData (psql), provisionAccounts (Auth Admin API + service-role
+// writes), resetStaging and the pagination/confirmation helpers — make real cloud calls or read a
+// TTY, so they are NOT unit-tested; they are exercised by the live verification walk (#111) and by
+// a manual --reset run. Keep the risky, reusable logic in the pure module so this file stays a
+// thin, reviewable I/O shell.
 //
 // Modes: plain run on a fresh DB loads domain + accounts; plain run when the domain already
 // exists is ADDITIVE (accounts-only) — provisions another tester's accounts on their email base
@@ -23,6 +27,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import * as readline from 'node:readline/promises';
 import {
   resolveConfig,
   parseArgs,
@@ -30,18 +35,44 @@ import {
   buildUserRoleRows,
   buildDomainTruncateSql,
   shouldLoadDomain,
-  splitDbUrlSecret,
+  buildPsqlConnParams,
+  isProvisionedPersonaEmail,
   DOMAIN_SQL_PATH,
 } from './_seed-staging.mjs';
 
-// Run psql against the staging DB with the password supplied via PGPASSWORD (env), never on argv
-// (where `ps` would expose it). `safeUrl` carries no password; libpq falls back to PGPASSWORD.
+// Run psql against the staging DB. We pass the connection as DISCRETE values — host/port/user/dbname
+// as separate argv, password via PGPASSWORD, sslmode via PGSSLMODE — and never hand psql a connection
+// *string* to re-parse. That removes the whole parser-disagreement attack surface (a '#' fragment or
+// a comma-separated multi-host that fools the staging-only rail into pointing psql, and the password,
+// at the wrong database). -w: never prompt for a password (fail fast instead of hanging). The
+// password stays off argv (where `ps` would show it).
 function runPsql(config, psqlArgs) {
-  const { safeUrl, password } = splitDbUrlSecret(config.dbUrl);
-  return spawnSync('psql', [safeUrl, '--set', 'ON_ERROR_STOP=1', ...psqlArgs], {
-    stdio: ['ignore', 'inherit', 'inherit'],
-    env: { ...process.env, PGPASSWORD: password },
-  });
+  const { host, port, user, dbname, sslmode, password } = buildPsqlConnParams(config.dbUrl);
+  // psql inherits our environment, but has no use for our secrets — strip the service-role key and
+  // the raw (password-carrying) DB URL so a child process, crash dump, or core file can't leak them.
+  const env = { ...process.env, PGPASSWORD: password, PGSSLMODE: sslmode };
+  delete env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
+  delete env.STAGING_DB_URL;
+  return spawnSync(
+    'psql',
+    ['-h', host, '-p', port, '-U', user, '-d', dbname, '-w', '--set', 'ON_ERROR_STOP=1', ...psqlArgs],
+    { stdio: ['ignore', 'inherit', 'inherit'], env },
+  );
+}
+
+// List every auth user, paging through the Auth Admin API (a single call caps at perPage, so a
+// project with more accounts than one page would silently miss users — a correctness bug for both
+// the idempotent email lookup and the --reset sweep).
+async function listAllUsers(client) {
+  const perPage = 1000;
+  const users = [];
+  for (let page = 1; ; page++) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error(`seed-staging: listing users failed (${error.message})`);
+    users.push(...data.users);
+    if (data.users.length < perPage) break;
+  }
+  return users;
 }
 
 // The F3 class every student-login persona attaches to (the pilot class with student logins +
@@ -76,9 +107,8 @@ function applyDomainData(config) {
 
 /** Find an auth user by email (read-only), or null. */
 async function findUserByEmail(client, email) {
-  const { data, error } = await client.auth.admin.listUsers({ perPage: 1000 });
-  if (error) throw new Error(`seed-staging: listing users failed (${error.message})`);
-  return data.users.find((u) => u.email === email) ?? null;
+  const users = await listAllUsers(client);
+  return users.find((u) => u.email === email) ?? null;
 }
 
 /** Create-or-reuse an auth user by email (idempotent). createUser fails if the email already
@@ -217,13 +247,39 @@ async function resetStaging(client, config) {
   if (res.error) throw new Error(`seed-staging: --reset psql failed (${res.error.message}). Is psql on PATH?`);
   if (res.status !== 0) throw new Error(`seed-staging: --reset psql exited ${res.status} truncating domain tables.`);
 
-  const { data: list, error: listErr } = await client.auth.admin.listUsers({ perPage: 1000 });
-  if (listErr) throw new Error(`seed-staging: --reset could not list users: ${listErr.message}`);
-  for (const u of list.users) {
-    if (u.email && u.email.includes('+bv-')) {
+  const users = await listAllUsers(client);
+  for (const u of users) {
+    // Anchored to our persona tags (not a loose "+bv-" substring) so --reset never sweeps a
+    // bystander account whose own sub-address happens to contain "+bv-".
+    if (isProvisionedPersonaEmail(u.email)) {
       const { error } = await client.auth.admin.deleteUser(u.id);
       if (error) throw new Error(`seed-staging: --reset could not delete ${u.email}: ${error.message}`);
     }
+  }
+}
+
+/** Destructive-action guard: --reset wipes ALL synthetic data + every provisioned persona account
+ *  on staging. Require an explicit typed confirmation unless --yes was passed (CI/non-interactive).
+ *  If there's no TTY to prompt on, refuse rather than silently wiping. */
+async function confirmReset(config) {
+  console.log('');
+  console.log('  ⚠  --reset will TRUNCATE the synthetic domain tables (CASCADE) and DELETE every');
+  console.log(`     provisioned +bv- persona account on staging project ${config.projectRef}.`);
+  console.log('     This cannot be undone.');
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'seed-staging: --reset needs confirmation but stdin is not a TTY — re-run with --yes to confirm non-interactively.',
+    );
+  }
+  const phrase = `reset ${config.projectRef}`;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(`     Type "${phrase}" to proceed: `);
+    if (answer.trim() !== phrase) {
+      throw new Error('seed-staging: --reset not confirmed — aborting, nothing was changed.');
+    }
+  } finally {
+    rl.close();
   }
 }
 
@@ -235,11 +291,23 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Before anything destructive: confirm the dataset we'll reload actually exists on disk, so a
+  // --reset can't wipe staging and THEN fail at the reload step — which would leave staging empty.
+  if (!existsSync(DOMAIN_SQL_PATH)) {
+    throw new Error(
+      `seed-staging: dataset ${DOMAIN_SQL_PATH} not found on disk — expected #19's pilot-seed-data ` +
+        `file (merged to main). Aborting before any destructive step.`,
+    );
+  }
+
   const plan = buildProvisioningPlan(config.emailBase);
   console.log(`seed-staging → ${config.projectRef} (staging), ${plan.length} accounts:`);
   for (const p of plan) console.log(`  - ${p.tag.padEnd(15)} ${p.email}`); // emails only, no secrets
 
-  if (args.reset) await resetStaging(client, config);
+  if (args.reset) {
+    if (!args.yes) await confirmReset(config);
+    await resetStaging(client, config);
+  }
 
   // Additive by default: load the domain only on a fresh/reset DB. If the data is already there,
   // this is a second/third tester joining — skip the load (which domain.sql would refuse anyway)
