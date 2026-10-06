@@ -4,7 +4,9 @@
 
 **Stage:** **Staging provisioned & console-verified (2026-09-07).** Handoff doc, not a `/refine` spec — issue #9's body carried the runbook, so provisioning was executed directly against it. This file records what was provisioned, why each setting was chosen, and the one piece that remains (prod project B).
 
-> Written 2026-07-21 by @arunasharad-coder at handoff; **updated 2026-09-07** after logging into both consoles and confirming the live state. **Both halves are done:** Netlify is wired and auto-deploying from `main`; Supabase is healthy with **all 34 migrations applied** (`local == remote`). The only remaining piece is **prod project B (§4.5)**, deferred and gated on **#66**.
+> Written 2026-07-21 by @arunasharad-coder at handoff; **updated 2026-09-07** after logging into both consoles and confirming the live state. **Both halves are done:** Netlify is wired and auto-deploying from `main`; Supabase is healthy. The only remaining piece is **prod project B (§4.5)**.
+
+> **Update 2026-10-06 — migration state (corrects an earlier wrong note):** `main` now carries **37** migrations. Staging has all 37, **plus two applied ahead of their PR**: `20261002120000` + `20261002130000`, the **#105** feed-performance fix — pushed to staging to test it on real cloud infra before the branch was in the repo. So staging is currently **ahead of `main`**, not behind, and `local == remote` does **not** hold while #105 is unmerged. This drift is known and is being resolved by the combined #105/#112 change. An earlier note claimed #91 (`20260910120000`) and #95 (`20260915120000`) were "not pushed to any cloud project" — that was **wrong**; both are on staging. Always confirm with `supabase migration list --linked`, never a frozen count here.
 
 ---
 
@@ -20,7 +22,7 @@
 | Project URL | `https://ejjvqtleuuamgtlmtxkc.supabase.co` |
 | Region | **us-east-1 — US East (N. Virginia)** |
 | Status | `Healthy` (free tier **auto-pauses** after ~1 week idle — resume from the dashboard; data is preserved. Resumed 2026-09-07.) |
-| Migrations | **All 34 applied**, verified 2026-09-07 — `supabase migration list` shows `local == remote` for every entry (was 22 at handoff; the 12 `20260724…`–`20260817…` were pushed 2026-09-07) |
+| Migrations | **34 at 2026-09-07; as of 2026-10-06, `main` has 37 and staging has those 37 + 2 (#105) applied ahead of their PR** — see the 2026-10-06 note above. `local == remote` held on 2026-09-07 but does not while #105 is unmerged. Always confirm with `supabase migration list --linked`. |
 
 **Why a dedicated org:** ADR-0006 records Supabase Free = **2 active projects per org**, and this project needs both slots (staging A + prod B). A personal org would not fit, and prod holds minors' data — it should not sit under any individual volunteer's account.
 
@@ -73,7 +75,7 @@ The handoff draft said branch `main` → prod, branch `staging` → staging, and
 ### 4.5 Create the prod Supabase project (project B) — the one remaining piece
 Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`. Consumes the org's second and final free slot.
 
-> 🔴 **Gated on #66 — ping @mehtamaulik-creator BEFORE creating project B.** #66 removes the `tests.create_supabase_user` auth-user factory from the cloud migration path; it must land *before* a database that will hold real minors' records exists. Once prod holds real data there is no clean second chance (Maulik ji's note on this issue, 2026-09-07).
+> 🟡 **#66's gate is lifted (closed 2026-09-09 via PR #86; the staging rehearsal #89 passed 2026-09-10) — but still ping @mehtamaulik-creator BEFORE creating project B.** #66 removed the `tests.create_supabase_user` auth-user factory from the cloud migration path; that had to land *before* a database holding real minors' records exists, and now has. Once prod holds real data there is no clean second chance (Maulik ji's note, 2026-09-07).
 
 **Creating project B is three steps, and the third one blocks.** "#66 merged" proves the drop migration *exists*; it does not prove this project *ran* it.
 
@@ -114,7 +116,7 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
 
 ## 6. Acceptance (status 2026-09-07)
 
-- [x] Staging Supabase project exists, US region, **all 34 migrations** applied and verified (`local == remote`)
+- [x] Staging Supabase project exists, US region, migrations applied (34 at 2026-09-07; as of 2026-10-06 `main`'s 37 + 2 #105 migrations applied to staging ahead of their PR — see the 2026-10-06 note; `local == remote` does not hold while #105 is unmerged)
 - [ ] Prod Supabase project exists, same region — **deferred, gated on #66** (§4.5)
 - [ ] **Prod project B passes `supabase/checks/cloud_fixture_absence.sql`** — blocking; provisioning is not complete without it (§4.5 step 3). Not tickable until project B exists
 - [x] Netlify site imported, building from `netlify.toml`
