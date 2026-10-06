@@ -5,7 +5,7 @@
 -- access, enrollment-status-aware RPC scoping, and a genuine (not synthetic) multi-role
 -- active-role-switch scenario where the same account has real, disjoint data in both scopes.
 begin;
-select plan(52);
+select plan(81);
 
 insert into centers (id, name) values ('ce777777-0000-0000-0000-000000000001', 'Adversarial Center');
 insert into sessions (id, center_id, name, start_date, end_date, day_of_week, start_time, end_time) values
@@ -50,8 +50,11 @@ insert into students (id, family_id, first_name, last_name, grade_level, user_id
 insert into enrollments (student_id, class_id, session_id, status) values
   ('ce777777-0000-0000-0000-000000000041', 'ce777777-0000-0000-0000-000000000021', 'ce777777-0000-0000-0000-000000000011', 'active'),
   ('ce777777-0000-0000-0000-000000000042', 'ce777777-0000-0000-0000-000000000022', 'ce777777-0000-0000-0000-000000000012', 'active'),
-  -- Ivy's withdrawn (non-active) enrollment in Class D: proves the recipient-label RPC's
-  -- e.status = 'active' filter actually blocks a stale/withdrawn link, not just an absent one.
+  -- Ivy's withdrawn enrollment in Class D. Until ADR-2026-09-19 this proved the recipient-label
+  -- RPC's e.status = 'active' filter; that filter is gone (Decision 4), so it now proves the
+  -- opposite: Class D's own Teacher DOES resolve a withdrawn family's label (CONTROL 4f below).
+  -- Built by direct insert, which is fine for a label lookup and useless for any transition
+  -- assertion -- those live in Group 9, which withdraws by UPDATE.
   ('ce777777-0000-0000-0000-000000000041', 'ce777777-0000-0000-0000-000000000023', 'ce777777-0000-0000-0000-000000000011', 'withdrawn');
 
 insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
@@ -257,8 +260,8 @@ select throws_ok(
 select tests.clear_authentication();
 
 -- =====================================================================================
--- ATTACK GROUP 4: resolve_parent_family_label RPC -- authorization boundary + enrollment
--- status-awareness + no existence-leak via error.
+-- ATTACK GROUP 4: resolve_parent_family_label RPC -- authorization boundary + no
+-- existence-leak via error. (Enrollment status no longer gates it: ADR-2026-09-19 Decision 4.)
 -- =====================================================================================
 
 -- A Parent cannot call it at all, not even to resolve their OWN family's label for their OWN
@@ -304,22 +307,27 @@ select is(
 );
 select tests.clear_authentication();
 
--- Enrollment-status awareness: Teacher D (Class D) cannot resolve Parent 1's label via Class D
--- -- Ivy's only link to Class D is a WITHDRAWN enrollment, so the e.status = 'active' filter
--- must block it even though the family/class/teacher-scope join otherwise lines up.
-select tests.authenticate_as(:'v_teacher_d'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000023'::uuid);
-select is(
-  (select public.resolve_parent_family_label(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000023'::uuid)),
-  null, 'ATTACK 4f DENY: Teacher D gets null for Parent 1 via Class D -- the only enrollment link is withdrawn, not active'
-);
-select tests.clear_authentication();
-
 -- Positive control alongside the negatives above: Admin (org-wide) still resolves correctly --
 -- proves the negatives above are genuine authorization denials, not the function being broken.
 select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
 select is(
   (select public.resolve_parent_family_label(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid)),
   'Adv Family A', 'CONTROL: Admin (org-wide oversight) still resolves Parent 1''s real family label (families.label, never the student''s name) via Class A'
+);
+select tests.clear_authentication();
+
+-- CONTROL 4f (was "ATTACK 4f DENY" until ADR-2026-09-19). Inverted, not deleted (Decision 7).
+-- Teacher D is the real Teacher of Class D, and Ivy's family genuinely was enrolled there, so
+-- this caller always sat inside the authorization perimeter -- the old assertion tested the
+-- e.status = 'active' filter, an implementation detail, not a boundary. Decision 4 removes that
+-- filter so a withdrawn family's thread keeps its real label instead of the anonymous
+-- "Private thread" fallback. Nothing widens: the RPC returns families.label (never a student
+-- value) and enrollments_*_select already shows this Teacher the withdrawn row. The perimeter
+-- is still proven by ATTACK 4c (unrelated family) and 4e (cross-session) above.
+select tests.authenticate_as(:'v_teacher_d'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000023'::uuid);
+select is(
+  (select public.resolve_parent_family_label(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000023'::uuid)),
+  'Adv Family A', 'CONTROL 4f ALLOW (ADR-2026-09-19): Teacher D resolves Parent 1''s family label via Class D even though the only enrollment link is withdrawn'
 );
 select tests.clear_authentication();
 
@@ -473,6 +481,243 @@ select is(
   is_parent_of_class(:'v_parent_1'::uuid, 'ce777777-0000-0000-0000-000000000021'::uuid),
   false,
   'ATTACK 8c DENY: a Student (no role match in the function''s auth.jwt() gate at all) gets false regardless of scope_id'
+);
+select tests.clear_authentication();
+
+-- =====================================================================================
+-- GROUP 9 (issue #96, ADR-2026-09-19): withdrawal revokes conversational access outright.
+-- The withdrawn state is built by UPDATE, after the class update and comments exist and
+-- after two controls prove the family could read them -- so "cannot read an update posted
+-- before withdrawal" cannot pass vacuously against a family that was never enrolled.
+-- Fixtures live here, not at the top of the file, so no earlier count assertion moves.
+-- Count assertions below target fixture ids, so they stay exact even on a RED run where an
+-- insert that should have been refused leaked a row.
+-- =====================================================================================
+
+insert into classes (id, session_id, name, grade_band) values
+  ('ce777777-0000-0000-0000-000000000024', 'ce777777-0000-0000-0000-000000000011', 'Adv Class W (withdrawal transitions)', 'HS9-12');
+
+insert into families (id, label) values
+  ('ce777777-0000-0000-0000-000000000033', 'Adv Family W1'),
+  ('ce777777-0000-0000-0000-000000000034', 'Adv Family W2');
+
+select tests.create_supabase_user('adv-teacher-w@test.local') as v_teacher_w \gset
+select tests.create_supabase_user('adv-parent-w1@test.local') as v_parent_w1 \gset
+select tests.create_supabase_user('adv-parent-w2@test.local') as v_parent_w2 \gset
+select tests.create_supabase_user('adv-student-w1@test.local') as v_student_w1 \gset
+select tests.create_supabase_user('adv-student-w2@test.local') as v_student_w2 \gset
+
+insert into family_members (family_id, user_id, relationship) values
+  ('ce777777-0000-0000-0000-000000000033', :'v_parent_w1'::uuid, 'guardian'),
+  ('ce777777-0000-0000-0000-000000000034', :'v_parent_w2'::uuid, 'guardian');
+
+-- Family W1 has one child (Wes) -> withdrawing him withdraws the family from Class W.
+-- Family W2 has two (Xan, Yul) in the same class -> withdrawing Xan leaves Yul as the
+-- still-enrolled sibling, which must keep the family's access with no special guard.
+insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
+  ('ce777777-0000-0000-0000-000000000043', 'ce777777-0000-0000-0000-000000000033', 'Wes', 'Wone', 'HS9', :'v_student_w1'::uuid),
+  ('ce777777-0000-0000-0000-000000000044', 'ce777777-0000-0000-0000-000000000034', 'Xan', 'Wtwo', 'HS9', :'v_student_w2'::uuid),
+  ('ce777777-0000-0000-0000-000000000045', 'ce777777-0000-0000-0000-000000000034', 'Yul', 'Wtwo', 'HS9', null);
+
+insert into enrollments (student_id, class_id, session_id, status) values
+  ('ce777777-0000-0000-0000-000000000043', 'ce777777-0000-0000-0000-000000000024', 'ce777777-0000-0000-0000-000000000011', 'active'),
+  ('ce777777-0000-0000-0000-000000000044', 'ce777777-0000-0000-0000-000000000024', 'ce777777-0000-0000-0000-000000000011', 'active'),
+  ('ce777777-0000-0000-0000-000000000045', 'ce777777-0000-0000-0000-000000000024', 'ce777777-0000-0000-0000-000000000011', 'active');
+
+-- Posted while every enrollment above is active.
+insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
+  ('ce777777-0000-0000-0000-000000000054', 'ce777777-0000-0000-0000-000000000024', :'v_teacher_w'::uuid, 'Adv Class W update, posted before any withdrawal', null, '2026-01-11');
+
+insert into comments (id, class_update_id, author_user_id, author_role, body, is_private, target_parent_id) values
+  ('ce777777-0000-0000-0000-000000000066', 'ce777777-0000-0000-0000-000000000054', :'v_student_w1'::uuid, 'student', 'public comment on Adv W', false, null),
+  ('ce777777-0000-0000-0000-000000000067', 'ce777777-0000-0000-0000-000000000054', :'v_parent_w1'::uuid, 'parent', 'private note from parent W1', true, :'v_parent_w1'::uuid),
+  ('ce777777-0000-0000-0000-000000000068', 'ce777777-0000-0000-0000-000000000054', :'v_teacher_w'::uuid, 'teacher', 'teacher private reply to parent W1', true, :'v_parent_w1'::uuid),
+  ('ce777777-0000-0000-0000-000000000069', 'ce777777-0000-0000-0000-000000000054', :'v_parent_w2'::uuid, 'parent', 'private note from parent W2', true, :'v_parent_w2'::uuid);
+
+-- Non-vacuity controls: while enrolled, Parent W1 reads the update and their whole thread.
+select tests.authenticate_as(:'v_parent_w1'::uuid, 'parent');
+select is(
+  (select count(*) from class_updates where id = 'ce777777-0000-0000-0000-000000000054'::uuid)::int, 1,
+  'CONTROL 9-pre: while enrolled, Parent W1 reads Class W''s update (so the denials below are a real transition)'
+);
+select is(
+  (select count(*) from comments where id in ('ce777777-0000-0000-0000-000000000067'::uuid, 'ce777777-0000-0000-0000-000000000068'::uuid))::int, 2,
+  'CONTROL 9-pre: while enrolled, Parent W1 reads both sides of their own private thread'
+);
+select tests.clear_authentication();
+
+-- THE TRANSITION: active -> withdrawn by UPDATE. Wes (all of Family W1) and Xan (one of two
+-- Family W2 children).
+update enrollments set status = 'withdrawn'
+where class_id = 'ce777777-0000-0000-0000-000000000024'
+  and student_id in ('ce777777-0000-0000-0000-000000000043', 'ce777777-0000-0000-0000-000000000044');
+
+-- A second update, posted after the withdrawal.
+insert into class_updates (id, class_id, posted_by, body, homework, meeting_date) values
+  ('ce777777-0000-0000-0000-000000000055', 'ce777777-0000-0000-0000-000000000024', :'v_teacher_w'::uuid, 'Adv Class W update, posted after the withdrawal', null, '2026-01-18');
+
+-- Withdrawn Parent.
+select tests.authenticate_as(:'v_parent_w1'::uuid, 'parent');
+select is(
+  (select count(*) from class_updates where id = 'ce777777-0000-0000-0000-000000000054'::uuid)::int, 0,
+  'ATTACK 9a DENY: withdrawn Parent cannot read a class update posted BEFORE withdrawal (no time bound -- the ADR-2026-09-19 vs ADR-0037 difference)'
+);
+select is(
+  (select count(*) from class_updates where id = 'ce777777-0000-0000-0000-000000000055'::uuid)::int, 0,
+  'ATTACK 9b DENY: withdrawn Parent cannot read a class update posted after withdrawal'
+);
+select is(
+  (select count(*) from comments where id = 'ce777777-0000-0000-0000-000000000066'::uuid)::int, 0,
+  'ATTACK 9c DENY: withdrawn Parent cannot read the class''s public comments'
+);
+select is(
+  (select count(*) from comments where id in ('ce777777-0000-0000-0000-000000000067'::uuid, 'ce777777-0000-0000-0000-000000000068'::uuid))::int, 0,
+  'ATTACK 9d DENY: withdrawn Parent cannot read their OWN private thread (Decision 1b -- comments_target_parent_select is identity-derived and had no enrollments join to filter)'
+);
+select throws_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'parent', 'withdrawn parent public comment', false, null)$$, :'v_parent_w1'::uuid),
+  '42501', null, 'ATTACK 9e DENY: withdrawn Parent cannot insert a public comment'
+);
+select throws_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'parent', 'withdrawn parent private note', true, %L)$$, :'v_parent_w1'::uuid, :'v_parent_w1'::uuid),
+  '42501', null, 'ATTACK 9f DENY: withdrawn Parent cannot insert into their own private thread'
+);
+select tests.clear_authentication();
+
+-- Withdrawn Student.
+select tests.authenticate_as(:'v_student_w1'::uuid, 'student');
+select is(
+  (select count(*) from class_updates where class_id = 'ce777777-0000-0000-0000-000000000024'::uuid)::int, 0,
+  'ATTACK 9g DENY: withdrawn Student cannot read any of the class''s updates'
+);
+select is(
+  (select count(*) from comments where id = 'ce777777-0000-0000-0000-000000000066'::uuid)::int, 0,
+  'ATTACK 9h DENY: withdrawn Student cannot read the class''s public comments -- including their own'
+);
+select throws_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'student', 'withdrawn student comment', false, null)$$, :'v_student_w1'::uuid),
+  '42501', null, 'ATTACK 9i DENY: withdrawn Student cannot insert a comment'
+);
+select tests.clear_authentication();
+
+-- The class's Teacher: write to the withdrawn family is revoked, read is not.
+select tests.authenticate_as(:'v_teacher_w'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000024'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_w1'::uuid, 'ce777777-0000-0000-0000-000000000024'::uuid),
+  false,
+  'ATTACK 9j DENY: is_parent_of_class is false for a Parent whose only enrollment in the class is withdrawn'
+);
+select throws_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000055'::uuid, %L, 'teacher', 'opening a new thread with a withdrawn parent', true, %L)$$, :'v_teacher_w'::uuid, :'v_parent_w1'::uuid),
+  '42501', null, 'ATTACK 9k DENY: Teacher cannot open a NEW private thread with a withdrawn Parent'
+);
+select throws_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'teacher', 'replying into an existing thread with a withdrawn parent', true, %L)$$, :'v_teacher_w'::uuid, :'v_parent_w1'::uuid),
+  '42501', null, 'ATTACK 9l DENY: Teacher cannot reply into an EXISTING private thread with a withdrawn Parent (is_parent_of_class runs on every private insert, not once per thread)'
+);
+select is(
+  (select count(*) from comments where id in ('ce777777-0000-0000-0000-000000000067'::uuid, 'ce777777-0000-0000-0000-000000000068'::uuid))::int, 2,
+  'CONTROL 9: Teacher still READS the withdrawn family''s private thread (authorship-derived, never joined enrollments)'
+);
+savepoint before_w_teacher_public_comment;
+select lives_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'teacher', 'teacher public comment', false, null)$$, :'v_teacher_w'::uuid),
+  'CONTROL 9: Teacher still posts PUBLIC comments on that update (the public branch never calls is_parent_of_class)'
+);
+rollback to savepoint before_w_teacher_public_comment;
+select is(
+  (select public.resolve_parent_family_label(:'v_parent_w1'::uuid, 'ce777777-0000-0000-0000-000000000024'::uuid)),
+  'Adv Family W1', 'CONTROL 9: Teacher resolves the withdrawn family''s real label (no "Private thread" fallback, Decision 4)'
+);
+-- Sibling still enrolled (Yul): Family W2 keeps its write path, with no special guard.
+select is(
+  is_parent_of_class(:'v_parent_w2'::uuid, 'ce777777-0000-0000-0000-000000000024'::uuid),
+  true,
+  'CONTROL 9: is_parent_of_class stays true for a Parent with one child withdrawn and a sibling still enrolled in the same class'
+);
+savepoint before_w_teacher_reply_to_sibling_family;
+select lives_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'teacher', 'reply to parent W2', true, %L)$$, :'v_teacher_w'::uuid, :'v_parent_w2'::uuid),
+  'CONTROL 9: Teacher can still reply privately to the family with a sibling still enrolled'
+);
+rollback to savepoint before_w_teacher_reply_to_sibling_family;
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_parent_w2'::uuid, 'parent');
+select is(
+  (select count(*) from class_updates where id = 'ce777777-0000-0000-0000-000000000054'::uuid)::int, 1,
+  'CONTROL 9: Parent with a sibling still enrolled keeps reading the class''s updates'
+);
+select is(
+  (select count(*) from comments where id = 'ce777777-0000-0000-0000-000000000069'::uuid)::int, 1,
+  'CONTROL 9: Parent with a sibling still enrolled keeps reading their own private thread'
+);
+savepoint before_w_sibling_parent_comment;
+select lives_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'parent', 'sibling-family public comment', false, null)$$, :'v_parent_w2'::uuid),
+  'CONTROL 9: Parent with a sibling still enrolled can still comment'
+);
+rollback to savepoint before_w_sibling_parent_comment;
+select tests.clear_authentication();
+
+-- ...but the withdrawn sibling himself is out: student access is per-student.
+select tests.authenticate_as(:'v_student_w2'::uuid, 'student');
+select is(
+  (select count(*) from class_updates where class_id = 'ce777777-0000-0000-0000-000000000024'::uuid)::int, 0,
+  'ATTACK 9m DENY: the withdrawn sibling (Student) loses the feed even though his family keeps it through the enrolled sibling'
+);
+select tests.clear_authentication();
+
+-- Oversight is scope-derived and untouched.
+select tests.authenticate_as(:'v_coordinator_1'::uuid, 'coordinator', 'session', 'ce777777-0000-0000-0000-000000000011'::uuid);
+select is(
+  (select count(*) from comments where id in (
+    'ce777777-0000-0000-0000-000000000066'::uuid, 'ce777777-0000-0000-0000-000000000067'::uuid,
+    'ce777777-0000-0000-0000-000000000068'::uuid, 'ce777777-0000-0000-0000-000000000069'::uuid))::int, 4,
+  'CONTROL 9: Coordinator oversight still reads every comment, public and private, after the withdrawal'
+);
+select tests.clear_authentication();
+
+-- RE-ENROLMENT: withdrawn -> active restores everything, including what was posted meanwhile.
+update enrollments set status = 'active'
+where class_id = 'ce777777-0000-0000-0000-000000000024'
+  and student_id = 'ce777777-0000-0000-0000-000000000043';
+
+select tests.authenticate_as(:'v_parent_w1'::uuid, 'parent');
+select is(
+  (select count(*) from class_updates where id = 'ce777777-0000-0000-0000-000000000054'::uuid)::int, 1,
+  'CONTROL 9: re-enrolment restores the Parent''s read of the earlier update'
+);
+select is(
+  (select count(*) from class_updates where class_id = 'ce777777-0000-0000-0000-000000000024'::uuid)::int, 2,
+  'CONTROL 9: re-enrolment also reveals the update posted while they were withdrawn (nothing was stamped, so nothing to un-stamp)'
+);
+select is(
+  (select count(*) from comments where id in ('ce777777-0000-0000-0000-000000000067'::uuid, 'ce777777-0000-0000-0000-000000000068'::uuid))::int, 2,
+  'CONTROL 9: re-enrolment restores the Parent''s private thread'
+);
+savepoint before_w_reenrolled_parent_note;
+select lives_ok(
+  format($$insert into comments (class_update_id, author_user_id, author_role, body, is_private, target_parent_id)
+    values ('ce777777-0000-0000-0000-000000000054'::uuid, %L, 'parent', 're-enrolled parent private note', true, %L)$$, :'v_parent_w1'::uuid, :'v_parent_w1'::uuid),
+  'CONTROL 9: re-enrolment restores the Parent''s write'
+);
+rollback to savepoint before_w_reenrolled_parent_note;
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_teacher_w'::uuid, 'teacher', 'class', 'ce777777-0000-0000-0000-000000000024'::uuid);
+select is(
+  is_parent_of_class(:'v_parent_w1'::uuid, 'ce777777-0000-0000-0000-000000000024'::uuid),
+  true,
+  'CONTROL 9: re-enrolment restores is_parent_of_class, so the Teacher can reply again'
 );
 select tests.clear_authentication();
 
