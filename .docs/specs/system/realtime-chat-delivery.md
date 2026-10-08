@@ -147,7 +147,7 @@ One migration. No new tables, no change to membership rules, sync triggers, or t
 | `public.chat_topic_conversation_id(text) returns uuid` | new; `immutable`, plain SQL `case` so the cast runs only after the pattern matches; returns `null` otherwise. Accepts lowercase uuids only, which is what the trigger emits. Execute revoked from `public, anon`, granted to `authenticated` (a policy expression runs with the caller's privileges). |
 | `public.broadcast_message_saved()` | new trigger function; `security definer`, `set search_path = ''`, schema-qualified references; execute revoked from `public, anon, authenticated`. |
 | trigger on `messages` | new; `after insert for each row`. |
-| policy on `realtime.messages` | new; `for select to authenticated using (extension = 'broadcast' and public.is_conversation_participant(public.chat_topic_conversation_id(realtime.topic())))`. No `insert`, `update` or `delete` policy for any client role. No policy for `anon`. |
+| policy on `realtime.messages` | new; `for select to authenticated using (extension = 'broadcast' and topic = realtime.topic() and public.is_conversation_participant(public.chat_topic_conversation_id(realtime.topic())))`. No `insert`, `update` or `delete` policy for any client role. No policy for `anon`. `topic = realtime.topic()` added at `/plan` (2026-10-07): without it a participant joined to one topic could see every row in the table. |
 
 The policy reads no `active_role` or scope claim (ADR Decision 2) and uses the bare `auth.uid()` form through the existing helper (ADR Decision 4). `is_conversation_participant` is not redefined.
 
