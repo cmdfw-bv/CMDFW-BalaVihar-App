@@ -54,6 +54,9 @@ jobs:
           done
           exit 1
 
+      - name: Realtime end-to-end join check (issue #6)
+        run: node scripts/e2e-realtime-join.mjs
+
   secrets-pii:
     runs-on: ubuntu-latest
     steps:
