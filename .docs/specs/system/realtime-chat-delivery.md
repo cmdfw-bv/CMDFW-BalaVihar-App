@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-2026-10-07-realtime-chat-signal-then-fetch (payload, channel policy, revocation window, removal gate), ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
 
-**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → next is `/design`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → next is `/plan`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
@@ -77,3 +77,179 @@ Engine-level. Access is membership-derived (`conversation_participants`), the sa
 - Message edit or removal, report/flag tooling, and retention (ADR-0017).
 - Any change to membership rules or the sync triggers.
 - Immediate forced disconnect on revocation.
+
+---
+
+## Design (2026-10-07)
+
+Signed off 2026-10-07 (see "Design sign-off" at the end). Decisions below marked **(Maulik, 2026-10-07)** were taken during `/design`; everything else follows from the brief and the governing ADR.
+
+### Design decisions
+
+1. **Senders cannot choose a message's `id` or `created_at` (Maulik, 2026-10-07).** Today `authenticated` has table-wide `insert` on `messages`, so a client can supply both. Catch-up is "fetch newer than my last message", so a backdated row would never be fetched by other devices and a future-dated one would pin itself to the bottom of a class chat. The grant is narrowed to the four columns a client legitimately writes; supplying either of the other two is refused with a permission error rather than silently overwritten.
+2. **A device listens only while a conversation is on screen (Maulik, 2026-10-07).** The channel is joined when a conversation opens and left when it closes, the app is backgrounded, or the user signs out. No app-wide subscription, so idle open apps do not count against the 200-connection limit. There is no live unread indicator in this item; an unread indicator needs read tracking, which does not exist, and is `class-chat-ui`'s (#24) to design. The client module is built per conversation so #24 can widen the listening scope later without changing the database side.
+3. **One catch-up path, also run on a 30-second timer.** The same fetch runs when the conversation opens, on a ping, when the channel (re)joins, when the app returns to the foreground, and every 30 seconds while the conversation is open. The timer is what makes a lost signal and a failed connection recoverable without a separate fallback mode: the chat degrades from instant to at most 30 seconds late.
+4. **The trigger function is `SECURITY DEFINER`.** `realtime.messages` has RLS on and this item adds no client `insert` policy. A trigger running as the sender would be refused, and because `realtime.send()` traps its own errors the signal would vanish without failing anything. Verified on the local stack 2026-10-07: `authenticated` and `anon` hold table grants on `realtime.messages`, RLS is enabled, and no policy exists.
+5. **Topic parsing is a separate helper that cannot raise.** Postgres does not promise evaluation order inside a policy's `and`, so a regex guard next to a `::uuid` cast can still raise on a malformed topic. The helper returns `null` for anything that is not exactly `chat:<lowercase uuid>`, and `is_conversation_participant(null)` is false.
+
+### Behavior
+
+```mermaid
+sequenceDiagram
+    participant S as Sender device
+    participant DB as Postgres (messages, RLS)
+    participant RT as Realtime (private channel chat:<id>)
+    participant R as Receiver device (conversation open)
+
+    R->>RT: join chat:<id> (authorized by the realtime.messages policy)
+    S->>DB: insert message (4 columns; messages_member_insert)
+    DB-->>S: saved row (id, created_at stamped by the database)
+    DB->>RT: trigger -> realtime.send({id, created_at})
+    RT-->>R: ping "message_saved"
+    R->>DB: catch-up fetch (messages_member_select)
+    DB-->>R: new rows
+    R->>R: merge by id, order by (created_at, id)
+```
+
+**Signal.** An `after insert for each row` trigger on `messages` calls `realtime.send(payload, 'message_saved', 'chat:' || conversation_id, true)`. The payload has exactly two keys, `id` and `created_at`. Clients treat the ping as "run catch-up now" and do not depend on its contents.
+
+**Catch-up fetch.** Reads `messages` for the conversation where `created_at` is at or after the newest held message's `created_at` minus a 10-second overlap, ascending by `(created_at, id)`, in pages of 100 until a short page. Results are merged by `id`, so the overlap never produces duplicates. The overlap exists because `created_at` is the saving transaction's start time, so two near-simultaneous saves can commit in the opposite order to their timestamps. With no messages held, catch-up is the initial load: the newest 50, with older pages loaded on request.
+
+**Single flight.** One catch-up runs at a time per conversation. A trigger that arrives mid-flight sets a flag and one more catch-up runs when the current one finishes.
+
+**Sending.** The client inserts only `conversation_id`, `sender_user_id`, `body`, `mention_targets` and reads the saved row back. That row is merged immediately; the ping that follows finds it already present. `send` returns the saved row so the caller can invoke push per ADR-0028. This module does not call push.
+
+**Lifecycle.**
+
+| Event | Action |
+| --- | --- |
+| Conversation opens | set Realtime auth from the current session, join the private channel, run catch-up, start the 30 s timer |
+| Ping received | run catch-up |
+| Channel joined or rejoined | run catch-up |
+| App foregrounded (native `AppState` active; web `visibilitychange` visible) | rejoin if needed, run catch-up, restart the timer |
+| App backgrounded | leave the channel, stop the timer |
+| Conversation closes | leave the channel, stop the timer |
+| Sign-out | remove all Realtime channels (added to the existing sign-out path) |
+| Token refresh or active-role switch | nothing to do; `supabase-js` forwards the new token to Realtime, which re-evaluates authorization |
+
+**Access lost while the conversation is open.** RLS returns an empty result rather than an error, so a revoked user's catch-up looks like "nothing new". When a ping arrives and its message is still absent after catch-up, or a channel join is refused, the client re-reads the `conversations` row. If it is no longer readable the client clears the in-memory list, leaves the channel, stops the timer and reports `unavailable`, so a withdrawn user's device stops displaying a minors' conversation as soon as it notices.
+
+**Connection unavailable** (200-connection limit, network, join timeout). The conversation still loads and updates through the timer. `supabase-js` keeps retrying the join; a successful join triggers catch-up. The module reports whether it is live so #24 can choose to show it.
+
+### Data & RLS impact
+
+One migration. No new tables, no change to membership rules, sync triggers, or the existing `messages` / `conversations` policies (ADR Decision 6).
+
+| Object | Change |
+| --- | --- |
+| `messages` grant | `revoke insert … from authenticated`, then `grant insert (conversation_id, sender_user_id, body, mention_targets) … to authenticated`. `select` unchanged. `service_role` unchanged. |
+| `messages` index | new index on `(conversation_id, created_at desc, id desc)` for catch-up, initial load and older pages. None exists today. |
+| `public.chat_topic_conversation_id(text) returns uuid` | new; `immutable`, plain SQL `case` so the cast runs only after the pattern matches; returns `null` otherwise. Accepts lowercase uuids only, which is what the trigger emits. Execute revoked from `public, anon`, granted to `authenticated` (a policy expression runs with the caller's privileges). |
+| `public.broadcast_message_saved()` | new trigger function; `security definer`, `set search_path = ''`, schema-qualified references; execute revoked from `public, anon, authenticated`. |
+| trigger on `messages` | new; `after insert for each row`. |
+| policy on `realtime.messages` | new; `for select to authenticated using (extension = 'broadcast' and public.is_conversation_participant(public.chat_topic_conversation_id(realtime.topic())))`. No `insert`, `update` or `delete` policy for any client role. No policy for `anon`. |
+
+The policy reads no `active_role` or scope claim (ADR Decision 2) and uses the bare `auth.uid()` form through the existing helper (ADR Decision 4). `is_conversation_participant` is not redefined.
+
+**Transport store contents:** `realtime.messages` receives a conversation id (in the topic), a message id and a timestamp. No body, sender or mention data. No new `audit_log` surface.
+
+### Client module
+
+`lib/chat/`, the only client code that touches Realtime. Uses the existing anon-key `supabase` client.
+
+| Unit | Purpose |
+| --- | --- |
+| `messageList.ts` | pure: merge by `id`, order by `(created_at, id)`, compute the catch-up cursor |
+| `conversationChannel.ts` | join and leave the private channel `chat:<id>`; map channel states to live / not live; surface pings and refused joins |
+| `useConversationMessages(conversationId)` | the interface for #24: `messages`, `status` (`loading` · `ready` · `error` · `unavailable`), `isLive`, `hasOlder`, `loadOlder()`, `send(body, mentionTargets)` |
+
+Follows the existing pattern of pure logic tested directly with a thin hook around it (`lib/auth/useAutoRefreshOnRegain.ts`, `lib/attendance/`). `app/(tabs)/chat.tsx` stays a placeholder.
+
+### UI
+
+None. This is an engine item with no screen, component or copy. `design/sankalp/bv-connect/components/chat/ChatBubble.jsx` (+ `.prompt.md`) is present in the design mirror and is `class-chat-ui`'s (#24) reference; it was not refreshed or changed here. The design Definition-of-Done applies to #24.
+
+### Testing
+
+Tests are written first and seen to fail (non-negotiable #4).
+
+**pgTAP — schema and signal** (`supabase/tests/190_realtime_chat_delivery.sql`):
+- a participant's insert with the four permitted columns succeeds; an insert supplying `created_at`, or supplying `id`, is refused with `42501`;
+- after a participant's insert, exactly one row exists in `realtime.messages` for topic `chat:<conversation_id>`, event `message_saved`, private, and its payload keys are exactly `id` and `created_at`;
+- the index exists; the trigger function is `security definer` and not executable by `authenticated`;
+- `chat_topic_conversation_id` returns the uuid for a well-formed topic and `null`, without raising, for: empty string, `chat:`, `chat:not-a-uuid`, an uppercase uuid, a trailing suffix, a different prefix, a bare uuid.
+
+**pgTAP — adversarial** (`supabase/tests/191_realtime_chat_delivery_adversarial.sql`). Realtime authorizes a join by evaluating the `realtime.messages` policy with `realtime.topic` set for the connecting user; the tests reproduce that by setting `realtime.topic` and selecting from `realtime.messages` as each user. Every deny assertion is paired with a positive control on the same topic (a participant sees a non-zero count), so no assertion can pass because the table happened to be empty.
+
+| Case | Expected |
+| --- | --- |
+| enrolled HS student, own class | receives |
+| parent of an enrolled student, that class | receives |
+| teacher of the class; coordinator of its session; BV coordinator; admin (per ADR-0015 ladder) | receives where a participant row exists |
+| withdrawn student; withdrawn student's parent | denied |
+| family with one child withdrawn and a sibling still enrolled in the same class | receives |
+| student withdrawn from class A, active in class B | A denied, B receives |
+| re-enrolled after withdrawal | receives |
+| teacher of another class; coordinator of another session | denied |
+| student against a KG–Gr 8 class topic | denied |
+| multi-role user: result identical before and after `switch_active_role` | no widening |
+| unauthenticated, tested with `set role anon` (not `clear_authentication()`, which is a superuser) | zero rows |
+| malformed, uppercase and non-chat topics | denied, no error raised |
+| client `insert` into `realtime.messages` as a participant | refused `42501` |
+| a participant with `realtime.topic` set to one conversation | sees no rows of another conversation they also belong to |
+
+**End-to-end join check** (local stack, real websocket, seeded pilot logins): a participant joins `chat:<id>` and receives the ping after another participant saves a message; a non-participant's join is refused; a client `send` on the channel is not delivered. This confirms the live service agrees with the pgTAP simulation of it.
+
+**Client unit tests** (Vitest, `lib/chat/__tests__/`): merge drops duplicates; ordering with equal timestamps is stable by `id`; the cursor applies the overlap; catch-up pages until a short page; a trigger during an in-flight catch-up causes exactly one more; the sender's row followed by its own ping yields one entry; the access-lost path clears the list and reports `unavailable`.
+
+### Acceptance criteria → design
+
+| # | Criterion | Met by |
+| --- | --- | --- |
+| 1 | Live delivery ≈ 2 s | trigger signal + catch-up on ping; indexed fetch |
+| 2 | Live access equals history access | policy calls the same membership helper; content is only ever read under `messages_member_select` |
+| 3 | Listen-only clients | no `insert` policy on `realtime.messages`; adversarial insert test |
+| 4 | No loss across gaps | single catch-up path on open, ping, rejoin, foreground and timer; overlap + merge by id; database-stamped `created_at` |
+| 5 | Revocation | policy re-evaluated on join and new token (≤ 60 min, ADR Decision 5); fetch refused immediately; access-lost path clears the screen |
+| 6 | Adversarial coverage | `191_…_adversarial.sql` + end-to-end join check |
+| 7 | Residency and vendors | existing US Supabase project only; no body in the transport store |
+| 8 | Capacity | listening only inside a conversation; the timer defines behaviour at the limit |
+
+### Edge cases
+
+- **Same sender, two devices:** the second device gets the ping and fetches; the sending device already holds the row and merges to one entry.
+- **Two messages in quick succession:** ordered by `(created_at, id)` from the fetched rows, never by ping arrival.
+- **Commit order differs from timestamp order:** covered by the 10-second overlap.
+- **Lost signal while connected:** recovered by the timer within 30 seconds.
+- **Cannot connect (limit or network):** timer-driven updates; nothing lost.
+- **Revoked while the conversation is open:** pings may continue for up to one token lifetime; each fetch returns nothing; the access-lost path clears the list.
+- **Sibling still enrolled / withdrawn from A, active in B / re-enrolled:** follow participant rows exactly; covered in the adversarial table.
+- **Active-role switch:** no effect on the channel; the policy reads no role claim.
+- **Malformed or uppercase topic:** denied without an error.
+- **Client sends `created_at` or `id`:** save refused; the module never sends them.
+- **Long absence (more new messages than one page):** catch-up pages until a short page.
+- **`realtime.send()` fails:** the message is still saved (ADR Consequences); recovered by the timer.
+
+### Documentation corrected in this stage
+
+`realtime.broadcast_changes()` replaced with the signal-then-fetch wording in 3_ARCHITECTURE (§3 topology diagram and bullet, §9.1 diagram and bullet) and in `.claude/rules/supabase-sql.md`.
+
+### Out of scope (design)
+
+Unchanged from the brief, plus: a live or stored unread indicator and read tracking (#24); any app-wide subscription; invoking push from this module; rewriting the existing `messages` / `conversations` policies onto the helper; a forced-disconnect mechanism.
+
+### Carried forward
+
+- **To `/plan`:** confirm on an isolated stack (not the shared one) that `realtime.send()` writes a row inside a pgTAP transaction, i.e. that today's `realtime.messages` partition exists there; if it does not, the signal tests need a different observation point. Decide where the end-to-end join check runs in CI.
+- **To `/deploy-staging`** (in addition to the architect's two): confirm the cloud project's Realtime setting does not allow public channels to stand in for private ones, and repeat the end-to-end join check against staging.
+
+---
+
+## Design sign-off (2026-10-07)
+
+Signed off by Maulik, 2026-10-07. He confirmed that the design reads right and explicitly confirmed the two behaviours added while the spec was written, which were not part of the design first approved in conversation:
+
+- **Access lost while the conversation is open** clears the on-screen list and reports `unavailable` (Behavior).
+- **The 10-second overlap** on every catch-up fetch (Behavior → Catch-up fetch).
+
+Design decisions 1 and 2 are his, taken during `/design`. Next stage: `/plan`.
