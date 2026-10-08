@@ -4,8 +4,11 @@
 --   * #105 (20261002120000 + 20261002130000) replaced the inline nested
 --     exists(... enrollments -> students -> family_members ...) subqueries in the feed-read
 --     policies with SECURITY DEFINER membership helpers (caller-scoped via auth.uid(), so no
---     info leak), taking the feed query from 575 subplans to 0. It ALSO wrapped
---     auth.jwt()/auth.uid() as (select auth.jwt())/(select auth.uid()).
+--     info leak), taking the FULL feed query (class_updates + the embedded classes/sessions/
+--     centers) from 575 subplans to 0. (The 20261002120000 header's "43 sub-plans" measured
+--     class_updates alone, before 20261002130000 added the embedded-table policies -- same fix,
+--     wider scope; not a contradiction.) #105 ALSO wrapped auth.jwt()/auth.uid() as
+--     (select auth.jwt())/(select auth.uid()).
 --   * #96/#112 (20261003120000, ADR-2026-09-19) made the same conversational policies
 --     withdrawal-aware: a mid-year withdrawal (enrollments.status != 'active') revokes the
 --     student's and their parents' read/write of class_updates + comments, including the private
@@ -15,10 +18,16 @@
 -- (helper-based, 0 subplans) AND withdrawal-aware.
 --
 -- TWO DECISIONS BAKED IN HERE:
---  1. The (select auth.jwt())/(select auth.uid()) wrapping from #105 is DROPPED entirely. EXPLAIN
---     showed it added nothing measurable (the plan is identical with or without it once the nested
---     RLS cascade is gone), and the bare form is the codebase convention (#112's note). Every
---     policy/function below uses the BARE auth.jwt()->>'...' / auth.uid() form.
+--  1. The (select auth.jwt())/(select auth.uid()) wrapping from #105 is DROPPED here; every
+--     policy/function below uses the BARE auth.jwt()->>'...' / auth.uid() form (the codebase
+--     convention, #112's note). CORRECTION (PR #117 review): the original "wrapping adds nothing"
+--     rationale rested on SubPlan count, which is the WRONG metric -- a SECURITY DEFINER per-row
+--     helper can't be inlined and EXPLAIN can't see inside it; buffer/time measurement shows the
+--     bare form ~15% slower than the wrapped form, and the parent feed path still carries real
+--     per-row cost. The genuine win here is eliminating the recursive RLS cascade (the 50s-timeout
+--     cause). Re-adding the wrapping, a set-returning reformulation, and a staging EXPLAIN
+--     re-measure as the teacher role are TRACKED FOLLOW-UPS, not resolved here. See
+--     ADR-2026-10-07-feed-rls-access-via-security-definer-helpers.
 --  2. #112's status='active' predicate is merged into the helper-based fast form -- but ONLY on
 --     the conversational policies #112 touched. The reference-data policies (classes/sessions/
 --     centers) are left exactly as #105 had them; #112 never touched them, so a withdrawn
@@ -167,6 +176,10 @@ revoke execute on function public.is_student_in_center(uuid) from public, anon;
 grant execute on function public.is_student_in_center(uuid) to authenticated;
 
 -- --- status-AGNOSTIC: reference-data containment (no user data; no leak) -------------------------
+-- DELIBERATE EXEMPTION from the is_parent_of_class (#52) caller-role gate: these three answer only
+-- whether two org-structure rows are related (class↔session, class/session↔center). They expose no
+-- PII and no cross-scope user data, and the inputs are unguessable uuids, so an un-gated authenticated
+-- caller gains nothing actionable — a role/scope gate would add cost for no confidentiality benefit.
 
 create or replace function public.class_in_session(p_class_id uuid, p_session_id uuid)
 returns boolean language sql stable security definer set search_path = public
@@ -248,9 +261,9 @@ as $$
       and e.status = 'active'
   )
   and (
-    (auth.jwt()->>'active_role' = 'teacher' and (auth.jwt()->>'scope_id')::uuid = p_class_id)
+    (auth.jwt()->>'active_role' = 'teacher' and nullif(auth.jwt()->>'scope_id','')::uuid = p_class_id)
     or (auth.jwt()->>'active_role' = 'coordinator' and exists (
-      select 1 from classes c where c.id = p_class_id and c.session_id = (auth.jwt()->>'scope_id')::uuid
+      select 1 from classes c where c.id = p_class_id and c.session_id = nullif(auth.jwt()->>'scope_id','')::uuid
     ))
     or auth.jwt()->>'active_role' in ('bv_coordinator', 'admin')
   );
@@ -278,9 +291,9 @@ as $$
   where fm.user_id = p_parent_user_id
     and e.class_id = p_class_id
     and (
-      (auth.jwt()->>'active_role' = 'teacher' and (auth.jwt()->>'scope_id')::uuid = p_class_id)
+      (auth.jwt()->>'active_role' = 'teacher' and nullif(auth.jwt()->>'scope_id','')::uuid = p_class_id)
       or (auth.jwt()->>'active_role' = 'coordinator' and exists (
-        select 1 from classes c where c.id = p_class_id and c.session_id = (auth.jwt()->>'scope_id')::uuid
+        select 1 from classes c where c.id = p_class_id and c.session_id = nullif(auth.jwt()->>'scope_id','')::uuid
       ))
       or auth.jwt()->>'active_role' in ('bv_coordinator', 'admin')
     )
@@ -297,7 +310,7 @@ drop policy if exists class_updates_teacher_select on class_updates;
 create policy class_updates_teacher_select on class_updates for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
-  and class_updates.class_id = (auth.jwt()->>'scope_id')::uuid
+  and class_updates.class_id = nullif(auth.jwt()->>'scope_id','')::uuid
 );
 
 drop policy if exists class_updates_student_select on class_updates;
@@ -318,7 +331,7 @@ drop policy if exists class_updates_coordinator_select on class_updates;
 create policy class_updates_coordinator_select on class_updates for select
 using (
   auth.jwt()->>'active_role' = 'coordinator'
-  and public.class_in_session(class_updates.class_id, (auth.jwt()->>'scope_id')::uuid)
+  and public.class_in_session(class_updates.class_id, nullif(auth.jwt()->>'scope_id','')::uuid)
 );
 
 drop policy if exists class_updates_org_select on class_updates;
@@ -341,14 +354,14 @@ drop policy if exists centers_teacher_select on centers;
 create policy centers_teacher_select on centers for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
-  and public.class_in_center((auth.jwt()->>'scope_id')::uuid, centers.id)
+  and public.class_in_center(nullif(auth.jwt()->>'scope_id','')::uuid, centers.id)
 );
 
 drop policy if exists centers_coordinator_select on centers;
 create policy centers_coordinator_select on centers for select
 using (
   auth.jwt()->>'active_role' = 'coordinator'
-  and public.session_in_center((auth.jwt()->>'scope_id')::uuid, centers.id)
+  and public.session_in_center(nullif(auth.jwt()->>'scope_id','')::uuid, centers.id)
 );
 
 drop policy if exists centers_org_select on centers;
@@ -371,14 +384,14 @@ drop policy if exists sessions_teacher_select on sessions;
 create policy sessions_teacher_select on sessions for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
-  and public.class_in_session((auth.jwt()->>'scope_id')::uuid, sessions.id)
+  and public.class_in_session(nullif(auth.jwt()->>'scope_id','')::uuid, sessions.id)
 );
 
 drop policy if exists sessions_coordinator_select on sessions;
 create policy sessions_coordinator_select on sessions for select
 using (
   auth.jwt()->>'active_role' = 'coordinator'
-  and sessions.id = (auth.jwt()->>'scope_id')::uuid
+  and sessions.id = nullif(auth.jwt()->>'scope_id','')::uuid
 );
 
 drop policy if exists sessions_org_select on sessions;
@@ -401,14 +414,14 @@ drop policy if exists classes_teacher_select on classes;
 create policy classes_teacher_select on classes for select
 using (
   auth.jwt()->>'active_role' = 'teacher'
-  and classes.id = (auth.jwt()->>'scope_id')::uuid
+  and classes.id = nullif(auth.jwt()->>'scope_id','')::uuid
 );
 
 drop policy if exists classes_coordinator_select on classes;
 create policy classes_coordinator_select on classes for select
 using (
   auth.jwt()->>'active_role' = 'coordinator'
-  and classes.session_id = (auth.jwt()->>'scope_id')::uuid
+  and classes.session_id = nullif(auth.jwt()->>'scope_id','')::uuid
 );
 
 drop policy if exists classes_org_select on classes;
@@ -427,7 +440,7 @@ using (
   and comments.is_private = false
   and exists (
     select 1 from class_updates cu
-    where cu.id = comments.class_update_id and cu.class_id = (auth.jwt()->>'scope_id')::uuid
+    where cu.id = comments.class_update_id and cu.class_id = nullif(auth.jwt()->>'scope_id','')::uuid
   )
 );
 
