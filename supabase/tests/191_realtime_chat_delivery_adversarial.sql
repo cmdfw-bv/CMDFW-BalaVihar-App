@@ -10,7 +10,7 @@
 -- into messages the setting holds that message's topic. Never rely on it: rt_visible() always
 -- sets the topic itself.
 begin;
-select plan(52);
+select plan(56);
 
 create function public.rt_visible(p_topic text) returns integer
 language sql volatile
@@ -261,6 +261,9 @@ select is(public.rt_visible('chat:' || upper(:'v_a')), 0, 'ATTACK 5e DENY: upper
 select is(public.rt_visible('chat:' || :'v_a' || ':typing'), 0, 'ATTACK 5f DENY: trailing suffix');
 select is(public.rt_visible('room:' || :'v_a'), 0, 'ATTACK 5g DENY: non-chat prefix');
 select is(public.rt_visible(:'v_a'), 0, 'ATTACK 5h DENY: bare uuid');
+-- 5i is held by two layers: the parser rejects the newline (pinned on its own in 190) and no
+-- stored row's topic equals the newline form. It goes red only if both are loosened.
+select is(public.rt_visible('chat:' || :'v_a' || E'\n'), 0, 'ATTACK 5i DENY: trailing newline');
 
 -- ---------------------------------------------------------------------------------------------
 -- GROUP 6: clients are listen-only
@@ -284,7 +287,32 @@ select throws_ok(
   '42501', null,
   'ATTACK 6c DENY: a participant cannot delete from realtime.messages'
 );
+
+-- realtime.send() is executable by every role and runs as the caller. It traps its own errors,
+-- so a refused send returns normally with a warning (silenced here): the proof is that no row
+-- was written, checked below as postgres.
+set local client_min_messages to error;
+select lives_ok(
+  format('select realtime.send(%L::jsonb, %L, %L, true)', '{"id":"forged-send"}', 'message_saved', 'chat:' || :'v_a'),
+  'ATTACK 6d: a participant calling realtime.send() directly gets no error ...'
+);
+set local client_min_messages to notice;
 select tests.clear_authentication();
+
+select is(
+  (select count(*) from realtime.messages where payload->>'id' = 'forged-send')::int, 0,
+  'ATTACK 6d DENY: ... and no forged signal was written'
+);
+
+-- The policy lives on the parent table; the daily partitions have row security off, so the
+-- only thing between a client and their rows is the absence of a grant (platform default).
+select ok(
+  (select count(*) > 0
+      and bool_and(not has_table_privilege('authenticated', inhrelid, 'select')
+               and not has_table_privilege('anon', inhrelid, 'select'))
+     from pg_inherits where inhparent = 'realtime.messages'::regclass),
+  'ATTACK 6e DENY: no realtime.messages partition is directly readable by authenticated or anon'
+);
 
 -- ---------------------------------------------------------------------------------------------
 -- GROUP 7: unauthenticated. `set role anon`, not clear_authentication(): the latter resets to
