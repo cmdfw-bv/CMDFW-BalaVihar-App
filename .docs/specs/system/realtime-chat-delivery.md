@@ -1,8 +1,23 @@
 # System — realtime chat delivery
 
-> **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
+> **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-2026-10-07-realtime-chat-signal-then-fetch (payload, channel policy, revocation window, removal gate), ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
 
-**Stage:** `/refine` ✓ (2026-10-05) → next is `/architect` (review).
+**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → next is `/design`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+
+---
+
+## Architect review — sign-off (2026-10-07)
+
+Brief is sound; owner, consumers and scope confirmed (§12.12). One ADR recorded: [ADR-2026-10-07-realtime-chat-signal-then-fetch](../../adr/2026-10-07-realtime-chat-signal-then-fetch.md). Decisions are Maulik's, taken 2026-10-07.
+
+- **Live event carries the message `id` and `created_at` only**; the client fetches the row under `messages` RLS. Answers the Privacy-framing question below: no message body enters the Realtime transport or its 3-day store. The trigger uses `realtime.send()`, not §9.1's `realtime.broadcast_changes()`.
+- **Channel access is one `select` policy on `realtime.messages`** calling the existing `is_conversation_participant` helper, bare `auth.uid()` form, no `insert` policy (listen-only clients). Same style PR #117 lands with; no merge-order dependency on it.
+- **Revocation assumption verified.** Realtime caches channel authorization for the connection and refreshes it on channel join or a new token, so the window is at most one access-token lifetime (60 minutes at `jwt_expiry = 3600`). Accepted for the pilot; within it a revoked user receives signals but the fetch is refused.
+- **No new `audit_log` surface** — confirmed.
+- **Flagged gaps routed.** Message removal stays its own item (Teacher `chat-message-removal`) and **gates production promotion of `class-chat-ui` (#24)**, not this item. 1:1 threads not being representable in `conversations.kind` is not this item's concern and is left for the item that introduces them.
+
+**Carried to `/design`:** safe parsing of the `chat:<uuid>` topic (malformed topics denied); the fetch-newer-than-last path must run unconditionally on ping, reconnect and foreground, since a signal can be lost; behaviour at the 200-connection limit; correcting 3_ARCHITECTURE §9.1's wording.
+**Carried to `/deploy-staging`:** time the message fetch on cloud (#105 lesson) and confirm the cloud access-token lifetime.
 
 ---
 
