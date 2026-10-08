@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-2026-10-07-realtime-chat-signal-then-fetch (payload, channel policy, revocation window, removal gate), ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
 
-**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → `/plan` ✓ (2026-10-07, signed off — [plan](realtime-chat-delivery.plan.md)) → next is `/migration`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → `/plan` ✓ (2026-10-07, signed off — [plan](realtime-chat-delivery.plan.md)) → `/migration` ✓ (2026-10-08) → `/build` ✓ (2026-10-08) → next is `/test`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
@@ -132,7 +132,7 @@ sequenceDiagram
 | Sign-out | remove all Realtime channels (added to the existing sign-out path) |
 | Token refresh or active-role switch | nothing to do; `supabase-js` forwards the new token to Realtime, which re-evaluates authorization |
 
-**Access lost while the conversation is open.** RLS returns an empty result rather than an error, so a revoked user's catch-up looks like "nothing new". When a ping arrives and its message is still absent after catch-up, or a channel join is refused, the client re-reads the `conversations` row. If it is no longer readable the client clears the in-memory list, leaves the channel, stops the timer and reports `unavailable`, so a withdrawn user's device stops displaying a minors' conversation as soon as it notices.
+**Access lost while the conversation is open.** RLS returns an empty result rather than an error, so a revoked user's catch-up looks like "nothing new". When a ping arrives and its message is still absent after catch-up, or a channel join is refused, or a catch-up leaves the list empty (added at `/plan`, so a non-participant who cannot reach Realtime does not see an empty chat that looks real), the client re-reads the `conversations` row. If it is no longer readable the client clears the in-memory list, leaves the channel (the channel is removed from the socket, not merely unsubscribed: a refused channel left there keeps retrying and delays the others), stops the timer and reports `unavailable`, so a withdrawn user's device stops displaying a minors' conversation as soon as it notices.
 
 **Connection unavailable** (200-connection limit, network, join timeout). The conversation still loads and updates through the timer. `supabase-js` keeps retrying the join; a successful join triggers catch-up. The module reports whether it is live so #24 can choose to show it.
 
@@ -160,7 +160,11 @@ The policy reads no `active_role` or scope claim (ADR Decision 2) and uses the b
 | Unit | Purpose |
 | --- | --- |
 | `messageList.ts` | pure: merge by `id`, order by `(created_at, id)`, compute the catch-up cursor |
+| `messagesApi.ts` | the five queries: newest page, catch-up since a cursor (paged), older page, four-column insert, "is this conversation still readable" (added at `/plan`) |
 | `conversationChannel.ts` | join and leave the private channel `chat:<id>`; map channel states to live / not live; surface pings and refused joins |
+| `conversationSession.ts` | catch-up, single flight, 30 s timer, access-lost, send, older pages; plain module the hook wraps, so the behaviour is tested without a renderer (added at `/plan`) |
+| `appActivity.ts` | foreground / background signal, web and native (added at `/plan`) |
+| `signOutCleanup.ts` | remove every channel on `SIGNED_OUT`; called from `SessionProvider` (added at `/plan`) |
 | `useConversationMessages(conversationId)` | the interface for #24: `messages`, `status` (`loading` · `ready` · `error` · `unavailable`), `isLive`, `hasOlder`, `loadOlder()`, `send(body, mentionTargets)` |
 
 Follows the existing pattern of pure logic tested directly with a thin hook around it (`lib/auth/useAutoRefreshOnRegain.ts`, `lib/attendance/`). `app/(tabs)/chat.tsx` stays a placeholder.
@@ -240,8 +244,9 @@ Unchanged from the brief, plus: a live or stored unread indicator and read track
 
 ### Carried forward
 
-- **To `/plan`:** confirm on an isolated stack (not the shared one) that `realtime.send()` writes a row inside a pgTAP transaction, i.e. that today's `realtime.messages` partition exists there; if it does not, the signal tests need a different observation point. Decide where the end-to-end join check runs in CI.
-- **To `/deploy-staging`** (in addition to the architect's two): confirm the cloud project's Realtime setting does not allow public channels to stand in for private ones, and repeat the end-to-end join check against staging.
+- **To `/plan` (answered 2026-10-07):** `realtime.send()` does write a readable row inside a pgTAP transaction on a fresh stack (five daily `realtime.messages` partitions exist after `supabase start` → `supabase db reset`), so the signal tests observe `realtime.messages` directly. The end-to-end join check is `scripts/e2e-realtime-join.mjs`, run in the `db-and-rls` CI job right after `supabase test db`.
+- **Found at `/build` (2026-10-08):** on the local stack Realtime starts streaming database signals lazily, on a project's first client connection. A message saved before that stream is up gets no live signal, even to a listener whose join already succeeded (reproduced twice after a Realtime restart; every later run delivered). Nothing is lost: the 30-second catch-up brings the message in. `scripts/e2e-realtime-join.mjs` therefore saves warm-up messages until the first signal arrives before it counts. Whether cloud behaves the same after an idle period is a `/deploy-staging` check.
+- **To `/deploy-staging`** (in addition to the architect's two): after the project has had no Realtime client for a while, check whether the first saved message is signalled live or only arrives on the timer; confirm the cloud project's Realtime setting does not allow public channels to stand in for private ones, and repeat the end-to-end join check against staging.
 
 ---
 
