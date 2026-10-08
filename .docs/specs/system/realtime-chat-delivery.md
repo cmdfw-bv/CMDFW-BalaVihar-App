@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-2026-10-07-realtime-chat-signal-then-fetch (payload, channel policy, revocation window, removal gate), ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
 
-**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → next is `/plan`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → `/plan` ✓ (2026-10-07, signed off — [plan](realtime-chat-delivery.plan.md)) → next is `/migration`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
