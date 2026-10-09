@@ -7,8 +7,28 @@
 // with the local stack's own service key, read at run time from `supabase status`. Nothing is
 // stored, and it refuses to run against any host but 127.0.0.1 / localhost. Each run leaves a few
 // "e2e ..." messages in a seeded class conversation; `supabase db reset` clears them.
+//
+// It also runs lib/chat's own queries (the ones the app will use) against the real rows it has
+// just saved: the unit tests only check which calls those queries make, not what comes back.
 import { execFileSync } from 'node:child_process';
+import { registerHooks } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
+
+// lib/chat is TypeScript. Node strips the types itself, but its imports have no file extension
+// ('./messageList'), which Node will not resolve unaided.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    try {
+      return nextResolve(specifier, context);
+    } catch (error) {
+      if (specifier.startsWith('.') && error?.code === 'ERR_MODULE_NOT_FOUND') {
+        return nextResolve(`${specifier}.ts`, context);
+      }
+      throw error;
+    }
+  },
+});
+const { createMessagesApi } = await import('../lib/chat/messagesApi.ts');
 
 const MEMBER_A = 'teacher1@bv-seed.test.local';
 const MEMBER_B = 'multirole@bv-seed.test.local';
@@ -175,6 +195,51 @@ async function main() {
   // 5. The fetch is refused too: history access is what the channel policy mirrors.
   const fetched = await outsider.client.from('messages').select('id').eq('conversation_id', conversationId);
   check(!fetched.error && fetched.data.length === 0, 'a non-participant reads no messages of the conversation');
+
+  // 6. lib/chat's own queries return the right real rows.
+  const ids = (rows) => rows.map((row) => row.id).join(',');
+  const viaApi = await createMessagesApi(b.client).insertMessage({
+    conversationId,
+    senderUserId: b.userId,
+    body: 'e2e lib/chat save',
+    mentionTargets: [],
+  });
+  check(
+    Object.keys(viaApi).sort().join(',') === 'body,conversation_id,created_at,id,mention_targets,sender_user_id',
+    'insertMessage saves and returns the row with the six columns the app reads',
+  );
+
+  const api = createMessagesApi(a.client);
+  const latest = await api.fetchLatest(conversationId);
+  check(
+    latest[0]?.id === viaApi.id && [saved.data?.id, after.data?.id].every((id) => latest.some((row) => row.id === id)),
+    'fetchLatest returns the saved messages, newest first',
+  );
+
+  // Everything strictly before the newest message is the rest of the newest page.
+  const older = await api.fetchOlder(conversationId, latest[0]);
+  check(
+    latest.length > 1 && ids(older.slice(0, latest.length - 1)) === ids(latest.slice(1)),
+    'fetchOlder returns exactly the messages before the given one, newest first',
+  );
+
+  // Only meaningful when the page holds the whole conversation, which a fresh stack guarantees.
+  const cursor = new Date(Date.parse(saved.data?.created_at)).toISOString();
+  const expectedSince = latest.filter((row) => Date.parse(row.created_at) >= Date.parse(cursor)).reverse();
+  const since = await api.fetchSince(conversationId, cursor);
+  check(
+    latest.length < 50 && expectedSince.length >= 3 && expectedSince.length < latest.length && ids(since) === ids(expectedSince),
+    'fetchSince returns exactly the messages at or after the cursor, oldest first',
+  );
+
+  check(
+    (await api.isConversationReadable(conversationId)) === true,
+    'isConversationReadable is true for a participant',
+  );
+  check(
+    (await createMessagesApi(outsider.client).isConversationReadable(conversationId)) === false,
+    'isConversationReadable is false for a non-participant',
+  );
 
   await Promise.all([a, b, outsider].map(({ client }) => client.removeAllChannels()));
 }
