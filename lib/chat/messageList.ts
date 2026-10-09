@@ -24,7 +24,13 @@ export const INITIAL_PAGE_SIZE = 50;
 // Date alone would shuffle messages saved within the same millisecond.
 function timestampParts(iso: string): [number, number] {
   const fraction = /\.(\d+)/.exec(iso)?.[1] ?? '';
-  return [Date.parse(iso), Number(fraction.padEnd(6, '0').slice(3, 6))];
+  return [epochMs(iso), Number(fraction.padEnd(6, '0').slice(3, 6))];
+}
+
+// Engines are only required to parse three fractional digits, and Postgres prints up to six.
+// Cutting to three first gives every engine the same millisecond V8 would have returned.
+function epochMs(iso: string): number {
+  return Date.parse(iso.replace(/(\.\d{3})\d+/, '$1'));
 }
 
 // Same order as the database's `order by created_at, id`: lowercase uuid strings compare the way
@@ -50,5 +56,5 @@ export function mergeMessages(held: readonly ChatMessage[], incoming: readonly C
 export function catchUpCursor(held: readonly ChatMessage[]): string | null {
   const newest = held.at(-1);
   if (!newest) return null;
-  return new Date(Date.parse(newest.created_at) - CATCH_UP_OVERLAP_MS).toISOString();
+  return new Date(epochMs(newest.created_at) - CATCH_UP_OVERLAP_MS).toISOString();
 }

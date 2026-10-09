@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { catchUpCursor, compareMessages, mergeMessages, type ChatMessage } from '../messageList';
 
 const CONV = '11111111-1111-4111-8111-111111111111';
@@ -84,5 +84,30 @@ describe('catchUpCursor', () => {
   it('never lands after the true cursor when the newest timestamp has microseconds', () => {
     const held = [msg(A, '2026-10-07T12:00:30.999999+00:00')];
     expect(catchUpCursor(held)).toBe('2026-10-07T12:00:20.999Z');
+  });
+});
+
+// The date-time format JavaScript engines must parse has three fractional digits; Postgres
+// prints up to six. V8 accepts the extra digits, but nothing obliges another engine (Hermes on
+// native) to. These run with a Date.parse that rejects them.
+describe('on an engine whose Date.parse rejects more than three fractional digits', () => {
+  const realParse = Date.parse;
+  beforeEach(() => {
+    vi.spyOn(Date, 'parse').mockImplementation((iso: string) => (/\.\d{4,}/.test(iso) ? NaN : realParse(iso)));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('still computes the catch-up cursor', () => {
+    const held = [msg(A, '2026-10-07T12:00:30.999999+00:00')];
+    expect(catchUpCursor(held)).toBe('2026-10-07T12:00:20.999Z');
+  });
+
+  it('still orders by created_at, down to the microsecond', () => {
+    const early = msg(B, '2026-10-07T12:00:00.123456+00:00');
+    const sameMsLater = msg(A, '2026-10-07T12:00:00.123457+00:00');
+    const late = msg(C, '2026-10-07T12:00:01.5+00:00');
+    expect(mergeMessages([], [late, sameMsLater, early]).map((m) => m.id)).toEqual([B, A, C]);
   });
 });
