@@ -132,6 +132,13 @@ export function createConversationSession(
           if (!newestFetched || compareMessages(row, newestFetched) > 0) newestFetched = row;
         }
         const messages = mergeMessages(state.messages, rows);
+        // Nothing at all is also what someone with no access gets. Ask before reporting it, so
+        // they are never shown an empty chat that looks real (plan decision D).
+        const empty = messages.length === 0;
+        if (empty) {
+          await checkAccess();
+          if (!active) break;
+        }
         set(
           cursor === null
             ? { messages, status: 'ready', hasOlder: rows.length === INITIAL_PAGE_SIZE }
@@ -140,7 +147,7 @@ export function createConversationSession(
         loaded = true;
 
         const held = new Set(messages.map((m) => m.id));
-        if (messages.length === 0 || pinged.some((id) => !held.has(id))) await checkAccess();
+        if (!empty && pinged.some((id) => !held.has(id))) await checkAccess();
       } while (rerun && active);
     } finally {
       running = false;

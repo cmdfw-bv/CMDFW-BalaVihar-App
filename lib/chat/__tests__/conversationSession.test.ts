@@ -363,6 +363,20 @@ describe('access lost while the conversation is open', () => {
     expect(h.session.getState().status).toBe('unavailable');
   });
 
+  it('never passes through "ready and empty" on the way to unavailable, on first open or on return', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValue([]); // RLS: nothing
+    h.api.isConversationReadable.mockResolvedValue(false);
+
+    await h.session.open();
+    await settle();
+    await h.session.open(); // back to the foreground
+    await settle();
+
+    expect(h.states.map((s) => s.status)).not.toContain('ready');
+    expect(h.session.getState().status).toBe('unavailable');
+  });
+
   it('reports ready for a readable conversation that simply has no messages yet', async () => {
     const h = harness();
     h.api.fetchLatest.mockResolvedValueOnce([]);
