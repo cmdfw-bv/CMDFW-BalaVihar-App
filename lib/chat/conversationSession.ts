@@ -14,6 +14,8 @@ export interface ConversationState {
   status: ConversationStatus;
   isLive: boolean;
   hasOlder: boolean;
+  /** Code of the most recent failed load, until a load succeeds. Never the error's text. */
+  errorCode: string | null;
 }
 
 export const INITIAL_CONVERSATION_STATE: ConversationState = {
@@ -21,13 +23,32 @@ export const INITIAL_CONVERSATION_STATE: ConversationState = {
   status: 'loading',
   isLive: false,
   hasOlder: false,
+  errorCode: null,
 };
+
+/** A failure the session recovered from by itself. `code` is a Postgres / PostgREST code or an error name. */
+export interface SessionErrorReport {
+  source: 'load' | 'access' | 'join';
+  code: string;
+}
 
 export interface SessionDeps {
   api: MessagesApi;
   joinChannel(conversationId: string, handlers: ChannelHandlers): Promise<ConversationChannel>;
   onChange(state: ConversationState): void;
+  onError?(report: SessionErrorReport): void;
   pollMs?: number;
+}
+
+// The code or the name only. An error's message can quote the failing statement or a URL, and
+// this value may leave the device (client-privacy rule: nothing PII goes to error reporting).
+function errorCodeOf(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const { code, name } = error as { code?: unknown; name?: unknown };
+    if (typeof code === 'string' && code !== '') return code;
+    if (typeof name === 'string' && name !== '') return name;
+  }
+  return 'unknown';
 }
 
 export interface ConversationSession {
@@ -85,7 +106,7 @@ export function createConversationSession(
     const leaving = channel;
     channel = null;
     // A withdrawn user's device stops showing a minors' conversation as soon as it notices.
-    set({ messages: [], status: 'unavailable', isLive: false, hasOlder: false });
+    set({ messages: [], status: 'unavailable', isLive: false, hasOlder: false, errorCode: null });
     if (leaving) await leaving.leave();
   }
 
@@ -95,7 +116,8 @@ export function createConversationSession(
     let readable: boolean;
     try {
       readable = await deps.api.isConversationReadable(conversationId);
-    } catch {
+    } catch (error) {
+      deps.onError?.({ source: 'access', code: errorCodeOf(error) });
       return; // Cannot tell. The next ping, failed join or empty catch-up asks again.
     }
     if (active && !readable) await becomeUnavailable();
@@ -121,9 +143,11 @@ export function createConversationSession(
             cursor === null
               ? await deps.api.fetchLatest(conversationId)
               : await deps.api.fetchSince(conversationId, cursor);
-        } catch {
+        } catch (error) {
           for (const id of pinged) pendingPings.add(id);
-          if (active && !loaded) set({ status: 'error' });
+          const code = errorCodeOf(error);
+          deps.onError?.({ source: 'load', code });
+          if (active) set(loaded ? { errorCode: code } : { status: 'error', errorCode: code });
           continue;
         }
         if (!active) break;
@@ -141,8 +165,8 @@ export function createConversationSession(
         }
         set(
           cursor === null
-            ? { messages, status: 'ready', hasOlder: rows.length === INITIAL_PAGE_SIZE }
-            : { messages, status: 'ready' },
+            ? { messages, status: 'ready', errorCode: null, hasOlder: rows.length === INITIAL_PAGE_SIZE }
+            : { messages, status: 'ready', errorCode: null },
         );
         loaded = true;
 
@@ -199,8 +223,9 @@ export function createConversationSession(
           return;
         }
         channel = joined;
-      } catch {
+      } catch (error) {
         // Cannot connect. The timer keeps the conversation current; nothing is lost.
+        deps.onError?.({ source: 'join', code: errorCodeOf(error) });
       }
     },
 

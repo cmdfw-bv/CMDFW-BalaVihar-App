@@ -20,6 +20,13 @@ export interface ConversationMessages extends ConversationState {
 // The interface class-chat-ui (#24) builds on. Thin by design: all behaviour lives in
 // conversationSession.ts, where it is tested. Listening lasts exactly as long as the calling
 // screen is mounted and the app is in the foreground.
+//
+// One instance per conversation at a time. supabase-js hands two joins of the same topic the
+// same channel, so a second instance would never hear a signal and the first to unmount would
+// remove the channel from under the other.
+//
+// Failures the session recovers from show up as `errorCode` (a code, never the error's text).
+// SessionDeps.onError is where they go to error reporting once the client has it.
 export function useConversationMessages(conversationId: string): ConversationMessages {
   const { session } = useSession();
   const userId = session?.user.id ?? null;

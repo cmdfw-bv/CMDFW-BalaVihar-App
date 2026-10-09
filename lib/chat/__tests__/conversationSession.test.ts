@@ -42,12 +42,13 @@ function harness() {
     handlers = h;
     return { leave };
   });
-  const session = createConversationSession(CONV, ME, { api, joinChannel, onChange: (s) => states.push(s) });
+  const onError = vi.fn();
+  const session = createConversationSession(CONV, ME, { api, joinChannel, onChange: (s) => states.push(s), onError });
   const channel = (): ChannelHandlers => {
     if (!handlers) throw new Error('the session never joined a channel');
     return handlers;
   };
-  return { session, api, joinChannel, leave, states, channel };
+  return { session, api, joinChannel, leave, states, channel, onError };
 }
 
 // Fake timers leave the microtask queue alone; advancing by 0 drains it.
@@ -65,7 +66,13 @@ describe('opening a conversation', () => {
   it('starts loading, joins the channel and loads the newest messages', async () => {
     const h = harness();
     h.api.fetchLatest.mockResolvedValueOnce([msg(2), msg(1)]);
-    expect(h.session.getState()).toEqual({ messages: [], status: 'loading', isLive: false, hasOlder: false });
+    expect(h.session.getState()).toEqual({
+      messages: [],
+      status: 'loading',
+      isLive: false,
+      hasOlder: false,
+      errorCode: null,
+    });
 
     await h.session.open();
     await settle();
@@ -296,7 +303,13 @@ describe('access lost while the conversation is open', () => {
     h.channel().onPing(msg(31).id); // RLS returns nothing for it
     await settle();
 
-    expect(h.session.getState()).toEqual({ messages: [], status: 'unavailable', isLive: false, hasOlder: false });
+    expect(h.session.getState()).toEqual({
+      messages: [],
+      status: 'unavailable',
+      isLive: false,
+      hasOlder: false,
+      errorCode: null,
+    });
     expect(h.leave).toHaveBeenCalledTimes(1);
 
     h.api.fetchSince.mockClear();
@@ -537,6 +550,98 @@ describe('older pages', () => {
     await Promise.all([first, second]);
 
     expect(h.api.fetchOlder).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The session swallows these failures by design (the next tick retries). Without a code, a
+// failure that never clears is indistinguishable from a quiet conversation.
+describe('reporting failures it recovers from', () => {
+  const failure = { code: '57014', message: 'canceling statement: select body from messages' };
+
+  it('puts the code of a failed load in state and hands it to onError, never the message', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockRejectedValueOnce(failure);
+
+    await h.session.open();
+    await settle();
+
+    expect(h.session.getState()).toMatchObject({ status: 'error', errorCode: '57014' });
+    expect(h.onError).toHaveBeenCalledWith({ source: 'load', code: '57014' });
+    expect(JSON.stringify([h.states, h.onError.mock.calls])).not.toContain('canceling');
+  });
+
+  it('clears the code when the next load succeeds', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockRejectedValueOnce(failure);
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+
+    await h.session.open();
+    await settle();
+    await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
+
+    expect(h.session.getState()).toMatchObject({ status: 'ready', errorCode: null });
+  });
+
+  it('keeps the list and reports the code when a later catch-up fails', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(30)]);
+    await h.session.open();
+    await settle();
+    h.api.fetchSince.mockRejectedValueOnce(failure);
+
+    await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
+
+    expect(h.session.getState()).toMatchObject({ status: 'ready', errorCode: '57014' });
+    expect(ids(h.session.getState())).toEqual([msg(30).id]);
+    expect(h.onError).toHaveBeenCalledWith({ source: 'load', code: '57014' });
+  });
+
+  it('reports a failed access check', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(30)]);
+    await h.session.open();
+    await settle();
+    h.api.isConversationReadable.mockRejectedValueOnce({ code: 'PGRST301', message: 'JWT expired' });
+
+    h.channel().onJoinFailed();
+    await settle();
+
+    expect(h.onError).toHaveBeenCalledWith({ source: 'access', code: 'PGRST301' });
+  });
+
+  it('reports a channel that could not be joined at all, by error name when there is no code', async () => {
+    const h = harness();
+    h.joinChannel.mockRejectedValueOnce(new TypeError('Failed to fetch https://example.invalid'));
+
+    await h.session.open();
+    await settle();
+
+    expect(h.onError).toHaveBeenCalledWith({ source: 'join', code: 'TypeError' });
+  });
+
+  it('reports "unknown" for a failure that carries neither a code nor a name', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockRejectedValueOnce('offline');
+
+    await h.session.open();
+    await settle();
+
+    expect(h.session.getState().errorCode).toBe('unknown');
+  });
+
+  it('forgets the code when the conversation becomes unavailable', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(30)]);
+    await h.session.open();
+    await settle();
+    h.api.fetchSince.mockRejectedValueOnce(failure);
+    await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
+    h.api.isConversationReadable.mockResolvedValueOnce(false);
+
+    h.channel().onJoinFailed();
+    await settle();
+
+    expect(h.session.getState()).toMatchObject({ status: 'unavailable', errorCode: null });
   });
 });
 
