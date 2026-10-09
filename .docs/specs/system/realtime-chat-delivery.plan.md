@@ -54,9 +54,20 @@ All four confirmed as recommended, from the plain-language summary.
 - **C. Two client units beyond the three the spec lists.** The spec names `messageList.ts`, `conversationChannel.ts` and the hook. The repo cannot render a hook in tests, so the catch-up / single-flight / access-lost behaviour the spec requires tests for has to live in a plain module: `conversationSession.ts`, with `messagesApi.ts` for the five queries. Same pattern as `setupAutoRefreshOnRegain`. The hook's public shape is exactly the spec's.
 - **D. One small addition to the access-lost rule.** The spec checks access when a ping's message is missing or a join is refused. This plan also checks when a catch-up leaves the list **empty**, so a non-participant who opens a conversation while Realtime is unreachable gets `unavailable` rather than an empty chat that looks real. One extra single-row read, only while a conversation has no messages.
 
+## Where the build differs from this plan
+
+The code blocks below are the plan as signed off and are left as written. The built files differ in these places; the spec's "Whole-branch review (2026-10-08)" has the reasons.
+
+- **Test 191 has 56 assertions, not 47,** so the suite is 32 files / 496 tests, not 487. Added after the Task 1 review (2i staff removal, 8a–8d live-equals-history parity) and in `4b6c267` (5i newline topic, 6d direct `realtime.send()`, 6e partition read; 3g relabelled). All stricter than the plan.
+- **`scripts/e2e-realtime-join.mjs` prints 21 `ok` lines, not 13:** a warm-up and a liveness check were added at `/build`, and six checks of `lib/chat`'s own queries against real rows after the whole-branch review.
+- **`conversationSession.ts`:** the catch-up cursor comes from the newest *fetched* message (the plan's version, the newest *held* message, was a defect: see Review focus 2, which caught only the send-before-first-load case); an empty result is access-checked before `ready`; state has `errorCode` and the deps take an optional `onError`.
+- **`messagesApi.ts`:** the four reads carry a 15 second abort signal.
+- **`messageList.ts`:** timestamps are cut to milliseconds before `Date.parse`.
+- **`appActivity.ts` and the hook:** `watchAppActivity` reports the state at the start, and the hook no longer opens unconditionally.
+
 ## Flagged (not this item's to fix)
 
-- **Students in the pilot "7, 8, 9" class are class-chat participants.** `sync_class_participants` adds any enrolled student who has a login, with no grade check; the pilot seed gives every student in that combined class a login. ADR-0015 says KG–Gr 8 class chats have no student participants. Membership rules are out of scope here ("no change to who is a participant"); route to `/architect` before `class-chat-ui` (#24) is built. Test 191's "student against a KG–Gr 8 class" case uses a student who is *not enrolled* there, which is what the channel policy can and should prove.
+- **Students in the pilot "7, 8, 9" class are class-chat participants.** `sync_class_participants` adds any enrolled student who has a login, with no grade check; the pilot seed gives every student in that combined class a login. ADR-0015 says KG–Gr 8 class chats have no student participants. Membership rules are out of scope here ("no change to who is a participant"); route to `/architect` before `class-chat-ui` (#24) is built. Test 191's "student against a KG–Gr 8 class" case uses a student who is *not enrolled* there, which is what the channel policy can and should prove. *Correction (2026-10-08):* this is true of the trigger's logic but not of what happens today. The trigger fires only on `enrollments`, and both the CSV import and the seed link logins afterwards, so in practice almost no family or student becomes a participant at all; that is issue #119.
 
 ## Shared seam (§12.6)
 

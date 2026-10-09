@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Student, Teacher, Parent (primary); Coordinator, BV Coordinator, Admin as participants under ADR-0015's ladder; Student `class-chat-ui` (#24) is the first client consumer · **scope:** engine — live delivery of saved chat messages, bounded by `conversation_participants` membership; no new tables · **governing ADR:** ADR-2026-10-07-realtime-chat-signal-then-fetch (payload, channel policy, revocation window, removal gate), ADR-0007 (Broadcast-from-DB transport), ADR-0015 (access model), ADR-0017 (governance deferral), ADR-2026-09-19 (withdrawal revokes conversational access) · **covers:** issue #6; 3_ARCHITECTURE §9.1–§9.3, §11.4
 
-**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → `/plan` ✓ (2026-10-07, signed off — [plan](realtime-chat-delivery.plan.md)) → `/migration` ✓ (2026-10-08) → `/build` ✓ (2026-10-08) → next is `/test`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-10-05) → `/architect` ✓ (2026-10-07, ADR-2026-10-07-realtime-chat-signal-then-fetch) → `/design` ✓ (2026-10-07, signed off) → `/plan` ✓ (2026-10-07, signed off — [plan](realtime-chat-delivery.plan.md)) → `/migration` ✓ (2026-10-08) → `/build` ✓ (2026-10-08) → `/test` ✓ (2026-10-08, at `74dff2f`) → whole-branch review ✓ (2026-10-08, "with fixes"; fixes applied, see "Whole-branch review") → next is `/test` again, then the PR. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
@@ -113,7 +113,7 @@ sequenceDiagram
 
 **Signal.** An `after insert for each row` trigger on `messages` calls `realtime.send(payload, 'message_saved', 'chat:' || conversation_id, true)`. The payload has exactly two keys, `id` and `created_at`. Clients treat the ping as "run catch-up now" and do not depend on its contents.
 
-**Catch-up fetch.** Reads `messages` for the conversation where `created_at` is at or after the newest held message's `created_at` minus a 10-second overlap, ascending by `(created_at, id)`, in pages of 100 until a short page. Results are merged by `id`, so the overlap never produces duplicates. The overlap exists because `created_at` is the saving transaction's start time, so two near-simultaneous saves can commit in the opposite order to their timestamps. With no messages held, catch-up is the initial load: the newest 50, with older pages loaded on request.
+**Catch-up fetch.** Reads `messages` for the conversation where `created_at` is at or after the newest *fetched* message's `created_at` minus a 10-second overlap (corrected at review from "newest held": a message this device has just sent is held but was never fetched, and must not move the cursor), ascending by `(created_at, id)`, in pages of 100 until a short page. Results are merged by `id`, so the overlap never produces duplicates. The overlap exists because `created_at` is the saving transaction's start time, so two near-simultaneous saves can commit in the opposite order to their timestamps. With no messages held, catch-up is the initial load: the newest 50, with older pages loaded on request.
 
 **Single flight.** One catch-up runs at a time per conversation. A trigger that arrives mid-flight sets a flag and one more catch-up runs when the current one finishes.
 
@@ -165,7 +165,7 @@ The policy reads no `active_role` or scope claim (ADR Decision 2) and uses the b
 | `conversationSession.ts` | catch-up, single flight, 30 s timer, access-lost, send, older pages; plain module the hook wraps, so the behaviour is tested without a renderer (added at `/plan`) |
 | `appActivity.ts` | foreground / background signal, web and native (added at `/plan`) |
 | `signOutCleanup.ts` | remove every channel on `SIGNED_OUT`; called from `SessionProvider` (added at `/plan`) |
-| `useConversationMessages(conversationId)` | the interface for #24: `messages`, `status` (`loading` · `ready` · `error` · `unavailable`), `isLive`, `hasOlder`, `loadOlder()`, `send(body, mentionTargets)` |
+| `useConversationMessages(conversationId)` | the interface for #24: `messages`, `status` (`loading` · `ready` · `error` · `unavailable`), `isLive`, `hasOlder`, `errorCode` (added at review: code of the last failed load, never its text), `loadOlder()`, `send(body, mentionTargets)` |
 
 Follows the existing pattern of pure logic tested directly with a thin hook around it (`lib/auth/useAutoRefreshOnRegain.ts`, `lib/attendance/`). `app/(tabs)/chat.tsx` stays a placeholder.
 
@@ -249,6 +249,27 @@ Unchanged from the brief, plus: a live or stored unread indicator and read track
 - **Hand check of the hook wiring, done by Maulik (2026-10-08, local stack, two browser profiles as `teacher1` and `multirole`, temporary screen since reverted):** a message sent in one window appeared in the other without a reload; hiding the tab sent `phx_leave`, no signal arrived while hidden, and showing it rejoined and caught up; signing out sent `phx_leave` and left no channel or new socket.
 - **Found at `/build` (2026-10-08):** on the local stack Realtime starts streaming database signals lazily, on a project's first client connection. A message saved before that stream is up gets no live signal, even to a listener whose join already succeeded (reproduced twice after a Realtime restart; every later run delivered). Nothing is lost: the 30-second catch-up brings the message in. `scripts/e2e-realtime-join.mjs` therefore saves warm-up messages until the first signal arrives before it counts. Whether cloud behaves the same after an idle period is a `/deploy-staging` check.
 - **To `/deploy-staging`** (in addition to the architect's two): after the project has had no Realtime client for a while, check whether the first saved message is signalled live or only arrives on the timer; confirm the cloud project's Realtime setting does not allow public channels to stand in for private ones, and repeat the end-to-end join check against staging.
+
+### Whole-branch review (2026-10-08)
+
+One independent review of the whole branch, `d470a7a..7b85618`, after `/test`. Verdict "ready to merge with fixes"; no access-control or privacy finding. Maulik chose to fix everything on this branch, tests first. What changed, each with a test that failed before the change:
+
+- **Catch-up resumes from the newest message a fetch returned, not the newest on screen.** As planned, a message this device sent moved the cursor forward, so anything saved earlier by someone else that no fetch had yet brought in (lost signal, app in the background, failed foreground fetch) never appeared while the conversation stayed open. This was a defect in the plan, which the build followed exactly; it broke acceptance criterion 4. The session tests could not see it because their fake returned canned rows whatever the cursor, so the new tests use a table that honours the cursor.
+- **Every read times out after 15 seconds.** Catch-up is single flight, so one request that never answered held up every later tick. Saves are not timed out: an aborted insert may already have been stored.
+- **An empty result is checked for access before it is reported as ready.** A non-participant no longer passes through "ready and empty" on the way to `unavailable` (plan decision D).
+- **A conversation mounted while the app is hidden does not join or poll** until it is shown (design decision 2). `watchAppActivity` now reports the state at the start, and the hook opens only through it.
+- **Timestamps are cut to milliseconds before `Date.parse`.** Postgres prints up to six fractional digits and engines are only required to parse three, so this no longer depends on the engine; the microseconds are still read separately for ordering.
+- **Failures the session recovers from carry a code.** `errorCode` in state for a failed load, and an optional `onError({ source, code })` for a failed load, access check or join. Only a Postgres / PostgREST code or an error name is kept, never the message.
+- **The end-to-end check now runs `lib/chat`'s own queries against real rows** (six more checks, 21 `ok` lines in all), including the row-wise "older page" filter, which had never returned a real row. Breaking either query on purpose makes its check fail. The script imports the TypeScript module directly, which needs Node 22.18 or later; it was run on Node 22 and 24.
+
+Left as it is, deliberately: `conversationChannel.ts` still ignores an error from `removeChannel` on leave, because the only cause is a socket that is already gone and there is nothing to retry or report.
+
+**Carried to `class-chat-ui` (#24):**
+
+- **One `useConversationMessages` instance per conversation at a time.** supabase-js gives two joins of the same topic the same channel, so a second instance would hear nothing and the first to unmount would remove the channel for both. Noted in the hook; a guard belongs with the screen.
+- **A long absence fetches everything since the cursor, with no cap.** Harmless at pilot size. A cap needs a decision about what the screen shows when it is hit (a gap with "load more", or a fresh newest page), which is a screen design question.
+- **`onError` is not connected to anything yet.** The client has no error reporting wired in; when it does, this is where chat failures go, and the code-only rule keeps message text out of it.
+- **`errorCode` is available to the screen** if #24 wants to tell "cannot reach the server" apart from "nothing new".
 
 ---
 
