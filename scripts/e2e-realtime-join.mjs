@@ -5,7 +5,8 @@
 //
 // LOCAL STACK ONLY. It signs seeded users in by asking the local stack for a magic-link token
 // with the local stack's own service key, read at run time from `supabase status`. Nothing is
-// stored, and it refuses to run against any host but 127.0.0.1 / localhost.
+// stored, and it refuses to run against any host but 127.0.0.1 / localhost. Each run leaves a few
+// "e2e ..." messages in a seeded class conversation; `supabase db reset` clears them.
 import { execFileSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 
@@ -17,6 +18,7 @@ const PING_TIMEOUT_MS = 5_000;
 const FORGED_WAIT_MS = 2_000;
 const WARM_UP_TIMEOUT_MS = 30_000;
 const WARM_UP_RETRY_MS = 1_000;
+const SETTLE_MS = 1_000;
 
 const status = JSON.parse(
   execFileSync('npx', ['supabase', 'status', '-o', 'json'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
@@ -60,8 +62,8 @@ function join(client, topic, onPing = () => {}) {
   });
 }
 
-async function conversationIds(client) {
-  const { data, error } = await client.from('conversation_participants').select('conversation_id');
+async function conversationIds({ client, userId }) {
+  const { data, error } = await client.from('conversation_participants').select('conversation_id').eq('user_id', userId);
   if (error) throw new Error(`could not read conversation_participants: ${error.message}`);
   return new Set(data.map((row) => row.conversation_id));
 }
@@ -72,9 +74,9 @@ async function main() {
   const outsider = await signIn(OUTSIDER);
 
   // Fixture preconditions, checked rather than assumed: the seed can change.
-  const mine = await conversationIds(a.client);
-  const shared = [...(await conversationIds(b.client))].filter((id) => mine.has(id));
-  const notTheirs = await conversationIds(outsider.client);
+  const mine = await conversationIds(a);
+  const shared = [...(await conversationIds(b))].filter((id) => mine.has(id));
+  const notTheirs = await conversationIds(outsider);
   const conversationId = shared.find((id) => !notTheirs.has(id));
   if (!conversationId) {
     throw new Error(`the seed no longer has a conversation shared by ${MEMBER_A} and ${MEMBER_B} that ${OUTSIDER} is not in`);
@@ -82,41 +84,50 @@ async function main() {
   const topic = `chat:${conversationId}`;
 
   // 1. A participant joins and receives the signal when another participant saves a message.
-  const pings = [];
-  const joinedA = await join(a.client, topic, (payload) => pings.push(payload));
+  const received = [];
+  const joinedA = await join(a.client, topic, (payload) => received.push(payload));
   check(joinedA.state === 'SUBSCRIBED', 'a participant can join the conversation channel');
+
+  const save = (body) =>
+    b.client
+      .from('messages')
+      .insert({ conversation_id: conversationId, sender_user_id: b.userId, body, mention_targets: [] })
+      .select('id, created_at')
+      .single();
+  const waitFor = async (arrived, timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (!arrived() && Date.now() < deadline) await sleep(50);
+  };
 
   // Realtime starts streaming database broadcasts lazily, on a project's first client connection,
   // and a signal saved before that stream is up is never delivered (measured at /build: the first
   // run after a restart lost its signal, every later run passed). In CI this script is the first
-  // client, so save warm-up messages until one signal arrives, then start counting from zero.
+  // client, so save warm-up messages until one signal arrives. Their ids are remembered and their
+  // signals are left out of every count below, however late they arrive.
+  const warmUpIds = new Set();
+  const pings = () => received.filter((payload) => !warmUpIds.has(payload?.id));
   const warmUpDeadline = Date.now() + WARM_UP_TIMEOUT_MS;
-  while (joinedA.state === 'SUBSCRIBED' && pings.length === 0 && Date.now() < warmUpDeadline) {
-    await b.client
-      .from('messages')
-      .insert({ conversation_id: conversationId, sender_user_id: b.userId, body: 'e2e warm-up', mention_targets: [] });
-    const retryAt = Date.now() + WARM_UP_RETRY_MS;
-    while (pings.length === 0 && Date.now() < retryAt) await sleep(50);
+  while (joinedA.state === 'SUBSCRIBED' && received.length === 0 && Date.now() < warmUpDeadline) {
+    const warmUp = await save('e2e warm-up');
+    if (warmUp.error) throw new Error(`could not save a warm-up message: ${warmUp.error.message}`);
+    warmUpIds.add(warmUp.data.id);
+    await waitFor(() => received.length > 0, WARM_UP_RETRY_MS);
   }
-  check(pings.length > 0, 'the live service starts delivering signals within 30 seconds of the first join');
-  await sleep(WARM_UP_RETRY_MS);
-  pings.length = 0;
+  check(received.length > 0, 'the live service starts delivering signals within 30 seconds of the first join');
 
-  const saved = await b.client
-    .from('messages')
-    .insert({ conversation_id: conversationId, sender_user_id: b.userId, body: 'e2e join check', mention_targets: [] })
-    .select('id, created_at')
-    .single();
+  const saved = await save('e2e join check');
   check(!saved.error, 'a participant can save a message with the four permitted columns');
 
-  const deadline = Date.now() + PING_TIMEOUT_MS;
-  while (pings.length === 0 && Date.now() < deadline) await sleep(50);
-  check(pings.length === 1, 'the other participant receives exactly one signal for it');
+  // Settle after the first arrival, so a duplicate signal is counted rather than missed.
+  await waitFor(() => pings().length > 0, PING_TIMEOUT_MS);
+  await sleep(SETTLE_MS);
+  const [ping] = pings();
+  check(pings().length === 1, 'the other participant receives exactly one signal for it');
   check(
-    pings.length === 1 && Object.keys(pings[0]).sort().join(',') === 'created_at,id',
+    pings().length === 1 && Object.keys(ping).sort().join(',') === 'created_at,id',
     'the signal carries id and created_at and nothing else',
   );
-  check(pings.length === 1 && pings[0].id === saved.data?.id, 'the signal names the saved message');
+  check(pings().length === 1 && ping.id === saved.data?.id, 'the signal names the saved message');
 
   // 2. Senders cannot choose created_at.
   const backdated = await b.client.from('messages').insert({
@@ -131,10 +142,22 @@ async function main() {
   // 3. Clients are listen-only: a send on the channel is not delivered.
   const joinedB = await join(b.client, topic);
   check(joinedB.state === 'SUBSCRIBED', 'the sending participant can also join');
-  const before = pings.length;
-  await joinedB.channel.send({ type: 'broadcast', event: 'message_saved', payload: { id: 'forged' } });
-  await sleep(FORGED_WAIT_MS);
-  check(pings.length === before, 'a signal sent by a client on the channel is not delivered');
+  // Only from a joined channel: send() on an unjoined one falls back to REST, a different path.
+  if (joinedB.state === 'SUBSCRIBED') {
+    await joinedB.channel.send({ type: 'broadcast', event: 'message_saved', payload: { id: 'forged' } });
+    await sleep(FORGED_WAIT_MS);
+  }
+  check(
+    joinedB.state === 'SUBSCRIBED' && !received.some((payload) => payload?.id === 'forged'),
+    'a signal sent by a client on the channel is not delivered',
+  );
+  // "Nothing arrived" only means something if the listener was still listening.
+  const after = await save('e2e liveness check');
+  await waitFor(() => received.some((payload) => payload?.id === after.data?.id), PING_TIMEOUT_MS);
+  check(
+    !after.error && received.some((payload) => payload?.id === after.data.id),
+    'the listener was still live: it receives the next real signal',
+  );
 
   // 4. Non-participants and malformed topics are refused. Each refused channel is removed at
   // once: left on the socket it keeps retrying and delays the others.

@@ -55,6 +55,7 @@ jobs:
           exit 1
 
       - name: Realtime end-to-end join check (issue #6)
+        timeout-minutes: 3
         run: node scripts/e2e-realtime-join.mjs
 
   secrets-pii:

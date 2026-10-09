@@ -2697,7 +2697,7 @@ Expected: exit 1; `FAIL a participant can join the conversation channel` and `FA
 - [ ] **Step 3 — Restore and run green.**
 
 Run: `npx supabase db reset && node scripts/e2e-realtime-join.mjs`
-Expected: thirteen `ok` lines, `realtime end-to-end join check passed`, exit 0.
+Expected: fifteen `ok` lines (the script as built adds a warm-up and a liveness check to the thirteen listed above; see the spec's "Found at `/build`"), `realtime end-to-end join check passed`, exit 0.
 
 - [ ] **Step 4 — Add the CI step.** In `.github/workflows/ci.yml`, job `db-and-rls`, directly after the `supabase test db (retries on transient registry rate-limits)` step:
 
