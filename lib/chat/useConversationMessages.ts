@@ -50,7 +50,7 @@ export function useConversationMessages(conversationId: string): ConversationMes
       },
     });
     conversationRef.current = conversation;
-    void conversation.open();
+    // Opens at once if the app is showing, otherwise when it next is (see watchAppActivity).
     const stopWatching = watchAppActivity(
       () => void conversation.open(),
       () => void conversation.close(),
