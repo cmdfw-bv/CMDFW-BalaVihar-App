@@ -1,6 +1,6 @@
 import type { ChannelHandlers, ConversationChannel } from './conversationChannel';
 import type { MessagesApi } from './messagesApi';
-import { INITIAL_PAGE_SIZE, catchUpCursor, mergeMessages, type ChatMessage } from './messageList';
+import { INITIAL_PAGE_SIZE, catchUpCursor, compareMessages, mergeMessages, type ChatMessage } from './messageList';
 
 // A signal can be lost and a connection can be refused (200-connection limit, network). The same
 // catch-up runs on this timer, so the chat degrades from instant to at most this late and no
@@ -58,6 +58,10 @@ export function createConversationSession(
   // False until one initial load has succeeded. Until then catch-up must be "newest 50", even
   // if the list already holds a message this device just sent.
   let loaded = false;
+  // The newest message a fetch has returned. Catch-up resumes from here, never from the newest
+  // message on screen: this device's own sent message is on screen at once, and resuming from it
+  // would skip anything saved earlier by someone else that no fetch has brought in yet.
+  let newestFetched: ChatMessage | null = null;
   let loadingOlder = false;
   const pendingPings = new Set<string>();
 
@@ -77,6 +81,7 @@ export function createConversationSession(
     stopTimer();
     pendingPings.clear();
     loaded = false;
+    newestFetched = null;
     const leaving = channel;
     channel = null;
     // A withdrawn user's device stops showing a minors' conversation as soon as it notices.
@@ -108,7 +113,7 @@ export function createConversationSession(
         rerun = false;
         const pinged = [...pendingPings];
         pendingPings.clear();
-        const cursor = loaded ? catchUpCursor(state.messages) : null;
+        const cursor = loaded && newestFetched ? catchUpCursor([newestFetched]) : null;
 
         let rows: ChatMessage[];
         try {
@@ -123,6 +128,9 @@ export function createConversationSession(
         }
         if (!active) break;
 
+        for (const row of rows) {
+          if (!newestFetched || compareMessages(row, newestFetched) > 0) newestFetched = row;
+        }
         const messages = mergeMessages(state.messages, rows);
         set(
           cursor === null

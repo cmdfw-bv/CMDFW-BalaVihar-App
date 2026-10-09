@@ -525,3 +525,54 @@ describe('older pages', () => {
     expect(h.api.fetchOlder).toHaveBeenCalledTimes(1);
   });
 });
+
+// The harness above returns canned rows whatever cursor it is given, so it cannot notice a cursor
+// that skips history. This one keeps a table and answers fetchSince the way the database does.
+describe('catch-up against a table that honours the cursor', () => {
+  async function openedOn(initial: ChatMessage[]) {
+    const h = harness();
+    const table = [...initial];
+    const newestFirst = () => [...table].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    h.api.fetchLatest.mockImplementation(async () => newestFirst().slice(0, 50));
+    h.api.fetchSince.mockImplementation(async (_conversationId, sinceIso) =>
+      newestFirst()
+        .reverse()
+        .filter((m) => Date.parse(m.created_at) >= Date.parse(sinceIso)),
+    );
+    const savedByMe = (m: ChatMessage) =>
+      h.api.insertMessage.mockImplementationOnce(async () => {
+        table.push(m);
+        return m;
+      });
+    await h.session.open();
+    await settle();
+    return { ...h, table, savedByMe };
+  }
+
+  it("still fetches someone else's missed message after this device sends a later one", async () => {
+    const h = await openedOn([msg(1)]);
+    h.table.push(msg(5)); // saved by someone else; its signal never arrived
+
+    h.savedByMe(msg(30));
+    await h.session.send('mine');
+    h.channel().onPing(msg(30).id);
+    await settle();
+
+    expect(ids(h.session.getState())).toEqual([msg(1).id, msg(5).id, msg(30).id]);
+  });
+
+  it('still fetches messages that arrived in the background when the foreground fetch failed before a send', async () => {
+    const h = await openedOn([msg(1)]);
+    await h.session.close();
+    h.table.push(msg(5), msg(6));
+
+    h.api.fetchSince.mockRejectedValueOnce(new Error('offline'));
+    await h.session.open();
+    await settle();
+    h.savedByMe(msg(30));
+    await h.session.send('mine');
+    await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
+
+    expect(ids(h.session.getState())).toEqual([msg(1).id, msg(5).id, msg(6).id, msg(30).id]);
+  });
+});
