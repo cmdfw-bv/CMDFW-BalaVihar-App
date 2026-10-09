@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createMessagesApi } from '../messagesApi';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { READ_TIMEOUT_MS, createMessagesApi } from '../messagesApi';
 import type { ChatMessage } from '../messageList';
 
 // A PostgREST builder is chainable and awaitable. This recorder is both: every method returns the
@@ -8,18 +8,21 @@ import type { ChatMessage } from '../messageList';
 type Result = { data: unknown; error: unknown };
 type Call = [string, ...unknown[]];
 
-function mockClient(results: Result[]) {
+// A queued `{ promise }` stands for a request that answers whenever that promise does.
+function mockClient(results: (Result | { promise: Promise<Result> })[]) {
   const calls: Call[] = [];
   const queue = [...results];
   const builder: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'gte', 'or', 'order', 'limit', 'range', 'insert', 'single', 'maybeSingle']) {
+  for (const method of ['select', 'eq', 'gte', 'or', 'order', 'limit', 'range', 'insert', 'single', 'maybeSingle', 'abortSignal']) {
     builder[method] = vi.fn((...args: unknown[]) => {
       calls.push([method, ...args]);
       return builder;
     });
   }
-  builder.then = (resolve: (r: Result) => unknown, reject: (e: unknown) => unknown) =>
-    Promise.resolve(queue.shift() ?? { data: [], error: null }).then(resolve, reject);
+  builder.then = (resolve: (r: Result) => unknown, reject: (e: unknown) => unknown) => {
+    const next = queue.shift() ?? { data: [], error: null };
+    return Promise.resolve('promise' in next ? next.promise : next).then(resolve, reject);
+  };
   const from = vi.fn((table: string) => {
     calls.push(['from', table]);
     return builder;
@@ -131,6 +134,58 @@ describe('fetchOlder', () => {
       ['id', { ascending: false }],
     ]);
     expect(argsFor(calls, 'limit')).toEqual([[50]]);
+  });
+});
+
+// A request that never answers (a phone on a dead connection) would otherwise hold the session's
+// single-flight catch-up for as long as the platform keeps the socket open.
+describe('read timeout', () => {
+  const hung = { promise: new Promise<Result>(() => {}) };
+  const reads: [string, (api: ReturnType<typeof createMessagesApi>) => Promise<unknown>][] = [
+    ['fetchLatest', (api) => api.fetchLatest(CONV)],
+    ['fetchSince', (api) => api.fetchSince(CONV, '2026-10-07T12:00:20.000Z')],
+    ['fetchOlder', (api) => api.fetchOlder(CONV, row(5))],
+    ['isConversationReadable', (api) => api.isConversationReadable(CONV)],
+  ];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(reads)('%s aborts its request after 15 seconds without an answer', async (_name, read) => {
+    const { client, calls } = mockClient([hung]);
+
+    void read(createMessagesApi(client)).catch(() => {});
+    const [[signal]] = argsFor(calls, 'abortSignal') as [[AbortSignal]];
+    expect(signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+    expect(signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal.aborted).toBe(true);
+  });
+
+  it.each(reads)('%s leaves no timer behind once the request has answered', async (_name, read) => {
+    const { client } = mockClient([{ data: [], error: null }]);
+
+    await read(createMessagesApi(client));
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('is 15 seconds, comfortably inside the 30 second catch-up tick', () => {
+    expect(READ_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it('does not time out a save: an aborted insert may already have been stored', async () => {
+    const { client, calls } = mockClient([{ data: row(9), error: null }]);
+
+    await createMessagesApi(client).insertMessage({ conversationId: CONV, senderUserId: ME, body: 'x', mentionTargets: [] });
+
+    expect(argsFor(calls, 'abortSignal')).toEqual([]);
   });
 });
 
