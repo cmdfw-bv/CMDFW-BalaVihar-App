@@ -53,7 +53,7 @@ flowchart TB
     fn -->|"service role"| db
     fn --> ses
     auth -.->|"hook injects claims"| db
-    db -.->|"broadcast_changes()"| rt
+    db -.->|"realtime.send() signal"| rt
     rt -->|"live messages"| pwa
     pwa -.->|"errors"| sentry
     fn -.->|"errors"| sentry
@@ -62,7 +62,7 @@ flowchart TB
 **Reading the diagram:**
 - **Direct client↔Supabase** is the default path. The JWT — stamped with `active_role` + scope claims by the auth hook — is what every RLS policy reads. App code cannot widen access beyond what the database allows.
 - **Functions exist only for trusted-server work**: sending push (holds VAPID keys), sending email (holds SES creds), and CSV import (bulk writes with the service role). They are the *only* holders of privileged secrets.
-- **Realtime is DB-driven**: a Postgres trigger calls `realtime.broadcast_changes()`; clients receive on private channels authorized by RLS on `realtime.messages`.
+- **Realtime is DB-driven**: a Postgres trigger calls `realtime.send()` with a signal (message `id` and `created_at` only); clients receive it on private channels authorized by RLS on `realtime.messages`, then fetch the message under `messages` RLS (ADR-2026-10-07-realtime-chat-signal-then-fetch).
 - **Trust boundary**: the `us` box is the compliance perimeter — Supabase, Functions, SES, Sentry all US-region under DPA. The global CDN serves only the cacheable, PII-free shell.
 
 ---
@@ -360,14 +360,15 @@ Chat is POC-core. Membership keys off **grade** (ADR-0015): KG–Gr 8 class chat
 ```mermaid
 flowchart LR
     s["Sender (client)"] -->|"INSERT"| m["messages table<br/>(durable history)"]
-    m -->|"trigger"| bc["realtime.broadcast_changes()<br/>→ realtime.messages (WAL)"]
+    m -->|"trigger"| bc["realtime.send() signal: id + created_at<br/>→ realtime.messages (WAL)"]
+    r -->|"fetch new messages"| m
     bc -->|"private channel<br/>chat:&lt;conversation_id&gt;"| r["Receivers (clients)"]
     rls["RLS on realtime.messages"] -.->|"authorizes join / receive"| r
     rlsm["RLS on messages"] -.->|"authorizes read history"| m
 ```
 
 - **Durable history** lives in your own `messages` / `conversations` / `conversation_participants` tables (Broadcast doesn't persist). `realtime.messages` is WAL-backed, daily-partitioned, **3-day** retention (verified) — transport, not record.
-- **Live delivery** is **Broadcast triggered from the database**: a Postgres trigger calls `realtime.broadcast_changes()` on message insert, emitting to a private channel `chat:<conversation_id>`.
+- **Live delivery** is **Broadcast triggered from the database**: a Postgres trigger calls `realtime.send()` on message insert, emitting a **signal** (the message `id` and `created_at`, no body) to a private channel `chat:<conversation_id>`. The client then fetches the message from `messages` under its RLS, and runs the same fetch on reconnect, on foreground and on a timer, so a lost signal loses nothing (ADR-2026-10-07-realtime-chat-signal-then-fetch, which refines this mechanism; the earlier sketch named `realtime.broadcast_changes()`, which sends the whole row).
 - **Critical rule (verified):** use **Broadcast, not Postgres Changes** — Postgres Changes does one read per subscribed user per change (DB bottleneck); Supabase recommends re-streaming via Broadcast at scale.
 
 ### 9.2 Access control (the differentiator)
