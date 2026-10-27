@@ -1,5 +1,5 @@
 begin;
-select plan(5);
+select plan(6);
 
 -- #19 pilot exception: every student in the F3 "7, 8, 9" combined class gets an app login (not
 -- just grade 9), so the Student experience is demoable/pilotable for that class. And the accounts
@@ -58,6 +58,26 @@ select ok(
     where e.class_id = (select ur.scope_id from user_roles ur join auth.users u on u.id = ur.user_id
                          where u.email = 'teacher1@bv-seed.test.local' and ur.role = 'teacher')) >= 1,
   'teacher1@ has enrolled students (not the empty 10-12 class)'
+);
+
+-- Pin the student1@ <-> parent17a@ mapping end to end (#98). UAT.md:38 makes this pairing
+-- load-bearing for UAT-11/12/13, but the counts above stay green even if the family round-robin
+-- (domain.sql `% 20`), the grade order, or the 'Student N-M' name pattern silently repoint
+-- student1@ at a different family. This asserts both halves: student1@'s student is 'Student 7-1'
+-- AND parent17a@ is a guardian of that student's family. Mutation-proof: flip `% 20` -> `% 19` in
+-- domain.sql and this goes red while every count above stays green.
+select ok(
+  exists (
+    select 1
+      from auth.users su
+      join students st on st.user_id = su.id
+      join family_members fm on fm.family_id = st.family_id
+      join auth.users pu on pu.id = fm.user_id
+     where su.email = 'student1@bv-seed.test.local'
+       and st.first_name = 'Student 7-1'
+       and pu.email = 'parent17a@bv-seed.test.local'
+  ),
+  'student1@ is "Student 7-1" and parent17a@ is a guardian of that student''s family (UAT-11/12/13)'
 );
 
 select * from finish();

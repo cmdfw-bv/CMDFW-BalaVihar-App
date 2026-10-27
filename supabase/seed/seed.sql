@@ -72,8 +72,10 @@ begin
       join enrollments e on e.student_id = st.id
       join classes c on c.id = e.class_id
      where c.session_id = v_f3 and c.grade_band = '7, 8, 9'
-     -- deterministic order so studentN@ ↔ student is stable across reseeds (UAT-11/12/13 depend on it)
-     order by st.grade_level, st.first_name
+     -- deterministic order so studentN@ ↔ student is stable across reseeds (UAT-11/12/13 depend on it).
+     -- `, st.id` is the total-order tiebreak (#98): grade_level+first_name is total only by the current
+     -- generator's construction; st.id guarantees a stable order if that ever stops holding.
+     order by st.grade_level, st.first_name, st.id
   loop
     i := i + 1;
     v_student_user_id := tests.create_supabase_user('student' || i || '@bv-seed.test.local');

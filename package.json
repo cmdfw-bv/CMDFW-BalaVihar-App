@@ -65,6 +65,7 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
+    "seed:staging": "node scripts/seed-staging.mjs",
     "stop": "supabase stop"
   },
   "private": true,
