@@ -533,6 +533,30 @@ Everything already listed in the item's "Out of scope" section above. Additional
 
 ## Architect addendum — ADR-0037 (`enrollments.withdrawn_at`, 2026-09-16)
 
+> **Superseded 2026-09-25 — [ADR-2026-09-19](../../adr/2026-09-19-withdrawal-revokes-conversational-access.md) (Closed).**
+> The text below records what was believed on 2026-09-16 and is kept as that record. Three of its
+> statements are no longer true:
+>
+> 1. **`enrollments.withdrawn_at` is not coming in [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96).** ADR-0037 Decision 1 is superseded along with the
+>    time-bound that needed it. The column moves to [#82](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/82), to be added by the same change that first
+>    builds a withdrawal path — nothing in the app can withdraw an enrollment today. **This item's
+>    `enrollments` shape (`status ('active'/'withdrawn')`, `enrolled_at`) is therefore unchanged by
+>    #96, and the table catalog above is current.**
+> 2. **Reads are not time-bounded.** Withdrawal now revokes conversational read access **outright**,
+>    the family's own private thread included. No timestamp is recorded or compared anywhere.
+> 3. **Cite ADR-2026-09-19, not ADR-0037,** for the convention. The corrected rule: enrollment-derived
+>    access to *reference and historical* data stays unfiltered; access to *conversational or
+>    participatory* surfaces is revoked on withdrawal, for both read and write. Note that
+>    relationship- and membership-derived policies cannot be revoked with a predicate at all — they
+>    have no `enrollments` join to filter and must be reshaped (ADR-2026-09-19 Context fact 4).
+>
+> ADR-0037's Decisions 2 (write revoke), 4 (no sibling guard) and 6 (reference tables unfiltered)
+> **still govern**, so this section's third bullet remains correct as written.
+>
+> **This item gets no schema change from #96.** The design for that work lives where the objects it
+> changes live — [`teacher/class-update-and-home-feed`](../teacher/class-update-and-home-feed.md),
+> *Design addendum — ADR-2026-09-19*. Not duplicated here (§12.12).
+
 **Decided, not yet migrated.** [ADR-0037](../../adr/0037-enrollment-withdrawal-conversational-access.md) (issue #58) adds one column to this item's `enrollments` table; the build is tracked in [#96](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/96).
 
 - **`enrollments.withdrawn_at timestamptz` (nullable).** A trigger stamps `now()` on `active → withdrawn` and clears it on `withdrawn → active`. Null means currently enrolled. Until #96 lands, the table catalog above (`status ('active'/'withdrawn'), enrolled_at`) is still the as-built shape — do not read this addendum as migrated.
