@@ -28,6 +28,7 @@ import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import * as readline from 'node:readline/promises';
+import { fileURLToPath } from 'node:url';
 import {
   resolveConfig,
   parseArgs,
@@ -46,13 +47,16 @@ import {
 // a comma-separated multi-host that fools the staging-only rail into pointing psql, and the password,
 // at the wrong database). -w: never prompt for a password (fail fast instead of hanging). The
 // password stays off argv (where `ps` would show it).
-function runPsql(config, psqlArgs) {
+export function runPsql(config, psqlArgs) {
   const { host, port, user, dbname, sslmode, password } = buildPsqlConnParams(config.dbUrl);
-  // psql inherits our environment, but has no use for our secrets — strip the service-role key and
-  // the raw (password-carrying) DB URL so a child process, crash dump, or core file can't leak them.
-  const env = { ...process.env, PGPASSWORD: password, PGSSLMODE: sslmode };
-  delete env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
-  delete env.STAGING_DB_URL;
+  // Allowlist (not denylist) the child's environment: pass only what psql needs plus the two PG vars
+  // we set here. This keeps our secrets out of the child AND refuses any inherited libpq var
+  // (PGHOST / PGOPTIONS / PGSERVICEFILE / PGSSLROOTCERT / …) that could redirect the connection or
+  // weaken TLS behind the discrete flags.
+  const env = { PGPASSWORD: password, PGSSLMODE: sslmode };
+  for (const k of ['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR']) {
+    if (process.env[k] !== undefined) env[k] = process.env[k];
+  }
   return spawnSync(
     'psql',
     ['-h', host, '-p', port, '-U', user, '-d', dbname, '-w', '--set', 'ON_ERROR_STOP=1', ...psqlArgs],
@@ -63,7 +67,7 @@ function runPsql(config, psqlArgs) {
 // List every auth user, paging through the Auth Admin API (a single call caps at perPage, so a
 // project with more accounts than one page would silently miss users — a correctness bug for both
 // the idempotent email lookup and the --reset sweep).
-async function listAllUsers(client) {
+export async function listAllUsers(client) {
   const perPage = 1000;
   const users = [];
   for (let page = 1; ; page++) {
@@ -83,7 +87,7 @@ const PILOT_CLASS_GRADE_BAND = '7, 8, 9';
  *  by running the same .sql file through psql — supabase-js cannot execute a raw multi-statement
  *  file. Matches the repo's cloud-SQL pattern (supabase/checks/cloud_fixture_absence.sql).
  *  ON_ERROR_STOP=1 so any failure is a non-zero exit, not a printed-and-ignored error. */
-function applyDomainData(config) {
+export function applyDomainData(config) {
   if (!existsSync(DOMAIN_SQL_PATH)) {
     throw new Error(
       `seed-staging: dataset ${DOMAIN_SQL_PATH} not found on disk — expected #19's ` +
@@ -106,14 +110,14 @@ function applyDomainData(config) {
 }
 
 /** Find an auth user by email (read-only), or null. */
-async function findUserByEmail(client, email) {
+export async function findUserByEmail(client, email) {
   const users = await listAllUsers(client);
   return users.find((u) => u.email === email) ?? null;
 }
 
 /** Create-or-reuse an auth user by email (idempotent). createUser fails if the email already
  *  exists, so on that path we find the existing user. */
-async function ensureUser(client, email) {
+export async function ensureUser(client, email) {
   const { data, error } = await client.auth.admin.createUser({ email, email_confirm: true });
   if (!error) return data.user;
   const existing = await findUserByEmail(client, email);
@@ -128,7 +132,7 @@ async function ensureUser(client, email) {
  *  student + family so the parent/multirole links stay on the same family. Only on a first run do
  *  we claim a fresh UNLINKED student (students.user_id is 1:1, so each tester must take a different
  *  one — the pilot class has 9, ample). Ordered by (first_name, id) for a stable, reproducible pick. */
-async function resolveScopeIds(client, studentEmail) {
+export async function resolveScopeIds(client, studentEmail) {
   const { data: session, error: se } = await client
     .from('sessions').select('id').eq('name', 'F3').single();
   if (se || !session) throw new Error(`seed-staging: could not find the F3 session (${se?.message ?? 'no row'})`);
@@ -171,7 +175,7 @@ async function resolveScopeIds(client, studentEmail) {
 
 /** True if the synthetic domain data is already loaded (the F3 session exists). Drives additive
  *  (accounts-only) mode for a second/third tester — see shouldLoadDomain. */
-async function domainDataExists(client) {
+export async function domainDataExists(client) {
   const { data, error } = await client.from('sessions').select('id').eq('name', 'F3').limit(1);
   if (error) throw new Error(`seed-staging: could not check for existing domain data (${error.message})`);
   return (data?.length ?? 0) > 0;
@@ -181,7 +185,7 @@ async function domainDataExists(client) {
  *  supabase/seed/seed.sql's account layer via the Auth Admin API + service-role table writes.
  *  Runs after applyDomainData (it needs the loaded classes/session/student/family).
  *  First real run is watched at the #65 verification walk. */
-async function provisionAccounts(client, config) {
+export async function provisionAccounts(client, config) {
   const plan = buildProvisioningPlan(config.emailBase);
   const studentEmail = plan.find((p) => p.tag === 'student').email;
   const scope = await resolveScopeIds(client, studentEmail);
@@ -241,7 +245,7 @@ async function provisionAccounts(client, config) {
  *
  *  Deletes ALL provisioned persona accounts (emails carry the `+bv-` tag), across every tester —
  *  not just the current base — otherwise other testers keep user_roles with now-dangling scope_ids. */
-async function resetStaging(client, config) {
+export async function resetStaging(client, config) {
   console.log('  --reset: truncating synthetic domain tables, then deleting all provisioned accounts …');
   const res = runPsql(config, ['-c', buildDomainTruncateSql()]);
   if (res.error) throw new Error(`seed-staging: --reset psql failed (${res.error.message}). Is psql on PATH?`);
@@ -261,7 +265,7 @@ async function resetStaging(client, config) {
 /** Destructive-action guard: --reset wipes ALL synthetic data + every provisioned persona account
  *  on staging. Require an explicit typed confirmation unless --yes was passed (CI/non-interactive).
  *  If there's no TTY to prompt on, refuse rather than silently wiping. */
-async function confirmReset(config) {
+export async function confirmReset(config) {
   console.log('');
   console.log('  ⚠  --reset will TRUNCATE the synthetic domain tables (CASCADE) and DELETE every');
   console.log(`     provisioned +bv- persona account on staging project ${config.projectRef}.`);
@@ -283,7 +287,7 @@ async function confirmReset(config) {
   }
 }
 
-async function main() {
+export async function main() {
   const config = resolveConfig(process.env); // fail-closed: email base + staging-only URL + key
   const args = parseArgs(process.argv.slice(2));
 
@@ -323,7 +327,13 @@ async function main() {
   console.log('seed-staging: done.');
 }
 
-main().catch((err) => {
-  console.error(`seed-staging: FAILED — ${err.message}`);
-  process.exit(1);
-});
+// Run only when invoked as the CLI entry point — NOT on import. This is what lets a test import
+// this module (and the exported I/O functions above) without launching a real seed run (PR #108
+// round-3 testability thread). The pure decision logic is already unit-tested in _seed-staging.mjs.
+const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`seed-staging: FAILED — ${err.message}`);
+    process.exit(1);
+  });
+}

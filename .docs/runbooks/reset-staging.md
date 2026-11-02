@@ -6,7 +6,7 @@
 > **Status:** the plain seed + additive mode are verified live against cloud staging (2026-09-25
 > walk). The command loads #19's synthetic dataset and provisions the sign-in accounts; `--reset`
 > wipes and reseeds. The `--reset` path's idempotency + safety hardening (#108) is unit-tested and
-> pending a fresh live re-verification — treat a `--reset` run as still being confirmed in the field.
+> pending a fresh live re-verification — treat a `--reset` run as **not yet** confirmed in the field.
 
 ## What it does
 

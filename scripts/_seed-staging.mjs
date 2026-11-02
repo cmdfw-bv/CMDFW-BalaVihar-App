@@ -73,7 +73,14 @@ export function resolvePersonaEmail(base, tag) {
 // accounts across every tester base — and never a bystander whose own sub-address happens to
 // contain "+bv-" (e.g. "+bv-newsletter"). Anchored to the exact tag set, at the end of the local
 // part, so "+bv-teacher-notes" does not match either.
-const PROVISIONED_EMAIL_RE = new RegExp(`\\+bv-(?:${PERSONAS.map((p) => p.tag).join('|')})$`);
+// Escape each tag before interpolating it into the pattern, so a future tag containing a regex
+// metacharacter (e.g. '.' or '+') can't silently widen the --reset delete filter. Case-insensitive
+// so a case variant of one of our own +bv- accounts is still recognized as ours.
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const PROVISIONED_EMAIL_RE = new RegExp(
+  `\\+bv-(?:${PERSONAS.map((p) => escapeRegExp(p.tag)).join('|')})$`,
+  'i',
+);
 export function isProvisionedPersonaEmail(email) {
   if (typeof email !== 'string') return false;
   const at = email.indexOf('@');
@@ -149,14 +156,9 @@ export function projectRefFromDbUrl(dbUrl) {
   if (dbUrl.includes('#')) {
     throw new Error('projectRefFromDbUrl: STAGING_DB_URL must not contain a "#" fragment');
   }
-  // libpq accepts a comma-separated multi-host authority (host1,host2) and connects to the first
-  // that answers — a prod host could ride in ahead of the staging one while the parser still reads
-  // a staging-looking ref. The WHATWG parser folds the whole comma list into one hostname, so check
-  // the raw authority (between the last '@' and the path/query) for a comma ourselves.
-  const authority = dbUrl.slice(dbUrl.lastIndexOf('@') + 1).split(/[/?#]/)[0];
-  if (authority.includes(',')) {
-    throw new Error('projectRefFromDbUrl: STAGING_DB_URL must not list multiple hosts');
-  }
+  // (A comma-separated multi-host authority is refused by the positive host allowlist below, which
+  // is authoritative — a raw-string authority split is unreliable because an '@' elsewhere in the
+  // URL moves where the userinfo ends.)
   let parsed;
   try {
     parsed = new URL(dbUrl);
@@ -180,25 +182,39 @@ export function projectRefFromDbUrl(dbUrl) {
     }
   }
   const host = parsed.hostname;
-  const directSuffix = '.supabase.co';
-  if (host.startsWith('db.') && host.endsWith(directSuffix)) {
-    const ref = host.slice('db.'.length, -directSuffix.length);
-    if (ref === '' || ref.includes('.')) {
-      throw new Error(`projectRefFromDbUrl: no project ref in host "${host}"`);
-    }
-    return ref;
+  // Positive host allowlist (PR #108 round-3 — the class-level fix). The hostname must match EXACTLY
+  // one known Supabase DB host shape, not merely end with a Supabase suffix. This refuses a comma
+  // multi-host, an injected authority (even when an '@' elsewhere in the URL defeats a naive split),
+  // and any extra label — and buildPsqlConnParams hands parsed.hostname straight to `psql -h`, so an
+  // attacker has no host that both passes here and reaches psql.
+  //   - direct:  db.<ref>.supabase.co
+  //   - pooler:  <region-subdomain>.pooler.supabase.com   (ref lives in the username: postgres.<ref>)
+  const directMatch = host.match(/^db\.([a-z0-9]+)\.supabase\.co$/);
+  const isPooler = /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(host);
+  if (!directMatch && !isPooler) {
+    throw new Error(`projectRefFromDbUrl: "${host}" is not a recognized Supabase database host`);
   }
-  if (host.endsWith('.pooler.supabase.com')) {
-    // Pooler encodes the ref in the username: postgres.<ref>
-    const user = decodeURIComponent(parsed.username);
-    const dot = user.indexOf('.');
-    const ref = dot === -1 ? '' : user.slice(dot + 1);
-    if (ref === '' || ref.includes('.')) {
-      throw new Error(`projectRefFromDbUrl: no project ref in pooler username "${user}"`);
-    }
-    return ref;
+  // user and dbname are handed to psql as discrete argv (-U / -d). Restrict each to a safe character
+  // class so a '=' (which makes `psql -d` a conninfo string that overrides -h and disables TLS), an
+  // '@', a space, or any psql/shell meta character cannot ride in on them.
+  const user = safeDecode(parsed.username);
+  const dbname = safeDecode(parsed.pathname.replace(/^\//, '')) || 'postgres';
+  if (!/^[a-zA-Z0-9._-]+$/.test(user)) {
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL username contains disallowed characters');
   }
-  throw new Error(`projectRefFromDbUrl: "${host}" is not a Supabase database host`);
+  if (!/^[a-zA-Z0-9_-]+$/.test(dbname)) {
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL database name contains disallowed characters');
+  }
+  if (directMatch) {
+    return directMatch[1];
+  }
+  // pooler: the ref is encoded in the username as postgres.<ref>
+  const dot = user.indexOf('.');
+  const ref = dot === -1 ? '' : user.slice(dot + 1);
+  if (ref === '' || ref.includes('.')) {
+    throw new Error(`projectRefFromDbUrl: no project ref in pooler username "${user}"`);
+  }
+  return ref;
 }
 
 // decodeURIComponent, but fall back to the raw value when it isn't a valid percent-escape — a DB

@@ -257,6 +257,47 @@ describe('projectRefFromDbUrl — derive the target ref from a Postgres connecti
       projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres?sslmode=verify-full'),
     ).toBe('ejjvqtleuuamgtlmtxkc');
   });
+
+  // PR #108 round-3: the class-level fix (positive host allowlist + char class on user/dbname).
+  // An '@' inside the dbname defeats a lastIndexOf('@') authority check; a comma multi-host with a
+  // prod host first must be refused by the exact host allowlist regardless.
+  it('rejects a comma multi-host even when a later "@" in the path defeats a naive authority check', () => {
+    expect(() =>
+      projectRefFromDbUrl(
+        'postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@evilhost,aws-0-us-east-1.pooler.supabase.com:6543/postgres@extra',
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a host that only ends with a Supabase suffix but is not exactly a Supabase host', () => {
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres:pw@evil.db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres'),
+    ).toThrow(/host/i);
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres.ref:pw@aws-0-us-east-1.pooler.supabase.com.evil.com:6543/postgres'),
+    ).toThrow(/host/i);
+  });
+
+  it('rejects an "=" in the dbname (would make psql -d a conninfo string that overrides host/TLS)', () => {
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/host=evil'),
+    ).toThrow(/database name|dbname/i);
+  });
+
+  it('rejects disallowed characters in the username', () => {
+    expect(() =>
+      projectRefFromDbUrl('postgresql://postgres=evil:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres'),
+    ).toThrow(/user/i);
+  });
+
+  it('still accepts the two legitimate host forms', () => {
+    expect(
+      projectRefFromDbUrl('postgresql://postgres.ejjvqtleuuamgtlmtxkc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres'),
+    ).toBe('ejjvqtleuuamgtlmtxkc');
+    expect(
+      projectRefFromDbUrl('postgresql://postgres:pw@db.ejjvqtleuuamgtlmtxkc.supabase.co:5432/postgres'),
+    ).toBe('ejjvqtleuuamgtlmtxkc');
+  });
 });
 
 describe('buildPsqlConnParams — decompose the URL into discrete psql connection values', () => {
@@ -490,5 +531,15 @@ describe('resolveConfig — fail-closed env gate for the wrapper', () => {
     expect(() =>
       resolveConfig({ ...goodEnv, STAGING_DB_URL: STAGING_DB_URL_DIRECT.replace('ejjvqtleuuamgtlmtxkc', 'someotherref00000000') }),
     ).toThrow(/staging/i);
+  });
+});
+
+describe('seed-staging I/O wrapper — importable without side effects (PR #108 testability thread)', () => {
+  it('imports without launching a seed run, and exposes its I/O functions for testing', async () => {
+    // main() is guarded behind an entry-point check, so importing the module here must NOT run it.
+    const mod = await import('../seed-staging.mjs');
+    for (const fn of ['runPsql', 'listAllUsers', 'applyDomainData', 'findUserByEmail', 'ensureUser', 'provisionAccounts', 'resetStaging', 'confirmReset', 'main']) {
+      expect(typeof (mod as Record<string, unknown>)[fn]).toBe('function');
+    }
   });
 });
