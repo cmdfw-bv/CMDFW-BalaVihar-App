@@ -274,8 +274,8 @@ Three environments, **two free-tier cloud Supabase projects**, zero dollars at p
 | Env | Client / host | Database | Purpose |
 |---|---|---|---|
 | **local** | `npm run start` (Expo dev server) | **Supabase CLI (Docker)** — throwaway, seeded | Day-to-day dev; destructive RLS tests; instant `db reset` |
-| **staging** | Netlify `staging` deploy context (branch) | **Cloud project A (free)** | Integration, smoke, on-device PWA push verification |
-| **prod** | Netlify `prod` context (`main`) | **Cloud project B (free)** | The pilot — real users, real (minimal) minors' data |
+| **staging** | Netlify **production** deploy context, built from **`main`** (ADR-2026-07-30 — **no `staging` branch**) | **Cloud project A (free)** | Integration, smoke, on-device PWA push verification |
+| **prod** | *Deferred* — a **controlled** (manual/tag) prod context at pilot go-live, not auto-on-merge (ADR-2026-07-30) | **Cloud project B** — not yet provisioned | The pilot — real users, real (minimal) minors' data |
 
 ```mermaid
 flowchart LR
@@ -283,19 +283,19 @@ flowchart LR
         d1["Expo dev server"] --- d2["Supabase CLI / Docker<br/>seeded, isolated"]
     end
     subgraph cloud["Netlify + Supabase (US)"]
-        s1["staging branch → Netlify staging"] --- s2["Supabase project A (free)"]
-        p1["main → Netlify prod"] --- p2["Supabase project B (free)"]
+        s1["main → Netlify (staging env)"] --- s2["Supabase project A (free)"]
+        p1["prod context (deferred)"] --- p2["Supabase project B (deferred)"]
     end
-    dev -->|"git push staging"| s1
-    s1 -->|"PR → main, approved"| p1
+    dev -->|"PR → main, approved"| s1
+    s1 -->|"controlled promotion (deferred, manual/tag)"| p1
 ```
 
 ### 7.2 Deployment model
 
-- **One Netlify project, three deploy contexts** (doc 1 §8) — a shared credit pool, so no cross-project pause. Branch `main` → prod; branch `staging` → staging; deploy previews → ephemeral.
+- **One Netlify project** (doc 1 §8) — a shared credit pool, so no cross-project pause. **`main` → the deployed (staging) environment on Cloud project A; there is no `staging` branch** (ADR-2026-07-30-staging-builds-from-main). A separate prod context + Cloud project B is **deferred** to pilot go-live, with **controlled** (manual/tag) promotion — not auto-on-merge. Deploy previews → ephemeral (share the staging DB).
 - **Per-context environment variables.** Each context carries its *own* Supabase URL + **anon** key (distinct creds per env). The **service-role** key, VAPID private key, and SES creds are set only on **Functions** env (per context), never in the client build.
 - **Functions pinned to US-East / Ohio** in `netlify.toml` — keeps the trusted-server tier inside the compliance perimeter (§3).
-- **Promotion is a PR to `main`.** Staging is validated, then merged; the **migration-guard hook** (§12) ensures prod DB migrations only apply after RLS tests pass.
+- **Landing to `main` deploys the staging environment automatically** (no per-feature `/deploy-staging` step — ADR-2026-07-30). Prod promotion, once Cloud project B exists, is a **controlled** step (manual/tag), not auto-on-merge; the **migration-guard hook** (§12) ensures cloud DB migrations only apply after RLS tests pass.
 
 ### 7.3 Native fast-follow
 
