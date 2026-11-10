@@ -28,10 +28,11 @@
 
 ### Netlify — done ✅ (verified 2026-09-07)
 
+- **Live URL: https://balavihar-connect.netlify.app** (recorded 2026-10-09 — the site name and id were here from the start but the address was not, which made `/deploy-staging` step 5 guesswork)
 - Account under **bvportal@cmdfw.org**; site **`balavihar-connect`** (`0dee8cfc-dc87-49bb-9739-c25b5024fed2`), connected to `cmdfw-bv/CMDFW-BalaVihar-App`.
 - Production context builds from **`main`** (per [ADR-2026-07-30-staging-builds-from-main](../../adr/2026-07-30-staging-builds-from-main.md)); build `npx expo export --platform web` → `dist`.
 - **Functions region `us-east-2`** (US-East — doc 3 §3). All three env vars set (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
-- **Auto-deploy proven:** last deploy `ready`, from `main`, at 2026-09-07 03:01 (the #54 merge). Secret-leak check (#65 AC#4) run against the published bundle by @mehtamaulik-creator — **clean**, no `service_role`/secret in the client.
+- **Auto-deploy proven.** Do not trust a date here — check with `netlify api listSiteDeploys`. Most recently verified 2026-10-09: `a431c27` (the #121 merge) built and `ready` in the production context from `main`, and the deployed bundle was confirmed to point at the staging project only. Secret-leak check (#65 AC#4) run against the published bundle by @mehtamaulik-creator — **clean**, no `service_role`/secret in the client.
 
 ---
 
@@ -94,7 +95,7 @@ Not yet created. Same org, same region (**us-east-1**), name it `cmdfw-bv-prod`.
 **Rehearse against staging first.** **#89** applies the same drop migration to `cmdfw-bv-staging` (which carries the fixture surface today) and runs this same check there. Doing it against staging proves the operation works on a real cloud project before the identical steps run against a database holding real family data.
 
 ### Hardening (small, non-blocking)
-`SUPABASE_SERVICE_ROLE_KEY` on Netlify is scoped **Builds, Functions, Runtime** — broader than the "Functions-only" intent. The published-bundle secret scan (#65 AC#4) came back **clean**, so there's no active leak (Expo only inlines `EXPO_PUBLIC_*`), but the scope should still be tightened to Functions-only as hygiene.
+`SUPABASE_SERVICE_ROLE_KEY` on Netlify is scoped **Builds, Functions, Runtime** — broader than the "Functions-only" intent. **Re-verified still open 2026-10-09** via `netlify api getEnvVars`: scopes are `builds, functions, runtime`. Narrowing is safe — the only readers are `netlify/functions/{user-role-sweep,csv-import,push-send,user-role-grant}.ts`, nothing in the build path reads it (the build is a bare `expo export`, no pre/post hooks), and `netlify.toml` declares no edge functions, so `runtime` is unused too. Fix: `netlify env:set SUPABASE_SERVICE_ROLE_KEY --scope functions`. The published-bundle secret scan (#65 AC#4) came back **clean**, so there's no active leak (Expo only inlines `EXPO_PUBLIC_*`), but the scope should still be tightened to Functions-only as hygiene.
 
 ---
 
