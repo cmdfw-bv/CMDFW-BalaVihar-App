@@ -53,7 +53,7 @@ flowchart TB
     fn -->|"service role"| db
     fn --> ses
     auth -.->|"hook injects claims"| db
-    db -.->|"broadcast_changes()"| rt
+    db -.->|"realtime.send() signal"| rt
     rt -->|"live messages"| pwa
     pwa -.->|"errors"| sentry
     fn -.->|"errors"| sentry
@@ -62,7 +62,7 @@ flowchart TB
 **Reading the diagram:**
 - **Direct client↔Supabase** is the default path. The JWT — stamped with `active_role` + scope claims by the auth hook — is what every RLS policy reads. App code cannot widen access beyond what the database allows.
 - **Functions exist only for trusted-server work**: sending push (holds VAPID keys), sending email (holds SES creds), and CSV import (bulk writes with the service role). They are the *only* holders of privileged secrets.
-- **Realtime is DB-driven**: a Postgres trigger calls `realtime.broadcast_changes()`; clients receive on private channels authorized by RLS on `realtime.messages`.
+- **Realtime is DB-driven**: a Postgres trigger calls `realtime.send()` with a signal (message `id` and `created_at` only); clients receive it on private channels authorized by RLS on `realtime.messages`, then fetch the message under `messages` RLS (ADR-2026-10-07-realtime-chat-signal-then-fetch).
 - **Trust boundary**: the `us` box is the compliance perimeter — Supabase, Functions, SES, Sentry all US-region under DPA. The global CDN serves only the cacheable, PII-free shell.
 
 ---
@@ -274,8 +274,8 @@ Three environments, **two free-tier cloud Supabase projects**, zero dollars at p
 | Env | Client / host | Database | Purpose |
 |---|---|---|---|
 | **local** | `npm run start` (Expo dev server) | **Supabase CLI (Docker)** — throwaway, seeded | Day-to-day dev; destructive RLS tests; instant `db reset` |
-| **staging** | Netlify `staging` deploy context (branch) | **Cloud project A (free)** | Integration, smoke, on-device PWA push verification |
-| **prod** | Netlify `prod` context (`main`) | **Cloud project B (free)** | The pilot — real users, real (minimal) minors' data |
+| **staging** | Netlify **production** deploy context, built from **`main`** (ADR-2026-07-30 — **no `staging` branch**) | **Cloud project A (free)** | Integration, smoke, on-device PWA push verification |
+| **prod** | *Deferred* — a **controlled** (manual/tag) prod context at pilot go-live, not auto-on-merge (ADR-2026-07-30) | **Cloud project B** — not yet provisioned | The pilot — real users, real (minimal) minors' data |
 
 ```mermaid
 flowchart LR
@@ -283,19 +283,19 @@ flowchart LR
         d1["Expo dev server"] --- d2["Supabase CLI / Docker<br/>seeded, isolated"]
     end
     subgraph cloud["Netlify + Supabase (US)"]
-        s1["staging branch → Netlify staging"] --- s2["Supabase project A (free)"]
-        p1["main → Netlify prod"] --- p2["Supabase project B (free)"]
+        s1["main → Netlify (staging env)"] --- s2["Supabase project A (free)"]
+        p1["prod context (deferred)"] --- p2["Supabase project B (deferred)"]
     end
-    dev -->|"git push staging"| s1
-    s1 -->|"PR → main, approved"| p1
+    dev -->|"PR → main, approved"| s1
+    s1 -->|"controlled promotion (deferred, manual/tag)"| p1
 ```
 
 ### 7.2 Deployment model
 
-- **One Netlify project, three deploy contexts** (doc 1 §8) — a shared credit pool, so no cross-project pause. Branch `main` → prod; branch `staging` → staging; deploy previews → ephemeral.
+- **One Netlify project** (doc 1 §8) — a shared credit pool, so no cross-project pause. **`main` → the deployed (staging) environment on Cloud project A; there is no `staging` branch** (ADR-2026-07-30-staging-builds-from-main). A separate prod context + Cloud project B is **deferred** to pilot go-live, with **controlled** (manual/tag) promotion — not auto-on-merge. Deploy previews → ephemeral (share the staging DB).
 - **Per-context environment variables.** Each context carries its *own* Supabase URL + **anon** key (distinct creds per env). The **service-role** key, VAPID private key, and SES creds are set only on **Functions** env (per context), never in the client build.
 - **Functions pinned to US-East / Ohio** in `netlify.toml` — keeps the trusted-server tier inside the compliance perimeter (§3).
-- **Promotion is a PR to `main`.** Staging is validated, then merged; the **migration-guard hook** (§12) ensures prod DB migrations only apply after RLS tests pass.
+- **Landing to `main` deploys the staging environment automatically** (no per-feature `/deploy-staging` step — ADR-2026-07-30). Prod promotion, once Cloud project B exists, is a **controlled** step (manual/tag), not auto-on-merge; the **migration-guard hook** (§12) ensures cloud DB migrations only apply after RLS tests pass.
 
 ### 7.3 Native fast-follow
 
@@ -360,14 +360,15 @@ Chat is POC-core. Membership keys off **grade** (ADR-0015): KG–Gr 8 class chat
 ```mermaid
 flowchart LR
     s["Sender (client)"] -->|"INSERT"| m["messages table<br/>(durable history)"]
-    m -->|"trigger"| bc["realtime.broadcast_changes()<br/>→ realtime.messages (WAL)"]
+    m -->|"trigger"| bc["realtime.send() signal: id + created_at<br/>→ realtime.messages (WAL)"]
+    r -->|"fetch new messages"| m
     bc -->|"private channel<br/>chat:&lt;conversation_id&gt;"| r["Receivers (clients)"]
     rls["RLS on realtime.messages"] -.->|"authorizes join / receive"| r
     rlsm["RLS on messages"] -.->|"authorizes read history"| m
 ```
 
 - **Durable history** lives in your own `messages` / `conversations` / `conversation_participants` tables (Broadcast doesn't persist). `realtime.messages` is WAL-backed, daily-partitioned, **3-day** retention (verified) — transport, not record.
-- **Live delivery** is **Broadcast triggered from the database**: a Postgres trigger calls `realtime.broadcast_changes()` on message insert, emitting to a private channel `chat:<conversation_id>`.
+- **Live delivery** is **Broadcast triggered from the database**: a Postgres trigger calls `realtime.send()` on message insert, emitting a **signal** (the message `id` and `created_at`, no body) to a private channel `chat:<conversation_id>`. The client then fetches the message from `messages` under its RLS, and runs the same fetch on reconnect, on foreground and on a timer, so a lost signal loses nothing (ADR-2026-10-07-realtime-chat-signal-then-fetch, which refines this mechanism; the earlier sketch named `realtime.broadcast_changes()`, which sends the whole row).
 - **Critical rule (verified):** use **Broadcast, not Postgres Changes** — Postgres Changes does one read per subscribed user per change (DB bottleneck); Supabase recommends re-streaming via Broadcast at scale.
 
 ### 9.2 Access control (the differentiator)

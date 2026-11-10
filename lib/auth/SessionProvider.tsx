@@ -3,6 +3,7 @@ import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../supabase";
+import { removeChannelsOnSignOut } from "../chat/signOutCleanup";
 import { decodeClaims } from "./claims";
 import { deriveSessionState, type DerivedSession, type SessionStatus } from "./sessionDerivation";
 
@@ -71,7 +72,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => refresh(data.session));
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // Both sign-out paths (this provider's and /no-role's runSignOut) end in SIGNED_OUT.
+      removeChannelsOnSignOut(event, () => supabase.removeAllChannels());
       refresh(nextSession);
     });
 
