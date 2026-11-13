@@ -215,7 +215,12 @@ export function projectRefFromDbUrl(dbUrl) {
   // policy instead of on this code. #129 item 7.
   const isPooler = /^aws-\d+-[a-z]{2}-[a-z]+-\d+\.pooler\.supabase\.com$/.test(host);
   if (!directMatch && !isPooler) {
-    throw new Error(`projectRefFromDbUrl: "${host}" is not a recognized Supabase database host`);
+    throw new Error(
+      `projectRefFromDbUrl: "${host}" is not a recognized Supabase database host — expected ` +
+        'db.<ref>.supabase.co or aws-<n>-<region>.pooler.supabase.com. If this IS a legitimate ' +
+        'Supabase host for this project (a pooler region shape we have not seen, say), the allowlist ' +
+        'in _seed-staging.mjs needs widening — this is a shape check, not evidence you did anything wrong.',
+    );
   }
   // user and dbname are handed to psql as discrete argv (-U / -d). Restrict each to a safe character
   // class so a '=' (which makes `psql -d` a conninfo string that overrides -h and disables TLS), an
