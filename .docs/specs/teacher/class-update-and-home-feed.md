@@ -108,6 +108,14 @@ Two genuinely new decisions were surfaced (not left implicit) and recorded:
 
 ### RLS policy SQL
 
+> **Superseded form — read for intent, not current SQL.** The inline `exists (…)` membership
+> predicates shown below were the original shape. Two later changes replaced them: [ADR-2026-09-19](../../adr/2026-09-19-withdrawal-revokes-conversational-access.md)
+> added the `enrollments.status = 'active'` withdrawal gate, and [ADR-2026-10-07](../../adr/2026-10-07-feed-rls-access-via-security-definer-helpers.md)
+> moved the membership checks into caller-scoped `SECURITY DEFINER` helpers (to fix the #105 feed
+> timeout). **The live SQL is `supabase/migrations/20261003130000_feed_rls_combine_perf_and_withdrawal.sql`**
+> (schema is code — the migration is the source of truth). The block below documents the access
+> *intent*; the predicates are equivalent, just relocated.
+
 ```sql
 alter table class_updates enable row level security;
 alter table comments enable row level security;
