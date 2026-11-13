@@ -4,6 +4,16 @@
 
 **Governs:** System → `chat-participant-sync`. **Implements [ADR-0015](0015-chat-access-model.md)'s grade-band membership in the database** (ADR-0015 stays Closed; its rule is unchanged, only where it is enforced). **Re-implements the mechanism [ADR-2026-09-19](2026-09-19-withdrawal-revokes-conversational-access.md) Decision 9 describes** — withdrawal still revokes class-chat participation outright, with the sibling guard — without changing that decision. **Leaves [ADR-0022](0022-csv-import-auth-provisioning-boundary.md) intact:** the import keeps its DB-first / auth-after-commit order; nothing here reorders its phases.
 
+**Ratified 2026-11-13 (Maulik).** The three decisions above (one recount routine; stay while any ground remains; a `grade_level` change re-counts) were taken in the architect review. Four further commitments of the Decision section had not been put to the project owner separately; Decision 2 was chosen in the review but carried a consequence worth re-stating. All were confirmed explicitly:
+
+1. **Decision 2's reach into merged code** — routing the merged withdrawal branch and `sync_staff_participants()`'s class-teacher delete through the recount. Chosen in the review itself (Option B1); re-stated here because it means #119 now modifies code that the merged, staging-deployed `realtime-chat-delivery` (#6) depends on. Option B2 (new paths only) was declined on the ground that keeping two hand-written deletes alongside the recount is *more* code to maintain, not less, and would let the new guardian-unlinked path reproduce the same defect. The wider blast radius is a review and test obligation, covered by AC#10, not a design change.
+2. **Label precedence teacher > parent > student**, which also decides which ADR-0016 notification default a person with more than one ground receives, and means an `@Parents` mention does not reach a teacher-parent as a parent.
+3. **Relabelling `participant_role` in place** rather than delete-and-reinsert, so `notify_level` and `notification_default` survive a change of ground.
+4. **The grade function's accepted set** being exactly `'9'`-`'12'` and `'Gr9'`-`'Gr12'`, returning false for `PreK`, `KG`, `Shishu Vihaar` and anything else.
+5. **A `family_members` change recounting every class where that family has a child enrolled at any status**, not only `active` — required so that removals are processed, and broader than the `active` sense the rest of the spec uses.
+
+No decision is reversed, so this is a dated completion of the record rather than a supersede (precedent: ADR-0022's corrected Consequences bullet, ADR-0019's addendum). `/design` may rely on all five.
+
 ### Context
 
 `conversation_participants` for class conversations is written by `sync_class_participants()` (`20260709043451`), which fires only on `enrollments` insert/update and reads `students.user_id` and `family_members` at that instant. Five facts checked during this review shape the decision:

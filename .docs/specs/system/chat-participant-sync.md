@@ -126,4 +126,6 @@ Engine-level, membership-derived. All enforcement is in the database: triggers p
 - **Edge case resolved:** `relationship` ≠ `'guardian'` keeps today's behaviour — every family member counts as a parent.
 - **Confirmed:** no RLS policy changes; no new `audit_log` surface; no new vendor; no privilege widening.
 
+**Ratified (Maulik, 2026-11-13):** the ADR's remaining commitments were put to the project owner and confirmed — label precedence teacher > parent > student (which also decides the ADR-0016 default a multi-ground person gets, and means an `@Parents` mention does not reach a teacher-parent as a parent), in-place relabelling to preserve `notify_level`, the relationship-agnostic parent rule, the grade function's exact accepted set, and the any-status recount breadth on `family_members`. Decision 2's reach into merged code (the withdrawal branch and `sync_staff_participants()`) was chosen in the review and re-confirmed here, since it means #119 touches code #6 depends on. See the ADR's `Ratified` note for the reasoning. `/design` may rely on all five; none is open.
+
 **For `/design`:** confirm the CSV import's phase 3 (one recount per linked family × class) stays within the function timeout; specify the repair's run on staging given the untracked drift (never a blind `db push`).
