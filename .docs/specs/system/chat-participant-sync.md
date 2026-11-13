@@ -2,7 +2,7 @@
 
 > **owner:** System · **consumers:** Parent, Student (primary — they are the personas currently excluded); Teacher, Coordinator, BV Coordinator, Admin unaffected (their membership derives from `user_roles`, which already works); Student `class-chat-ui` (#24) is the blocked client consumer · **scope:** engine — keep `conversation_participants` in step with *all* the events that change who belongs to a class conversation, not just enrollment; plus a one-time repair of existing rows. No new tables · **governing ADR:** [ADR-2026-11-13-class-chat-membership-recount](../../adr/2026-11-13-class-chat-membership-recount.md). Constrained by ADR-0015 (chat access model), ADR-0022 (CSV import DB-first boundary — see "Why the obvious fix is unavailable"), ADR-2026-09-19 (withdrawal revokes conversational access), ADR-0018 (family/household model) · **covers:** issue [#119](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/119); 3_ARCHITECTURE §9.1–§9.3, §11.3
 
-**Stage:** `/refine` ✓ (2026-11-13, human sign-off on both open decisions) → `/architect` ✓ (2026-11-13, governing ADR-2026-11-13-class-chat-membership-recount — see "Architect review" below) → **next: `/design`**. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-11-13, human sign-off on both open decisions) → `/architect` ✓ (2026-11-13, governing ADR-2026-11-13-class-chat-membership-recount — see "Architect review" below) → `/design` (2026-11-13, spec written + human sign-off — see "Design" below) → next: `/plan`. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
@@ -129,3 +129,123 @@ Engine-level, membership-derived. All enforcement is in the database: triggers p
 **Ratified (Maulik, 2026-11-13):** the ADR's remaining commitments were put to the project owner and confirmed — label precedence teacher > parent > student (which also decides the ADR-0016 default a multi-ground person gets, and means an `@Parents` mention does not reach a teacher-parent as a parent), in-place relabelling to preserve `notify_level`, the relationship-agnostic parent rule, the grade function's exact accepted set, and the any-status recount breadth on `family_members`. Decision 2's reach into merged code (the withdrawal branch and `sync_staff_participants()`) was chosen in the review and re-confirmed here, since it means #119 touches code #6 depends on. See the ADR's `Ratified` note for the reasoning. `/design` may rely on all five; none is open.
 
 **For `/design`:** confirm the CSV import's phase 3 (one recount per linked family × class) stays within the function timeout; specify the repair's run on staging given the untracked drift (never a blind `db push`).
+
+---
+
+## Design (2026-11-13)
+
+**Sign-off:** ✓ Maulik, 2026-11-13 — the design and all five "please confirm" items on the sign-off page (seed logins 9 → 3 with the UAT re-pin; one entitlement rule; repair as its own migration; Gr 7–8 staging logins left to `/deploy-staging`; Decision 6 as an ADR addendum). Plain-language sign-off page: the #119 Artifact ("The empty class chat"), Version 5 — https://claude.ai/artifact/FVBEZr83s6oYCFscJytAEM (private; share from its Share menu).
+
+**Design-system mirror:** not applicable. This item has no client surface (AC#11), so no `design/sankalp/bv-connect` reference is used. What users see is designed in `class-chat-ui` (#24).
+
+### Design decisions
+
+| # | Decision | Who |
+| --- | --- | --- |
+| D-1 | **Three more events trigger the recount** on top of the ADR's list: an enrollment **deleted** outright, an enrollment's `class_id` **changed** (recount old and new class), and a student's `family_id` **changed**. Each can only remove access or move it to the correct chat; none can widen it. Nothing in the app does any of these today, so they are defensive, like Decision 2. This extends ADR Decision 2's event list in the narrowing direction only; it does not reverse any ADR decision, so `/plan` records it as a dated addendum on the ADR (same precedent as the Ratified note), not a supersede. | Maulik, 2026-11-13 |
+| D-2 | **The entitlement rule is one function, `class_chat_entitled(class_id)`**, which returns the entitled set without writing. Both the recount and the staging preview read it, so the rule is written exactly once. | design call |
+| D-3 | **The repair is its own migration, separate from the function/trigger migration**, so staging can install the new rule, preview the diff, and then repair. | design call |
+| D-4 | **The seed reuses the database grade function** (`is_hs_grade`) to decide who gets a login, rather than a second copy of the rule in seed SQL. | design call |
+
+### Behavior
+
+**The rule** (ADR Decision 1, unchanged). For one class conversation, a user is entitled when any of these holds, with label precedence teacher > parent > student:
+
+1. **teacher**: `user_roles` row with `role = 'teacher'`, `scope_type = 'class'`, `scope_id = class`. `is_active` is ignored: it marks the *currently selected* role, not whether the grant exists (`20260711035943`), and today's staff sync ignores it too.
+2. **parent**: any `family_members` row (any `relationship`) for a family with at least one student holding an `active` enrollment in the class.
+3. **student**: `students.user_id` of a student with an `active` enrollment in the class **and** `is_hs_grade(students.grade_level)`.
+
+**The recount, `recount_class_participants(class_id)`.** It finds the `kind = 'class'` conversation for the class and returns quietly if there is none. Otherwise it reconciles `conversation_participants` against `class_chat_entitled`:
+- **delete** rows whose user is not in the entitled set;
+- **update `participant_role` in place** where the stored label differs from the entitled label (`notify_level` and `notification_default` untouched);
+- **insert** missing entitled users, `on conflict (conversation_id, user_id) do nothing`.
+
+It is idempotent: running it twice, or on a correct conversation, changes nothing.
+
+**Events → which classes are recounted** (all row-level `after` triggers, all in the writing transaction):
+
+| Table · event | Classes recounted |
+| --- | --- |
+| `enrollments` insert | `new.class_id` |
+| `enrollments` update | `new.class_id`, and `old.class_id` if different (D-1) |
+| `enrollments` delete *(new, D-1)* | `old.class_id` |
+| `family_members` insert / delete / update | every class where a student of `new.family_id` / `old.family_id` has an enrollment of **any** status (ratified item 5) |
+| `students` update of `user_id`, `grade_level`, or `family_id` *(family_id new, D-1)* | every class where that student has an enrollment of any status |
+| `user_roles` insert / delete, class-teacher branch | `scope_id` |
+
+- `sync_class_participants()` keeps its trigger name (`enrollments_sync_participants`), but its body is replaced by the recount call and the trigger gains `delete`. The withdrawal branch's hand-written delete is gone, because the recount covers it (ADR Decision B1).
+- In `sync_staff_participants()`, the class-teacher insert and delete branches call the recount. The `session_staff` and `leadership` branches are **unchanged**.
+- `students` delete needs no trigger: `enrollments.student_id` is `on delete restrict`, so a student with enrollments cannot be deleted. Deleting a family cascades `family_members` deletes, which fire their own trigger.
+- An `auth.users` delete cascades to `family_members` (delete trigger fires) and sets `students.user_id` to null (the `update of user_id` trigger fires on the referential action). `conversation_participants.user_id` also cascades directly. Either way the row goes; the tests pin both.
+- No trigger exists on `conversation_participants` (checked), so the recount's writes cannot loop.
+
+**`is_hs_grade(text) returns boolean`.** It is `immutable` and returns true for exactly `'9'`, `'10'`, `'11'`, `'12'`, `'Gr9'`, `'Gr10'`, `'Gr11'`, `'Gr12'`, and false for everything else, including null, blank, and different case or spacing such as `'gr9'` or `' 9'`. That is fail-closed (ratified item 4). #93 narrows it to one spelling.
+
+### Data & RLS impact
+
+**Migrations** (timestamped, `supabase/migrations/`):
+
+1. `<ts>_class_chat_membership_recount.sql` creates `is_hs_grade`, `class_chat_entitled`, and `recount_class_participants`. It replaces the `sync_class_participants()` and `sync_staff_participants()` bodies, recreates `enrollments_sync_participants` as `after insert or update or delete`, and adds `family_members_sync_participants` and `students_sync_participants` (`after update of user_id, grade_level, family_id`). It changes **no existing rows**; it only changes what future writes do.
+2. `<ts+1>_class_chat_membership_repair.sql` runs `select recount_class_participants(scope_id) from conversations where kind = 'class'`. It is idempotent (AC#8).
+
+**Privileges** (ADR Decision 4). All three functions are `security definer` with `set search_path = public`. `execute` is revoked from `public`, `anon`, and `authenticated` on `recount_class_participants` and `class_chat_entitled`. `is_hs_grade` follows the same revoke: nothing outside the database needs it, and the seed runs as a superuser. pgTAP asserts each revoke.
+
+**RLS:** no policy changes. `messages_member_select` and #6's channel policy already read `conversation_participants`. **`audit_log`:** no new surface (ADR Decision 5). **Tables:** none added, no columns changed.
+
+**CSV import timing (ADR Consequences, "for /design").** Phase 3 makes one Auth Admin HTTP call per new login (hundreds of ms each). Each `linkGuardian`/`linkStudentUser` insert now adds one recount per class of that family, typically one to three classes of a few dozen rows each, so roughly milliseconds. The HTTP calls dominate by about two orders of magnitude. `/plan` must still **measure, not assume**:
+- `explain analyze` of `recount_class_participants` on the largest seeded class;
+- the wall-clock time of linking all 20 seed families with the recount triggers in place, against the same run without them on a clean local stack.
+
+Acceptance: the added time is under 1 s for the seed-sized import, which stays well inside Netlify's synchronous function limit. If it is not, stop and return to `/architect`; do not batch around the trigger.
+
+**Staging repair: preview, then apply.** `/deploy-staging` owns the run; this is what it must do.
+1. **Do not `supabase db push`** (staging carries untracked drift, see the #105 history). Compare staging's `supabase_migrations.schema_migrations` with the repo first.
+2. Apply migration 1 **on its own**, via `psql -f`, and record it in `schema_migrations`. This changes no rows.
+3. Run the **read-only preview** `supabase/scripts/119_membership_preview.sql`. It compares `class_chat_entitled` with the stored rows for every class conversation and prints, per class, **counts only**: rows to add, remove, or relabel, broken down by label. It prints no names or emails (minors' data minimization). A human reads it. The expected staging result is: adds for parents and Gr 9 students, removes for any Gr 7–8 student rows, and no teacher removals.
+4. Apply migration 2 the same way. Re-run the preview; it must show zero changes.
+
+**Seed correction (`/refine` Decision 1).** `seed.sql`'s student-login loop adds `and is_hs_grade(st.grade_level)`, which drops logins from 9 to **3** (`student1@`–`student3@`, the Gr 9 students). Knock-on changes the plan must carry:
+- `108_seed_pilot_logins.sql`: count 9 → 3, and re-pin the `student1@` ↔ parent pairing test. `student1@` becomes `Student 9-1`, so its guardian is no longer `parent17a@`.
+- `106_seed_student_roles.sql`: re-check any count.
+- `UAT.md`, line 35 (account table) and UAT-11/12/13 (`student1@` + `parent17a@` pairing): update to the new pairing, derived from the seed, not guessed.
+- The comment at `seed.sql:66` ("PILOT EXCEPTION (#19)") is rewritten: the exception is withdrawn.
+
+### UI
+
+None. No screen, component, or copy changes. Effect visible to users, through #24 once it lands: a parent or Gr 9+ student opening their class chat sees the conversation's messages instead of an empty or refused view.
+
+### Testing (TDD, Red first; all fixtures in the enrol-first order)
+
+- `200_chat_participant_sync.sql`, behaviour: every AC#1–#9 case plus D-1's three events, `is_hs_grade` truth table (both vocabularies, the PreK/KG/Shishu Vihaar/blank/null/case variants), idempotence (recount twice = no change), no-conversation class returns without error, `notify_level` survives a relabel, and execute-revoke assertions.
+- `201_chat_participant_sync_adversarial.sql`, the §11.3 role × scope × grade × ground-count matrix from AC#10 and the ADR's additions. Each case is shown **Red** against current `main` before the migration. Access is checked as the user (`set role authenticated` + claims) reading `messages`, not just by counting rows. Per the standing rule, "no access" is asserted with `set role anon`/`authenticated`, never `clear_authentication()` (superuser).
+- `060_chat_rls.sql` is unchanged and must stay green (link-first order regression).
+- `190`/`191` (#6 realtime) must stay green, because #119 now replaces code #6 depends on (ratified item 1).
+- The preview script gets a pgTAP check that it writes nothing (row counts before and after are equal).
+
+### Edge cases (beyond the refined list, which all still hold)
+
+- An enrollment moves class while active: the old class drops the student and family (unless a sibling remains) and the new class gains them, in one transaction.
+- A student moves family: the old family's guardians leave the student's classes unless another child grounds them; the new family's guardians join.
+- A guardian is deleted from Auth: the cascade removes them everywhere; no orphan participant remains.
+- A teacher's class role is deleted while they are also an active parent there: they stay, relabelled `parent`, with `notify_level` kept.
+- The repair runs on local, staging, or a future prod that is already correct: the preview shows zero changes and the repair is a no-op.
+
+### Out of scope
+
+- Reconciling grade vocabulary (#93), and retiring `is_hs_grade`'s dual spelling once that lands.
+- Annual rollover and grade promotion (#82, ADR-2026-09-19 Decision 8). Promotions will flow through the `grade_level` trigger automatically.
+- Revoking existing **Auth logins** of Gr 7–8 students on staging. This item removes their chat membership; whether their logins are deleted is a staging-hygiene call for `/deploy-staging`.
+- Any UI (#24), notification defaults per label (ADR-0016), and `session_staff`/`leadership` membership.
+- Batching or deferring recounts (statement-level triggers). Only revisit if the timing check fails.
+
+### Acceptance criteria → design
+
+| AC | Where |
+| --- | --- |
+| 1, 2, 3, 6, 7 | event table + recount; `200` |
+| 4 | `is_hs_grade`, used by `class_chat_entitled` and the seed |
+| 5 | `enrollments_sync_participants` → recount; `060` stays green |
+| 8 | migration 2 + staging preview/apply procedure |
+| 9 | `class_chat_entitled` is exactly ADR-0015's ladder; revokes |
+| 10 | `201` |
+| 11 | DB-only; no vendor, no client |
