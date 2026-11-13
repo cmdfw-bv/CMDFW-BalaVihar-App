@@ -1,8 +1,8 @@
 # System — chat participant sync
 
-> **owner:** System · **consumers:** Parent, Student (primary — they are the personas currently excluded); Teacher, Coordinator, BV Coordinator, Admin unaffected (their membership derives from `user_roles`, which already works); Student `class-chat-ui` (#24) is the blocked client consumer · **scope:** engine — keep `conversation_participants` in step with *all* the events that change who belongs to a class conversation, not just enrollment; plus a one-time repair of existing rows. No new tables · **governing ADR:** none yet — `/architect` to record (Decision 1 below makes the ADR-0015 grade band a database rule for the first time). Constrained by ADR-0015 (chat access model), ADR-0022 (CSV import DB-first boundary — see "Why the obvious fix is unavailable"), ADR-2026-09-19 (withdrawal revokes conversational access), ADR-0018 (family/household model) · **covers:** issue [#119](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/119); 3_ARCHITECTURE §9.1–§9.3, §11.3
+> **owner:** System · **consumers:** Parent, Student (primary — they are the personas currently excluded); Teacher, Coordinator, BV Coordinator, Admin unaffected (their membership derives from `user_roles`, which already works); Student `class-chat-ui` (#24) is the blocked client consumer · **scope:** engine — keep `conversation_participants` in step with *all* the events that change who belongs to a class conversation, not just enrollment; plus a one-time repair of existing rows. No new tables · **governing ADR:** [ADR-2026-11-13-class-chat-membership-recount](../../adr/2026-11-13-class-chat-membership-recount.md). Constrained by ADR-0015 (chat access model), ADR-0022 (CSV import DB-first boundary — see "Why the obvious fix is unavailable"), ADR-2026-09-19 (withdrawal revokes conversational access), ADR-0018 (family/household model) · **covers:** issue [#119](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/119); 3_ARCHITECTURE §9.1–§9.3, §11.3
 
-**Stage:** `/refine` ✓ (2026-11-13, human sign-off on both open decisions) → **next: `/architect`**. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
+**Stage:** `/refine` ✓ (2026-11-13, human sign-off on both open decisions) → `/architect` ✓ (2026-11-13, governing ADR-2026-11-13-class-chat-membership-recount — see "Architect review" below) → **next: `/design`**. The [`_index.md`](_index.md) row is authoritative if these ever disagree (§12.12).
 
 ---
 
@@ -104,3 +104,26 @@ Engine-level, membership-derived. All enforcement is in the database: triggers p
 - **Nothing in the app withdraws an enrollment yet.** ADR-2026-09-19 Decision 6 records that `upsertEnrollment` only ever writes `status: 'active'`, and #82 owns the registration sync that will perform withdrawals. The sibling-guard paths in AC#6 and AC#8 are therefore exercised by tests and the repair, not yet by a live code path.
 - **Nothing in the app unlinks a family member or clears a student login either.** Decision 2's removal paths are defensive: they close the gap before a path exists that could open it. Worth stating plainly so `/architect` prices them as prevention rather than a live bug.
 - **Annual rollover is undecided** (ADR-2026-09-19 Decision 8, #82). "Active enrollment" in AC#2/#3/#8 means the mid-year sense. Whoever architects rollover must revisit what membership does when a year ends.
+
+---
+
+## Architect review (2026-11-13)
+
+**Sign-off:** brief is sound; not bounced. Owner (System), consumers and scope confirmed. ADR-0022 is untouched — the import's phase order stays as it is; the fix lives on the link events. Governing ADR: [ADR-2026-11-13-class-chat-membership-recount](../../adr/2026-11-13-class-chat-membership-recount.md).
+
+**Three decisions taken (Maulik, 2026-11-13):**
+
+1. **One recount routine** (not a patch per event). A single `security definer` function computes who is entitled to a class conversation now — teacher by class role; parent by a family with an `active` child in the class; student by own `active` enrollment **and** the Gr 9 rule — and reconciles the stored rows: adds the missing, removes those with no remaining ground, leaves still-entitled rows in place so `notify_level` survives. Label precedence teacher > parent > student. Every event and the repair call it. `execute` revoked from `public`/`anon`/`authenticated`.
+2. **Stay while any ground remains, on every path, including the existing ones.** Found in review: the merged withdrawal branch and `sync_staff_participants()`'s teacher delete each remove a person who is still entitled on another ground (a teacher whose own child withdraws; a guardian in two households). Both now route through the recount. This is a live defect fixed, slightly beyond the original brief.
+3. **A `students.grade_level` change triggers the recount**, so a 9→8 correction removes the student at once and 8→9 adds them.
+
+**Amendments to the brief:**
+
+- **Events** (adds to AC#2/#3/#6/#7): `family_members` insert/delete; `students` update of `user_id` **or `grade_level`**; `enrollments` insert/update; the class-teacher branch of `user_roles` insert/delete.
+- **AC#4** is a single immutable function accepting exactly `'9'`–`'12'` and `'Gr9'`–`'Gr12'`; anything else is false.
+- **AC#8** (repair) is the recount run once per class conversation — not separate code.
+- **AC#10** gains: teacher-parent survives their child's withdrawal; teacher-parent losing the teacher role while their child is active stays, relabelled `parent`; two-household guardian survives unlinking from one; grade 9→8 removes, 8→9 adds; `notify_level` survives a recount. All fixtures in the enrol-first order.
+- **Edge case resolved:** `relationship` ≠ `'guardian'` keeps today's behaviour — every family member counts as a parent.
+- **Confirmed:** no RLS policy changes; no new `audit_log` surface; no new vendor; no privilege widening.
+
+**For `/design`:** confirm the CSV import's phase 3 (one recount per linked family × class) stays within the function timeout; specify the repair's run on staging given the untracked drift (never a blind `db push`).
