@@ -641,6 +641,8 @@ Extends `170_`/`171_`. Every assertion must be shown **Red** before the migratio
 
 If the parent/student feed regresses on cloud the way the teacher feed already has, that means #105's fix must land first — not that this migration is reverted. Record the result either way; a green local suite is not evidence about this.
 
+**How to run it:** `scripts/verify-96-cloud.mjs` performs exactly the above — it refuses any target but the staging ref, finds a family with a single active enrollment (a second one would mask the effect via Decision 3's sibling rule), reads the feed as that Parent and Student with `fetchClassUpdatesFeed`'s own select and `limit=200`, flips the enrollment to `withdrawn` **by `update`** (a transition, per the fixture warning above), re-reads including the private thread (Decision 1b), and always restores. Dry by default; `--mutate` does the withdrawal half. Credentials come from the environment and are never stored. `EXPLAIN` stays manual — the script prints the SQL for Studio. Paste its result block here when run.
+
 ### Out of scope
 
 - **`enrollments.withdrawn_at`** — deferred to [#82](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/82) with the withdrawal path that would stamp it (ADR Decision 6). Whoever builds that path must add the column in the same change; deferring past it makes every withdrawal before it unreconstructable.
