@@ -120,12 +120,24 @@ export function projectRefFromUrl(url) {
   if (typeof url !== 'string' || url.trim() === '') {
     throw new Error('projectRefFromUrl: url is required');
   }
-  let host;
+  let parsedApiUrl;
   try {
-    host = new URL(url).hostname;
+    parsedApiUrl = new URL(url);
   } catch {
     throw new Error(`projectRefFromUrl: "${url}" is not a valid URL`);
   }
+  // https only. This URL is handed to createClient together with the SERVICE-ROLE key, so a plaintext
+  // scheme puts a credential that bypasses every RLS policy onto the wire for any on-path observer.
+  // Before #129 only the hostname was checked, so 'http://<ref>.supabase.co' and even
+  // 'ftp://<ref>.supabase.co' were accepted. This is the same class as the ENCRYPTED_SSLMODES guard
+  // the DB URL already enforces — plaintext transport of a credential — just a different value, so
+  // leaving it open undercut the claim that the class was closed. #129 item 2.
+  if (parsedApiUrl.protocol !== 'https:') {
+    throw new Error(
+      `projectRefFromUrl: STAGING_SUPABASE_URL must use https (got "${parsedApiUrl.protocol}") — the service-role key travels over it`,
+    );
+  }
+  const host = parsedApiUrl.hostname;
   const suffix = '.supabase.co';
   if (!host.endsWith(suffix)) {
     throw new Error(`projectRefFromUrl: "${host}" is not a <ref>.supabase.co host`);
@@ -181,7 +193,12 @@ export function projectRefFromDbUrl(dbUrl) {
       );
     }
   }
-  const host = parsed.hostname;
+  // Lowercase before matching: 'postgresql:' is a NON-SPECIAL scheme, so the WHATWG parser uses
+  // opaque-host parsing and does NOT case-fold it. 'DB.<ref>.SUPABASE.CO' is a valid DNS name and a
+  // valid libpq URI, but without this it fails the allowlist and hands the operator a
+  // security-flavoured error for a non-issue. (The https API URL is a special scheme and so is
+  // lowercased for us — that asymmetry is why the two paths behaved differently. #129 item 7.)
+  const host = parsed.hostname.toLowerCase();
   // Positive host allowlist (PR #108 round-3 — the class-level fix). The hostname must match EXACTLY
   // one known Supabase DB host shape, not merely end with a Supabase suffix. This refuses a comma
   // multi-host, an injected authority (even when an '@' elsewhere in the URL defeats a naive split),
@@ -190,7 +207,13 @@ export function projectRefFromDbUrl(dbUrl) {
   //   - direct:  db.<ref>.supabase.co
   //   - pooler:  <region-subdomain>.pooler.supabase.com   (ref lives in the username: postgres.<ref>)
   const directMatch = host.match(/^db\.([a-z0-9]+)\.supabase\.co$/);
-  const isPooler = /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(host);
+  // The pooler label is pinned to the real shape (aws-<n>-<region>) rather than accepting any single
+  // label. Previously 'evil.pooler.supabase.com' validated, and on this branch the ref comes from the
+  // USERNAME rather than the host, so the host had no tie to the project at all. That was not
+  // exploitable — pooler.supabase.com DNS is Supabase's, not something an attacker can stand up — but
+  // it was the last degree of host freedom on the operator path, and it rested on a third party's DNS
+  // policy instead of on this code. #129 item 7.
+  const isPooler = /^aws-\d+-[a-z]{2}-[a-z]+-\d+\.pooler\.supabase\.com$/.test(host);
   if (!directMatch && !isPooler) {
     throw new Error(`projectRefFromDbUrl: "${host}" is not a recognized Supabase database host`);
   }
@@ -199,10 +222,19 @@ export function projectRefFromDbUrl(dbUrl) {
   // '@', a space, or any psql/shell meta character cannot ride in on them.
   const user = safeDecode(parsed.username);
   const dbname = safeDecode(parsed.pathname.replace(/^\//, '')) || 'postgres';
-  if (!/^[a-zA-Z0-9._-]+$/.test(user)) {
+  // A missing username used to report "contains disallowed characters", which sends the operator
+  // hunting for a character that isn't there. #129 item 7.
+  if (user === '') {
+    throw new Error('projectRefFromDbUrl: STAGING_DB_URL is missing a username');
+  }
+  // The first character may not be '-'. psql declares -U/-d as required_argument so getopt consumes
+  // the next argv verbatim and a leading dash cannot actually become a flag — but that reasoning is
+  // read off psql's documentation rather than measured, and it should not be load-bearing. Forbidding
+  // it means no future reader has to re-derive why '-d --help' is safe. #129 item 7.
+  if (!/^[a-zA-Z0-9._][a-zA-Z0-9._-]*$/.test(user)) {
     throw new Error('projectRefFromDbUrl: STAGING_DB_URL username contains disallowed characters');
   }
-  if (!/^[a-zA-Z0-9_-]+$/.test(dbname)) {
+  if (!/^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/.test(dbname)) {
     throw new Error('projectRefFromDbUrl: STAGING_DB_URL database name contains disallowed characters');
   }
   if (directMatch) {
@@ -241,7 +273,20 @@ export function buildPsqlConnParams(dbUrl) {
     throw new Error('buildPsqlConnParams: connection string is required');
   }
   // Validates the ref AND rejects the parser-disagreement shapes before we read any field.
-  projectRefFromDbUrl(dbUrl);
+  //
+  // The staging rail is enforced HERE, not only in resolveConfig, so this module is safe by
+  // CONSTRUCTION rather than safe by call order. Before #129 the ref was derived and then discarded,
+  // and the only STAGING_PROJECT_REF comparison lived in resolveConfig — so a caller that reached
+  // runPsql/buildPsqlConnParams directly got psql spawned with PGPASSWORD set against any
+  // db.<ref>.supabase.co. That domain is one an attacker can register their OWN project on, making it
+  // third-party credential exfiltration. It was unreachable while these were file-local, but PR #108
+  // exported runPsql for testability, which turned the module's test seam into its attack surface.
+  const ref = projectRefFromDbUrl(dbUrl);
+  if (!isStagingTarget(ref)) {
+    throw new Error(
+      `buildPsqlConnParams: refusing to connect to "${ref}" — not the staging project (${STAGING_PROJECT_REF})`,
+    );
+  }
   let parsed;
   try {
     parsed = new URL(dbUrl);
@@ -252,7 +297,10 @@ export function buildPsqlConnParams(dbUrl) {
   // 'require' when absent so the connection is never silently plaintext.
   const sslmode = (parsed.searchParams.get('sslmode') || 'require').toLowerCase();
   return {
-    host: parsed.hostname,
+    // Lowercased to match what the allowlist actually validated. Returning the raw hostname here
+    // while validating a lowercased copy above would reintroduce the exact pattern behind every
+    // round of this review: check one value, use a different one.
+    host: parsed.hostname.toLowerCase(),
     port: parsed.port || '5432',
     user: safeDecode(parsed.username),
     dbname: safeDecode(parsed.pathname.replace(/^\//, '')) || 'postgres',
