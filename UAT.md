@@ -32,10 +32,10 @@ npm run dev           # starts the app at http://localhost:8888
 | `bvcoordinator1@bv-seed.test.local` | BV Coordinator |
 | `teacher1@bv-seed.test.local` (through `teacher6`) | Teacher |
 | `parent1a@bv-seed.test.local` | Parent |
-| `student1@bv-seed.test.local` (through `student9`) | Student (the F3 7, 8, 9 class has logins) |
+| `student1@bv-seed.test.local` (through `student3`) | Student (the Gr 9 students of the F3 7, 8, 9 class have logins — Gr 7–8 students get none, #119) |
 | `multirole@bv-seed.test.local` | Parent + Teacher + Coordinator + BV Coordinator |
 
-> **Note on numbering:** `parentNa`/`teacherN`/`studentN` are assigned in a stable but non-obvious order — `parentNa` does **not** line up with "Seed Family N" (guardians are numbered by text-sorted family label, so `Seed Family 10` sorts before `Seed Family 2`). Don't infer a family/child from the number; the scenarios below name the exact accounts to use. For the login-bearing class, `student1@` is `parent17a@`'s child, both in the F3 7, 8, 9 class.
+> **Note on numbering:** `parentNa`/`teacherN`/`studentN` are assigned in a stable but non-obvious order — `parentNa` does **not** line up with "Seed Family N" (guardians are numbered by text-sorted family label, so `Seed Family 10` sorts before `Seed Family 2`). Don't infer a family/child from the number; the scenarios below name the exact accounts to use. For the login-bearing class, `student1@` (Student 9-1) is `parent4a@`'s child, both in the F3 7, 8, 9 class (re-derived for #119; it was `parent17a@` while Gr 7–8 students had logins).
 
 ---
 
@@ -254,7 +254,7 @@ npm run dev           # starts the app at http://localhost:8888
 ---
 
 ### UAT-11: Home feed read surface — Student and Parent (incl. multi-child, multi-class merge)
-**Accounts:** `student1@bv-seed.test.local` (Student, F3 7, 8, 9 class), `parent17a@bv-seed.test.local` (Parent, child in the F3 7, 8, 9 class)
+**Accounts:** `student1@bv-seed.test.local` (Student, F3 7, 8, 9 class), `parent4a@bv-seed.test.local` (Parent, child in the F3 7, 8, 9 class)
 
 **Steps:**
 1. Sign in as the Student, open `/feed`.
@@ -269,7 +269,7 @@ npm run dev           # starts the app at http://localhost:8888
 ---
 
 ### UAT-12: Public comments — Student posts, Teacher and Parent both see it
-**Accounts:** `student1@bv-seed.test.local`, `teacher3@bv-seed.test.local`, `parent17a@bv-seed.test.local`
+**Accounts:** `student1@bv-seed.test.local`, `teacher3@bv-seed.test.local`, `parent4a@bv-seed.test.local`
 
 **Steps:**
 1. Student opens a class update and posts a public comment.
@@ -283,7 +283,7 @@ npm run dev           # starts the app at http://localhost:8888
 ---
 
 ### UAT-13: Private comment + cross-family isolation (Parent A vs. Parent B)
-**Accounts:** `parent17a@bv-seed.test.local` (Parent A), `parent18a@bv-seed.test.local` (Parent B) — both have a child enrolled in the same class (F3 7, 8, 9 class), `teacher3@bv-seed.test.local`, `student1@bv-seed.test.local`
+**Accounts:** `parent4a@bv-seed.test.local` (Parent A), `parent18a@bv-seed.test.local` (Parent B) — both have a child enrolled in the same class (F3 7, 8, 9 class), `teacher3@bv-seed.test.local`, `student1@bv-seed.test.local`
 
 **Steps:**
 1. Parent A posts a private comment on the class update.

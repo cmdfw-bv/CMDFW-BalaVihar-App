@@ -63,15 +63,18 @@ begin
     end if;
   end loop;
 
-  -- Student logins -- PILOT EXCEPTION (#19): every student in the F3 "7, 8, 9" class gets a login,
-  -- not just grade 9 (the general Gr9+ rule; 10-12 is empty this year). Self-scope = org/null,
-  -- resolved via students.user_id (ROLE_SCOPE_TYPE.student), mirroring the prod auto-sweep.
+  -- Student logins -- the general Gr 9+ rule (ADR-0015), via is_hs_grade(). The #19 PILOT EXCEPTION
+  -- (a login for every student of the F3 "7, 8, 9" class) is WITHDRAWN by #119 / ADR-2026-11-13: a
+  -- Gr 7-8 login is not a class-chat participant, so it would demo an empty chat. That leaves the
+  -- class's Gr 9 students (10-12 is empty this year). Self-scope = org/null, resolved via
+  -- students.user_id (ROLE_SCOPE_TYPE.student), mirroring the prod auto-sweep.
   i := 0;
   for v_student in
     select st.id from students st
       join enrollments e on e.student_id = st.id
       join classes c on c.id = e.class_id
      where c.session_id = v_f3 and c.grade_band = '7, 8, 9'
+       and is_hs_grade(st.grade_level)
      -- deterministic order so studentN@ ↔ student is stable across reseeds (UAT-11/12/13 depend on it).
      -- `, st.id` is the total-order tiebreak (#98): grade_level+first_name is total only by the current
      -- generator's construction; st.id guarantees a stable order if that ever stops holding.
