@@ -8,7 +8,7 @@
 -- Every "hidden from another session" assertion is paired with a "visible in-session" control
 -- on the same row, so a hide cannot pass because the row was never there.
 begin;
-select plan(46);
+select plan(55);
 
 -- ---------------------------------------------------------------------------------------------
 -- Fixture. Session S holds class A; session T holds class C.
@@ -415,6 +415,54 @@ select is(
   0::bigint,
   'review_keyset_ties: page 2 holds only rows strictly before the cursor'
 );
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------------------------
+-- Half-filled cursor: exactly one of the two cursor params is null -> 22023 (as an authorized admin,
+-- so the refusal cannot come from authorization).
+-- ---------------------------------------------------------------------------------------------
+select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
+select throws_ok(
+  'select * from public.get_removed_messages_for_oversight(''2099-01-01 00:00:00+00''::timestamptz, null, 20)',
+  '22023', null, 'half_cursor_refused: p_before_removed_at without p_before_id raises 22023');
+select throws_ok(
+  'select * from public.get_removed_messages_for_oversight(null, ''f2020000-0000-0000-0002-000000000003''::uuid, 20)',
+  '22023', null, 'half_cursor_refused: p_before_id without p_before_removed_at raises 22023');
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------------------------
+-- message_in_session is gated on the caller's own claims: true only for a coordinator asking about
+-- their own session. Message 102 is a parent message in class A (session S).
+-- ---------------------------------------------------------------------------------------------
+select ok(not has_function_privilege('anon', 'public.message_in_session(uuid, uuid)', 'execute'),
+  'message_in_session: anon holds no EXECUTE privilege');
+select ok(not exists (
+    select 1 from pg_proc p,
+           aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     where p.oid = 'public.message_in_session(uuid, uuid)'::regprocedure
+       and a.grantee = 0 and a.privilege_type = 'EXECUTE'),
+  'message_in_session: PUBLIC holds no EXECUTE privilege');
+
+select tests.authenticate_as(:'v_teacher_a'::uuid, 'teacher', 'class', 'f2020000-0000-0000-0000-0000000000a1');
+select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000011'), false,
+  'message_in_session: a class-A teacher (chat member) gets false for a class-A message and its real session');
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_student_a'::uuid, 'student', 'class', 'f2020000-0000-0000-0000-0000000000a1');
+select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000011'), false,
+  'message_in_session: a class-A student (chat member) gets false for a class-A message and its real session');
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_coord_t'::uuid, 'coordinator', 'session', 'f2020000-0000-0000-0000-000000000012');
+select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000011'), false,
+  'message_in_session: a session-T coordinator gets false probing a session-S message against session S');
+select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000012'), false,
+  'message_in_session: a session-T coordinator gets false for a session-S message against its own session');
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_coord_s'::uuid, 'coordinator', 'session', 'f2020000-0000-0000-0000-000000000011');
+select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000011'), true,
+  'message_in_session: CONTROL a session-S coordinator gets true for a session-S message');
 select tests.clear_authentication();
 
 select * from finish();

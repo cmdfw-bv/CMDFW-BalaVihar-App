@@ -88,6 +88,12 @@ begin
     raise exception 'not authorized' using errcode = '42501';
   end if;
 
+  -- A cursor is both halves or neither; a half cursor is a caller bug, not a page request.
+  if (p_before_removed_at is null) <> (p_before_id is null) then
+    raise exception 'p_before_removed_at and p_before_id must be given together'
+      using errcode = '22023';
+  end if;
+
   for r in
     select mr.message_id as r_message_id,
            cl.id as r_class_id,
@@ -183,15 +189,37 @@ grant execute on function public.get_removed_messages_for_oversight(timestamptz,
 -- class chats, so an inline exists() is always false for them (proved red by 202_ test 36).
 -- Same shape as public.class_in_session (20261002120000): a definer reference-data check that
 -- returns a boolean, reads no message content, and leaks nothing beyond "is id X in session Y".
+--
+-- Gated on the caller's own claims (review hardening): it answers true only for a coordinator
+-- asking about their own session, so nobody else can use it to probe which session a message id
+-- belongs to. The policy calls it only on its coordinator branch with the caller's scope_id, so
+-- policy behaviour is unchanged. Fails closed: absent claims or a malformed scope_id give false.
 -- ---------------------------------------------------------------------------------------------
 create or replace function public.message_in_session(p_message_id uuid, p_session_id uuid)
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select exists (
+declare
+  v_scope_id uuid;
+begin
+  if not coalesce(auth.jwt()->>'active_role' = 'coordinator', false) then
+    return false;
+  end if;
+
+  begin
+    v_scope_id := nullif(auth.jwt()->>'scope_id', '')::uuid;
+  exception when invalid_text_representation then
+    return false;
+  end;
+
+  if not coalesce(p_session_id = v_scope_id, false) then
+    return false;
+  end if;
+
+  return exists (
     select 1
       from public.messages m
       join public.conversations cv on cv.id = m.conversation_id and cv.kind = 'class'
@@ -199,6 +227,7 @@ as $$
      where m.id = p_message_id
        and c.session_id = p_session_id
   );
+end;
 $$;
 
 revoke all on function public.message_in_session(uuid, uuid) from public, anon;
