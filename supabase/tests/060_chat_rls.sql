@@ -18,8 +18,8 @@ insert into family_members (family_id, user_id, relationship) values
 -- Both HS students have logins (per the students.user_id note); student_2 is unrelated (own family).
 insert into families (id, label) values ('f7777777-0000-0000-0000-000000000002', 'Chat Family Two');
 insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
-  ('5f111111-0000-0000-0000-000000000001', 'f7777777-0000-0000-0000-000000000001', 'Chat', 'One', 'HS9', :'v_student_1'::uuid),
-  ('5f222222-0000-0000-0000-000000000002', 'f7777777-0000-0000-0000-000000000002', 'Chat', 'Two', 'HS9', :'v_student_2'::uuid);
+  ('5f111111-0000-0000-0000-000000000001', 'f7777777-0000-0000-0000-000000000001', 'Chat', 'One', 'Gr9', :'v_student_1'::uuid),
+  ('5f222222-0000-0000-0000-000000000002', 'f7777777-0000-0000-0000-000000000002', 'Chat', 'Two', 'Gr9', :'v_student_2'::uuid);
 
 insert into enrollments (id, student_id, class_id, session_id, status)
   values ('e7777777-0000-0000-0000-000000000001', '5f111111-0000-0000-0000-000000000001', 'c7777777-0000-0000-0000-000000000002', 'a7777777-0000-0000-0000-000000000001', 'active');

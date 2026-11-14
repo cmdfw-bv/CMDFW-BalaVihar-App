@@ -69,12 +69,12 @@ insert into family_members (family_id, user_id, relationship) values
   ('e6000000-0000-0000-0000-000000000036', :'v_k_parent'::uuid, 'guardian');
 
 insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
-  ('e6000000-0000-0000-0000-000000000041', 'e6000000-0000-0000-0000-000000000031', 'Enrolled', 'Student', 'HS9', :'v_student'::uuid),
-  ('e6000000-0000-0000-0000-000000000042', 'e6000000-0000-0000-0000-000000000032', 'Withdrawn', 'Student', 'HS9', :'v_wd_student'::uuid),
-  ('e6000000-0000-0000-0000-000000000043', 'e6000000-0000-0000-0000-000000000033', 'Sibling', 'Leaving', 'HS9', :'v_sib_student'::uuid),
-  ('e6000000-0000-0000-0000-000000000044', 'e6000000-0000-0000-0000-000000000033', 'Sibling', 'Staying', 'HS10', null),
-  ('e6000000-0000-0000-0000-000000000045', 'e6000000-0000-0000-0000-000000000034', 'AthenB', 'Student', 'HS9', :'v_ab_student'::uuid),
-  ('e6000000-0000-0000-0000-000000000046', 'e6000000-0000-0000-0000-000000000035', 'Reenrolled', 'Student', 'HS9', :'v_re_student'::uuid),
+  ('e6000000-0000-0000-0000-000000000041', 'e6000000-0000-0000-0000-000000000031', 'Enrolled', 'Student', 'Gr9', :'v_student'::uuid),
+  ('e6000000-0000-0000-0000-000000000042', 'e6000000-0000-0000-0000-000000000032', 'Withdrawn', 'Student', 'Gr9', :'v_wd_student'::uuid),
+  ('e6000000-0000-0000-0000-000000000043', 'e6000000-0000-0000-0000-000000000033', 'Sibling', 'Leaving', 'Gr9', :'v_sib_student'::uuid),
+  ('e6000000-0000-0000-0000-000000000044', 'e6000000-0000-0000-0000-000000000033', 'Sibling', 'Staying', 'Gr10', null),
+  ('e6000000-0000-0000-0000-000000000045', 'e6000000-0000-0000-0000-000000000034', 'AthenB', 'Student', 'Gr9', :'v_ab_student'::uuid),
+  ('e6000000-0000-0000-0000-000000000046', 'e6000000-0000-0000-0000-000000000035', 'Reenrolled', 'Student', 'Gr9', :'v_re_student'::uuid),
   ('e6000000-0000-0000-0000-000000000047', 'e6000000-0000-0000-0000-000000000036', 'Kinder', 'Child', 'KG', null);
 
 insert into enrollments (id, student_id, class_id, session_id, status) values

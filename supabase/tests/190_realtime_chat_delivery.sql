@@ -11,7 +11,7 @@ insert into classes (id, session_id, name, grade_band)
 insert into families (id, label) values ('d6000000-0000-0000-0000-000000000031', 'RT Family');
 select tests.create_supabase_user('rt-student@test.local') as v_student \gset
 insert into students (id, family_id, first_name, last_name, grade_level, user_id) values
-  ('d6000000-0000-0000-0000-000000000041', 'd6000000-0000-0000-0000-000000000031', 'Rt', 'Student', 'HS9', :'v_student'::uuid);
+  ('d6000000-0000-0000-0000-000000000041', 'd6000000-0000-0000-0000-000000000031', 'Rt', 'Student', 'Gr9', :'v_student'::uuid);
 insert into enrollments (student_id, class_id, session_id, status) values
   ('d6000000-0000-0000-0000-000000000041', 'd6000000-0000-0000-0000-000000000021', 'd6000000-0000-0000-0000-000000000011', 'active');
 
