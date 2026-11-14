@@ -35,8 +35,12 @@ describe('fetchRemovedMessages', () => {
   it('treats null data as no rows', async () => {
     expect(await fetchRemovedMessages(mockClient({ data: null, error: null }))).toEqual([]);
   });
-  it('throws on an RPC error', async () => {
-    const client = mockClient({ data: null, error: { message: 'boom' } });
-    await expect(fetchRemovedMessages(client)).rejects.toThrow('boom');
+  it('throws an error carrying the code and none of the DB message text', async () => {
+    const client = mockClient({ data: null, error: { code: '42501', message: 'boom: secret detail' } });
+    const err = await fetchRemovedMessages(client).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe('42501');
+    expect(err.message).not.toContain('boom');
+    expect(err.message).not.toContain('secret');
   });
 });

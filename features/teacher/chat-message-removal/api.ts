@@ -42,7 +42,8 @@ export async function fetchRemovedMessages(
     ...(cursor ? { p_before_removed_at: cursor.removedAt, p_before_id: cursor.id } : {}),
     p_limit: REVIEW_PAGE_SIZE,
   });
-  if (error) throw new Error(error.message);
+  // Code only: the message can quote DB text, and this error may reach Sentry.
+  if (error) throw Object.assign(new Error('rpc_failed'), { code: error.code });
   return ((data ?? []) as DbRow[]).map((r) => ({
     messageId: r.message_id,
     className: r.class_name,
