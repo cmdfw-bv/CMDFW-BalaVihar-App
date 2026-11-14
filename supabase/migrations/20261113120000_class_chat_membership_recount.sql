@@ -1,0 +1,179 @@
+-- Class-chat membership recount (issue #119, ADR-2026-11-13-class-chat-membership-recount).
+--
+-- Who belongs to a class conversation is decided by ONE rule, class_chat_entitled(class_id):
+--   teacher  user_roles(role 'teacher', scope class)             -- is_active ignored (it marks the
+--                                                                    selected role, not the grant)
+--   parent   any family_members row of a family with a child holding an ACTIVE enrollment in the class
+--            (any relationship — ratified)
+--   student  students.user_id of a student with an ACTIVE enrollment in the class AND is_hs_grade
+-- Label precedence teacher > parent > student. recount_class_participants(class_id) reconciles the
+-- stored rows to that rule: delete the unentitled, relabel in place (notify_level and
+-- notification_default untouched), insert the missing. Every event that can change a class's
+-- membership calls it, so membership no longer depends on the order in which logins and
+-- enrollments arrive (ADR-0022 leaves the CSV import linking logins after enrollment).
+--
+-- This migration changes NO existing rows; it changes what future writes do. The one-time repair
+-- of existing rows is the next migration (20261113130000), applied on staging only after the
+-- read-only preview has been read (spec "Staging repair").
+--
+-- Replaces the bodies of sync_class_participants() and sync_staff_participants() from
+-- 20260709043451_chat_sync_triggers.sql (that file is never edited). The session_staff and
+-- leadership branches of sync_staff_participants() are unchanged.
+
+-- ---------------------------------------------------------------------------------------------
+-- The grade band (ADR-0015: students join class chat from Gr 9). Accepts both spellings in use
+-- until #93 reconciles them: '9'..'12' (seed) and 'Gr9'..'Gr12' (CRM import). Anything else —
+-- null, blank, other case or spacing, 'HS9', PreK, KG — is false (fail closed).
+-- ---------------------------------------------------------------------------------------------
+create or replace function public.is_hs_grade(p_grade text)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = public
+as $$
+  select coalesce(p_grade in ('9', '10', '11', '12', 'Gr9', 'Gr10', 'Gr11', 'Gr12'), false);
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- The entitled set for one class conversation. One row per user, label by precedence.
+-- Joined to auth.users so a user whose Auth row is being deleted (cascade in flight) is never
+-- re-inserted by a recount fired from that cascade.
+-- ---------------------------------------------------------------------------------------------
+create or replace function public.class_chat_entitled(p_class_id uuid)
+returns table (user_id uuid, participant_role text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select distinct on (g.user_id) g.user_id, g.participant_role
+  from (
+    select ur.user_id, 'teacher'::text as participant_role, 1 as rank
+    from user_roles ur
+    where ur.role = 'teacher' and ur.scope_type = 'class' and ur.scope_id = p_class_id
+
+    union all
+
+    select fm.user_id, 'parent'::text, 2
+    from family_members fm
+    where exists (
+      select 1
+      from students s
+      join enrollments e on e.student_id = s.id
+      where s.family_id = fm.family_id
+        and e.class_id = p_class_id
+        and e.status = 'active'
+    )
+
+    union all
+
+    select s.user_id, 'student'::text, 3
+    from students s
+    join enrollments e on e.student_id = s.id
+    where e.class_id = p_class_id
+      and e.status = 'active'
+      and s.user_id is not null
+      and public.is_hs_grade(s.grade_level)
+  ) g
+  join auth.users au on au.id = g.user_id
+  order by g.user_id, g.rank;
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Reconcile one class conversation to the rule. Idempotent. Returns quietly if the class has no
+-- conversation row. Touches only that one kind = 'class' conversation.
+-- ---------------------------------------------------------------------------------------------
+create or replace function public.recount_class_participants(p_class_id uuid)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_conversation_id uuid;
+begin
+  select c.id into v_conversation_id
+  from conversations c
+  where c.kind = 'class' and c.scope_type = 'class' and c.scope_id = p_class_id;
+
+  if v_conversation_id is null then
+    return;
+  end if;
+
+  delete from conversation_participants cp
+  where cp.conversation_id = v_conversation_id
+    and not exists (
+      select 1 from public.class_chat_entitled(p_class_id) e where e.user_id = cp.user_id
+    );
+
+  update conversation_participants cp
+  set participant_role = e.participant_role
+  from public.class_chat_entitled(p_class_id) e
+  where cp.conversation_id = v_conversation_id
+    and cp.user_id = e.user_id
+    and cp.participant_role <> e.participant_role;
+
+  insert into conversation_participants (conversation_id, user_id, participant_role)
+  select v_conversation_id, e.user_id, e.participant_role
+  from public.class_chat_entitled(p_class_id) e
+  on conflict (conversation_id, user_id) do nothing;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Read-only preview for the staging repair (plan P-3). COUNTS ONLY — no user ids, no names
+-- (minors' data minimization). `stable`, so Postgres refuses any insert/update/delete inside it.
+-- action: 'add' | 'remove' | 'relabel'; for 'relabel', participant_role is the NEW label;
+-- for 'remove', the stored label. Only non-zero counts are returned.
+-- ---------------------------------------------------------------------------------------------
+create or replace function public.class_chat_membership_preview()
+returns table (class_id uuid, action text, participant_role text, n bigint)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with conv as (
+    select c.id as conversation_id, c.scope_id as class_id
+    from conversations c
+    where c.kind = 'class' and c.scope_type = 'class'
+  ),
+  entitled as (
+    select conv.conversation_id, conv.class_id, e.user_id, e.participant_role
+    from conv
+    cross join lateral public.class_chat_entitled(conv.class_id) e
+  ),
+  stored as (
+    select conv.conversation_id, conv.class_id, cp.user_id, cp.participant_role
+    from conv
+    join conversation_participants cp on cp.conversation_id = conv.conversation_id
+  ),
+  diff as (
+    select en.class_id, 'add'::text as action, en.participant_role
+    from entitled en
+    where not exists (
+      select 1 from stored st where st.conversation_id = en.conversation_id and st.user_id = en.user_id
+    )
+    union all
+    select st.class_id, 'remove'::text, st.participant_role
+    from stored st
+    where not exists (
+      select 1 from entitled en where en.conversation_id = st.conversation_id and en.user_id = st.user_id
+    )
+    union all
+    select en.class_id, 'relabel'::text, en.participant_role
+    from entitled en
+    join stored st on st.conversation_id = en.conversation_id and st.user_id = en.user_id
+    where st.participant_role <> en.participant_role
+  )
+  select d.class_id, d.action, d.participant_role, count(*)::bigint
+  from diff d
+  group by d.class_id, d.action, d.participant_role;
+$$;
+
+revoke execute on function public.is_hs_grade(text) from public, anon, authenticated;
+revoke execute on function public.class_chat_entitled(uuid) from public, anon, authenticated;
+revoke execute on function public.recount_class_participants(uuid) from public, anon, authenticated;
+revoke execute on function public.class_chat_membership_preview() from public, anon, authenticated;
