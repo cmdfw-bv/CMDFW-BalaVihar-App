@@ -64,9 +64,9 @@ The five conditions the spec implies but does not name, most likely first. Each 
 
 **Files:** Modify `supabase/tests/060_chat_rls.sql`, `supabase/tests/190_realtime_chat_delivery.sql`, `supabase/tests/191_realtime_chat_delivery_adversarial.sql`.
 
-- [ ] **Step 1:** In those three files, replace the student `grade_level` literals `'HS9'`→`'Gr9'` and `'HS10'`→`'Gr10'`. Leave class `grade_band` values (`'HS9-12'`) and everything else as they are.
-- [ ] **Step 2:** Run `npx supabase test db` on the isolated stack. Expected: all files PASS, with no behaviour change on `main`'s schema.
-- [ ] **Step 3:** Commit: `test(#119): respell chat fixtures' student grades to the CRM vocabulary`.
+- [x] **Step 1:** In those three files, replace the student `grade_level` literals `'HS9'`→`'Gr9'` and `'HS10'`→`'Gr10'`. Leave class `grade_band` values (`'HS9-12'`) and everything else as they are.
+- [x] **Step 2:** Run `npx supabase test db` on the isolated stack. Expected: all files PASS, with no behaviour change on `main`'s schema.
+- [x] **Step 3:** Commit: `test(#119): respell chat fixtures' student grades to the CRM vocabulary`.
 
 ### Task 2: Adversarial matrix, Red against current main (AC#10)
 
@@ -88,7 +88,7 @@ The five conditions the spec implies but does not name, most likely first. Each 
 
 **Access probe.** Each assertion runs `tests.authenticate_as(<user>, <role>, …)` and then `select count(*) from messages where conversation_id = :'v_conv_a'`. Expect 1 for access and 0 for denial. Never assert after `tests.clear_authentication()` (it runs as superuser).
 
-- [ ] **Step 1: Write the assertions** (names are the pgTAP descriptions):
+- [x] **Step 1: Write the assertions** (names are the pgTAP descriptions):
   - `GRANT parent linked after enrollment reads A`, and the same for each guardian of F1–F4.
   - `GRANT Gr9 student linked after enrollment reads A` (`stu9`).
   - `DENY Gr8 student in the combined class` (`stu8`) and `DENY Gr7 student in the combined class` (`stu7`).
@@ -102,8 +102,8 @@ The five conditions the spec implies but does not name, most likely first. Each 
   - `DENY unlinked guardian` (`parent_unlink`) and `DENY cleared student login` (`stu_clear`).
   - `notify_level survives a recount`: as superuser, set `teacher_parent`'s `notify_level = 'muted'` before the relabel step, and assert it is still `'muted'` after.
   - **No vacuous DENYs.** Every removal DENY (withdrawal, unlink, clear, regrade 9→8) is preceded by a GRANT for the same user in the same file, so the denial proves a removal and not a user who was never added.
-- [ ] **Step 2: Run on the isolated stack at the current schema.** Expected: FAIL. On `main` the enrol-first order adds nobody, so every GRANT fails. The never-granted DENYs (Gr 7, Gr 8, class-B parent, withdrawn family) pass. Paste the failing list into the commit message body.
-- [ ] **Step 3:** Commit: `test(#119): adversarial membership matrix, red on main`.
+- [x] **Step 2: Run on the isolated stack at the current schema.** Expected: FAIL. On `main` the enrol-first order adds nobody, so every GRANT fails. The never-granted DENYs (Gr 7, Gr 8, class-B parent, withdrawn family) pass. Paste the failing list into the commit message body.
+- [x] **Step 3:** Commit: `test(#119): adversarial membership matrix, red on main`.
 
 ### Task 3: The rule, the recount and the preview (migration 1, functions)
 
@@ -116,7 +116,7 @@ The five conditions the spec implies but does not name, most likely first. Each 
 - `public.recount_class_participants(p_class_id uuid) returns void`: volatile. Looks up `conversations` where `kind='class' and scope_type='class' and scope_id=p_class_id`, and returns quietly if there is none. Then it runs delete → in-place relabel → `insert … on conflict (conversation_id, user_id) do nothing`, against `class_chat_entitled`, restricted to that one `conversation_id`.
 - `public.class_chat_membership_preview() returns table (class_id uuid, action text, participant_role text, n bigint)`: `stable`. `action` is one of `'add'`, `'remove'` or `'relabel'`. For `relabel`, `participant_role` is the **new** label. Only rows with `n > 0` are returned. No user ids and no names.
 
-- [ ] **Step 1: Write `200` part 1** (`plan(N)`; fixtures enrol-first, prefix `e2000000-…`):
+- [x] **Step 1: Write `200` part 1** (`plan(N)`; fixtures enrol-first, prefix `e2000000-…`):
   - `is_hs_grade` truth table: `is(is_hs_grade(x), true)` for each of the 8 accepted values; `false` for `null`, `''`, `'gr9'`, `' 9'`, `'9 '`, `'HS9'`, `'Gr 9'`, `'8'`, `'Gr8'`, `'13'`, `'PreK'`, `'KG'` and `'Shishu Vihaar'`.
   - `class_chat_entitled` on a hand-built class returns exactly the expected `(user_id, participant_role)` set, using `results_eq` ordered by `user_id`. It covers teacher-parent → `teacher`, parent-with-a-Gr9-login → `parent`, a Gr 8 login absent, a withdrawn-only family absent, and a `relationship = 'aunt'` member present as `parent`.
   - Recount reconciles: insert a stray row (`participant_role 'student'` for a Gr 8 login) and delete a rightful parent row, call the recount, and assert the table equals `class_chat_entitled`.
@@ -126,10 +126,10 @@ The five conditions the spec implies but does not name, most likely first. Each 
   - Review focus 4: `recount leaves session_staff and leadership rows untouched` for a user who is a class teacher and a session coordinator.
   - Privileges: for each of the 4 functions, `ok(not has_function_privilege('anon', '<sig>', 'execute'))`, the same for `authenticated`, and `ok(has_function_privilege('postgres', …))`.
   - Preview: `is((select provolatile from pg_proc where proname='class_chat_membership_preview'), 's')`. On the broken fixture above it returns `add parent 1` and `remove student 1`. After the recount it returns 0 rows. Counts of `conversation_participants` before and after the preview call are equal.
-- [ ] **Step 2:** Run `npx supabase test db`. Expected: `200` FAILS (functions do not exist).
-- [ ] **Step 3: Implement** the four functions in the migration, plus `revoke execute on function … from public, anon, authenticated` for each. `class_chat_entitled` is a `union all` of the three grounds with a rank (teacher 1, parent 2, student 3), then `distinct on (user_id) … order by user_id, rank`, joined to `auth.users`.
-- [ ] **Step 4:** Run. Expected: `200` part 1 PASS. `201` still Red (no triggers yet). Everything else green.
-- [ ] **Step 5:** Commit: `feat(#119): class-chat entitlement rule, recount and read-only preview`.
+- [x] **Step 2:** Run `npx supabase test db`. Expected: `200` FAILS (functions do not exist).
+- [x] **Step 3: Implement** the four functions in the migration, plus `revoke execute on function … from public, anon, authenticated` for each. `class_chat_entitled` is a `union all` of the three grounds with a rank (teacher 1, parent 2, student 3), then `distinct on (user_id) … order by user_id, rank`, joined to `auth.users`.
+- [x] **Step 4:** Run. Expected: `200` part 1 PASS. `201` still Red (no triggers yet). Everything else green.
+- [x] **Step 5:** Commit: `feat(#119): class-chat entitlement rule, recount and read-only preview`.
 
 ### Task 4: Wire every event to the recount (migration 1, triggers)
 
@@ -146,7 +146,7 @@ The five conditions the spec implies but does not name, most likely first. Each 
 
 All new trigger functions are `security definer`, `set search_path = public`, and `return coalesce(new, old)`.
 
-- [ ] **Step 1: Write `200` part 2**, each case enrol-first:
+- [x] **Step 1: Write `200` part 2**, each case enrol-first:
   - AC#1–3: guardian link → `parent` row; student login set → `student` row at Gr 9, none at Gr 8.
   - AC#2 / edge cases: a family with children in two classes in two sessions → rows in both, none in a third class. Two children in the same class → one row.
   - AC#6 / AC#7: unlink → row gone; clear → gone; repoint → old gone, new present.
@@ -158,20 +158,20 @@ All new trigger functions are `security definer`, `set search_path = public`, an
   - **Review focus 3:** flip `user_roles.is_active` for a teacher and a parent (as `switch_active_role` does) → the participant snapshot is unchanged, including `id`.
   - **Review focus 5:** set `students.user_id` to a user already a `parent` participant → one row, `parent`.
   - Write as `service_role` (the CSV import's role): `set local role service_role; insert into family_members …` → row present (the revokes do not break trigger firing).
-- [ ] **Step 2:** Run. Expected: part 2 FAILS (no triggers).
-- [ ] **Step 3: Implement** the trigger functions and the `drop trigger … / create trigger …` statements in the table above.
-- [ ] **Step 4:** Run the full suite. Expected: `200` PASS, **`201` PASS (Red → Green)**, `060`, `190`, `191` PASS.
-- [ ] **Step 5:** Commit: `feat(#119): recount class-chat membership on every event that changes it`.
+- [x] **Step 2:** Run. Expected: part 2 FAILS (no triggers).
+- [x] **Step 3: Implement** the trigger functions and the `drop trigger … / create trigger …` statements in the table above.
+- [x] **Step 4:** Run the full suite. Expected: `200` PASS, **`201` PASS (Red → Green)**, `060`, `190`, `191` PASS.
+- [x] **Step 5:** Commit: `feat(#119): recount class-chat membership on every event that changes it`.
 
 ### Task 5: One-time repair migration (AC#8)
 
 **Files:** Create `supabase/migrations/20261113130000_class_chat_membership_repair.sql`, `supabase/scripts/119_membership_preview.sql`; modify `supabase/tests/200_chat_participant_sync.sql` (part 3).
 
-- [ ] **Step 1: Write `200` part 3.** Corrupt a fixture as superuser with `alter table … disable trigger` inside the test transaction: a missing parent, a Gr 7 student row, and a teacher stored as `parent`. Run the **exact repair statement** `select recount_class_participants(scope_id) from conversations where kind = 'class';` and assert that the preview returns 0 rows and the table equals `class_chat_entitled` per class. Run it again and assert the row snapshot (with `id`s) is unchanged.
-- [ ] **Step 2:** Run. Expected: PASS for the function logic (already built). This part pins that the repair statement is correct. The migration file is what Step 3 adds.
-- [ ] **Step 3:** Write the migration as that one statement, with a header comment saying it is idempotent, changes no schema, and on staging is applied by `psql -f` **after** reading the preview (spec "Staging repair"). Write `supabase/scripts/119_membership_preview.sql` as `select * from class_chat_membership_preview() order by class_id, action, participant_role;`, with a header saying it is counts-only and read-only.
-- [ ] **Step 4:** `npx supabase db reset` on the isolated stack, then run the script with `psql`. Expected: 0 rows. Run the full suite: green.
-- [ ] **Step 5:** Commit: `feat(#119): one-time class-chat membership repair + staging preview`.
+- [x] **Step 1: Write `200` part 3.** Corrupt a fixture as superuser with `alter table … disable trigger` inside the test transaction: a missing parent, a Gr 7 student row, and a teacher stored as `parent`. Run the **exact repair statement** `select recount_class_participants(scope_id) from conversations where kind = 'class';` and assert that the preview returns 0 rows and the table equals `class_chat_entitled` per class. Run it again and assert the row snapshot (with `id`s) is unchanged.
+- [x] **Step 2:** Run. Expected: PASS for the function logic (already built). This part pins that the repair statement is correct. The migration file is what Step 3 adds.
+- [x] **Step 3:** Write the migration as that one statement, with a header comment saying it is idempotent, changes no schema, and on staging is applied by `psql -f` **after** reading the preview (spec "Staging repair"). Write `supabase/scripts/119_membership_preview.sql` as `select * from class_chat_membership_preview() order by class_id, action, participant_role;`, with a header saying it is counts-only and read-only.
+- [x] **Step 4:** `npx supabase db reset` on the isolated stack, then run the script with `psql`. Expected: 0 rows. Run the full suite: green.
+- [x] **Step 5:** Commit: `feat(#119): one-time class-chat membership repair + staging preview`.
 
 ### Task 6: Seed and staging seed issue no logins below Gr 9 (Decision 1, P-2)
 
@@ -179,28 +179,39 @@ All new trigger functions are `security definer`, `set search_path = public`, an
 
 **Interfaces:** Consumes `is_hs_grade` (Task 3). Produces `export const HS_GRADE_LEVELS` in `scripts/_seed-staging.mjs`, a frozen array of exactly the 8 accepted values, commented as mirroring `is_hs_grade` for demo-data selection only.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `108`: `'F3 7-8-9 class: exactly 3 students have a login, all Gr 9+'` (count = 3, and count where `not is_hs_grade(grade_level)` = 0). The pairing test becomes `'student1@ is "Student 9-1" and <derived>@ is a guardian of that student''s family (UAT-11/12/13)'`. Add `'seeded class conversations match the entitlement rule'`: `is((select count(*) from class_chat_membership_preview()), 0)`.
   - Vitest: `HS_GRADE_LEVELS` equals exactly `['9','10','11','12','Gr9','Gr10','Gr11','Gr12']`. Also `resolveScopeIds` filters candidates with `.in('grade_level', HS_GRADE_LEVELS)`, asserted with a minimal fake Supabase client that records the query-builder calls. (The file has no `resolveScopeIds` test today, so this is new.)
-- [ ] **Step 2:** Run `npx supabase db reset && npx supabase test db` (isolated) and `npx vitest run scripts/__tests__/seed-staging.test.ts`. Expected: both FAIL.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2:** Run `npx supabase db reset && npx supabase test db` (isolated) and `npx vitest run scripts/__tests__/seed-staging.test.ts`. Expected: both FAIL.
+- [x] **Step 3: Implement.**
   - `seed.sql`: add `and is_hs_grade(st.grade_level)` to the student-login loop, and rewrite the `PILOT EXCEPTION (#19)` comment to say the exception is withdrawn (#119, ADR-0015).
   - `seed-staging.mjs`: add `.in('grade_level', HS_GRADE_LEVELS)` to the first-run query, and update the "no unlinked student left" message to mention the Gr 9+ pool.
-- [ ] **Step 4: Derive the new pairing. Do not guess it.** After the reset, run:
+- [x] **Step 4: Derive the new pairing. Do not guess it.** After the reset, run:
   `select su.email, st.first_name, st.last_name, gu.email from auth.users su join students st on st.user_id = su.id join family_members fm on fm.family_id = st.family_id join auth.users gu on gu.id = fm.user_id where su.email = 'student1@bv-seed.test.local';`
   Put that guardian into `108` and `UAT.md` (UAT-11/12/13 and the line 38 note). Then confirm UAT-12/13's "Parent A and Parent B both have a child in the same class" still holds for the accounts named, and swap in a derived second parent if not. UAT line 35 becomes `student1@ … (through student3)` with "(the Gr 9 students of the F3 7, 8, 9 class have logins)".
-- [ ] **Step 5:** Re-check `106`. Its assertions are existence/consistency checks with no count of 9, so it needs no change. Confirm it stays green.
-- [ ] **Step 6:** Run everything. Expected: pgTAP, vitest, `npm run typecheck` and `npm run lint` all green.
-- [ ] **Step 7:** Commit: `fix(#119): seed and staging seed issue student logins only at Gr 9+`.
+- [x] **Step 5:** Re-check `106`. Its assertions are existence/consistency checks with no count of 9, so it needs no change. Confirm it stays green.
+- [x] **Step 6:** Run everything. Expected: pgTAP, vitest, `npm run typecheck` and `npm run lint` all green.
+- [x] **Step 7:** Commit: `fix(#119): seed and staging seed issue student logins only at Gr 9+`.
 
 ### Task 7: Measure the import cost (design "CSV import timing")
 
 **Files:** none committed except the results table appended to this plan.
 
-- [ ] **Step 1:** On the isolated stack after a reset, run `explain (analyze, buffers) select recount_class_participants(<largest seeded class id>);` and record the execution time.
-- [ ] **Step 2:** Time linking all 20 seed families' guardians with triggers on, against the same run with the three new triggers disabled. Use the `family_members` inserts copied from `seed.sql` in one transaction, `\timing`, and `rollback`. Record both.
-- [ ] **Step 3:** Acceptance: the added time is **< 1 s**. If not, **stop and return to `/architect`**. Do not batch around the trigger.
-- [ ] **Step 4:** Commit the table: `docs(#119): recount timing on seed-sized import`.
+- [x] **Step 1:** On the isolated stack after a reset, run `explain (analyze, buffers) select recount_class_participants(<largest seeded class id>);` and record the execution time.
+- [x] **Step 2:** Time linking all 20 seed families' guardians with triggers on, against the same run with the three new triggers disabled. Use the `family_members` inserts copied from `seed.sql` in one transaction, `\timing`, and `rollback`. Record both.
+- [x] **Step 3:** Acceptance: the added time is **< 1 s**. If not, **stop and return to `/architect`**. Do not batch around the trigger.
+- [x] **Step 4:** Commit the table: `docs(#119): recount timing on seed-sized import`.
+
+**Results (`/build` 2026-11-14, isolated stack `bv-iso-119`, after `db reset` at `118b5c0`):**
+
+| Measurement | Result |
+| --- | --- |
+| `recount_class_participants` on the largest seeded class (F3 "7, 8, 9", 9 enrolled), `explain (analyze, buffers)` | **5.42 ms** execution, 1,253 shared buffer hits |
+| Re-link all seed guardians (27 `family_members` rows, one `insert … select`), `family_members_sync_participants` **off**: 3 runs | 0.42 / 0.55 / 0.37 ms (avg 0.45) |
+| The same, trigger **on**: 3 runs | 51.74 / 42.13 / 37.94 ms (avg 43.94) |
+| **Added time** | **≈ 44 ms avg, 52 ms worst.** Acceptance (< 1 s) **met**, about 20× under. |
+
+Method: each run is in its own rolled-back subtransaction. The links are deleted with the trigger off, and class conversations are recounted so the parent rows are really gone, then the links are re-inserted under a `clock_timestamp()` stopwatch. Proof the trigger did the work: in every ON run, parent participants went 0 → 45; in every OFF run they stayed 0. The timer covers the insert only, which matches a CSV phase-2 link batch. 27 links rather than 26, because the seed also links `multirole@` as a guardian.
 
 ### Task 8: Records
 
