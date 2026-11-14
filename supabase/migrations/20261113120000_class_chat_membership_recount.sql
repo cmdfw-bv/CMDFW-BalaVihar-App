@@ -177,3 +177,142 @@ revoke execute on function public.is_hs_grade(text) from public, anon, authentic
 revoke execute on function public.class_chat_entitled(uuid) from public, anon, authenticated;
 revoke execute on function public.recount_class_participants(uuid) from public, anon, authenticated;
 revoke execute on function public.class_chat_membership_preview() from public, anon, authenticated;
+
+-- =============================================================================================
+-- Events -> recount. Row-level AFTER triggers, in the writing transaction. Each recounts every
+-- class whose membership the row can affect; widening is impossible because the recount only
+-- ever writes class_chat_entitled.
+-- =============================================================================================
+
+-- enrollments: insert / update / delete. Body replaced; the hand-written withdrawal delete is gone
+-- (it removed people still entitled on another ground — ADR Decision 2). Recounts new.class_id,
+-- and old.class_id on delete or when the enrollment moved class (D-1).
+create or replace function public.sync_class_participants() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform public.recount_class_participants(new.class_id);
+  end if;
+  if tg_op = 'DELETE' or (tg_op = 'UPDATE' and old.class_id is distinct from new.class_id) then
+    perform public.recount_class_participants(old.class_id);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists enrollments_sync_participants on public.enrollments;
+create trigger enrollments_sync_participants
+after insert or update or delete on public.enrollments
+for each row execute function public.sync_class_participants();
+
+-- family_members: insert / update / delete. Recounts every class where a student of the old or new
+-- family holds an enrollment of ANY status (ratified item 5: a withdrawn-only class still needs
+-- its stale rows removed).
+create or replace function public.sync_family_member_participants() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_class_id uuid;
+begin
+  for v_class_id in
+    select distinct e.class_id
+    from enrollments e
+    join students s on s.id = e.student_id
+    where s.family_id in (
+      case when tg_op in ('UPDATE', 'DELETE') then old.family_id end,
+      case when tg_op in ('INSERT', 'UPDATE') then new.family_id end
+    )
+  loop
+    perform public.recount_class_participants(v_class_id);
+  end loop;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists family_members_sync_participants on public.family_members;
+create trigger family_members_sync_participants
+after insert or update or delete on public.family_members
+for each row execute function public.sync_family_member_participants();
+
+-- students: the login (user_id), the grade, or the family changes. Fires on the referential
+-- action too (auth.users delete -> user_id set null). Recounts every class where that student
+-- holds an enrollment of any status. A family change also moves that family's guardians: the
+-- recount of the student's own classes covers both the old and the new family.
+create or replace function public.sync_student_participants() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_class_id uuid;
+begin
+  for v_class_id in
+    select distinct e.class_id from enrollments e where e.student_id = new.id
+  loop
+    perform public.recount_class_participants(v_class_id);
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists students_sync_participants on public.students;
+create trigger students_sync_participants
+after update of user_id, grade_level, family_id on public.students
+for each row
+when (old.user_id is distinct from new.user_id
+   or old.grade_level is distinct from new.grade_level
+   or old.family_id is distinct from new.family_id)
+execute function public.sync_student_participants();
+
+-- user_roles: only the class-teacher branches change, to the recount (a teacher who is also an
+-- active parent there stays, relabelled parent). session_staff and leadership branches are
+-- unchanged from 20260709043451. The trigger itself (insert or delete) is unchanged.
+create or replace function public.sync_staff_participants() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_conversation_id uuid;
+begin
+  if tg_op = 'DELETE' then
+    if old.scope_type = 'class' and old.role = 'teacher' then
+      perform public.recount_class_participants(old.scope_id);
+      return old;
+    elsif old.scope_type = 'session' and old.role = 'coordinator' then
+      select id into v_conversation_id from conversations where kind='session_staff' and scope_type='session' and scope_id = old.scope_id;
+    elsif old.scope_type = 'org' and old.role in ('bv_coordinator','admin') then
+      select id into v_conversation_id from conversations where kind='leadership' and scope_type='org';
+    end if;
+
+    if v_conversation_id is not null then
+      delete from conversation_participants where conversation_id = v_conversation_id and user_id = old.user_id;
+    end if;
+    return old;
+  end if;
+
+  if new.scope_type = 'class' and new.role = 'teacher' then
+    perform public.recount_class_participants(new.scope_id);
+  elsif new.scope_type = 'session' and new.role = 'coordinator' then
+    select id into v_conversation_id from conversations where kind='session_staff' and scope_type='session' and scope_id = new.scope_id;
+    if v_conversation_id is not null then
+      insert into conversation_participants (conversation_id, user_id, participant_role)
+      values (v_conversation_id, new.user_id, 'coordinator')
+      on conflict (conversation_id, user_id) do nothing;
+    end if;
+  elsif new.scope_type = 'org' and new.role in ('bv_coordinator','admin') then
+    select id into v_conversation_id from conversations where kind='leadership' and scope_type='org';
+    if v_conversation_id is not null then
+      insert into conversation_participants (conversation_id, user_id, participant_role)
+      values (v_conversation_id, new.user_id, new.role)
+      on conflict (conversation_id, user_id) do nothing;
+    end if;
+  end if;
+  return new;
+end;
+$$;
