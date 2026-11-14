@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { CATCH_UP_PAGE_SIZE, INITIAL_PAGE_SIZE, type ChatMessage } from './messageList';
+import { CATCH_UP_PAGE_SIZE, INITIAL_PAGE_SIZE, type ChatMessage, type RemovalPatch } from './messageList';
 
-const COLUMNS = 'id, conversation_id, sender_user_id, body, mention_targets, created_at';
+const COLUMNS = 'id, conversation_id, sender_user_id, body, mention_targets, created_at, sender_role, removed_at, removed_by_role';
 
 // Catch-up is single flight, so one request that never answers would hold up every later one.
 // Half the 30 second tick: a dead request is given up in time for the next tick to try again.
@@ -30,6 +30,8 @@ export interface MessagesApi {
   fetchLatest(conversationId: string): Promise<ChatMessage[]>;
   fetchSince(conversationId: string, sinceIso: string): Promise<ChatMessage[]>;
   fetchOlder(conversationId: string, before: ChatMessage): Promise<ChatMessage[]>;
+  fetchRemovedSince(conversationId: string, sinceIso: string): Promise<RemovalPatch[]>;
+  removeMessage(messageId: string): Promise<ChatMessage>;
   insertMessage(input: NewMessage): Promise<ChatMessage>;
   isConversationReadable(conversationId: string): Promise<boolean>;
 }
@@ -37,7 +39,7 @@ export interface MessagesApi {
 // Every read here is authorized by `messages_member_select` / `conversations_member_select` at
 // the moment it runs. That is the whole point of signal-then-fetch (ADR-2026-10-07): nothing in
 // this file decides who may read.
-export function createMessagesApi(client: Pick<SupabaseClient, 'from'>): MessagesApi {
+export function createMessagesApi(client: Pick<SupabaseClient, 'from' | 'rpc'>): MessagesApi {
   return {
     async fetchLatest(conversationId) {
       const { data, error } = await withReadTimeout((signal) =>
@@ -73,6 +75,34 @@ export function createMessagesApi(client: Pick<SupabaseClient, 'from'>): Message
         all.push(...page);
         if (page.length < CATCH_UP_PAGE_SIZE) return all;
       }
+    },
+
+    async fetchRemovedSince(conversationId, sinceIso) {
+      const all: RemovalPatch[] = [];
+      for (let from = 0; ; from += CATCH_UP_PAGE_SIZE) {
+        const { data, error } = await withReadTimeout((signal) =>
+          client
+            .from('messages')
+            .select('id, removed_at, removed_by_role')
+            .eq('conversation_id', conversationId)
+            .gte('removed_at', sinceIso)
+            .order('removed_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, from + CATCH_UP_PAGE_SIZE - 1)
+            .abortSignal(signal),
+        );
+        if (error) throw error;
+        const page = (data ?? []) as RemovalPatch[];
+        all.push(...page);
+        if (page.length < CATCH_UP_PAGE_SIZE) return all;
+      }
+    },
+
+    async removeMessage(messageId) {
+      // The database decides who may remove; a refusal comes back as SQLSTATE 42501.
+      const { data, error } = await client.rpc('remove_message', { p_message_id: messageId });
+      if (error) throw error;
+      return data as ChatMessage;
     },
 
     async fetchOlder(conversationId, before) {

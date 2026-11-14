@@ -27,14 +27,19 @@ function mockClient(results: (Result | { promise: Promise<Result> })[]) {
     calls.push(['from', table]);
     return builder;
   });
-  return { client: { from } as any, calls };
+  const rpc = vi.fn((...args: unknown[]) => {
+    calls.push(['rpc', ...args]);
+    return builder;
+  });
+  return { client: { from, rpc } as any, calls };
 }
 
 const argsFor = (calls: Call[], method: string) => calls.filter((c) => c[0] === method).map((c) => c.slice(1));
 
 const CONV = '11111111-1111-4111-8111-111111111111';
 const ME = '22222222-2222-4222-8222-222222222222';
-const COLUMNS = 'id, conversation_id, sender_user_id, body, mention_targets, created_at';
+const COLUMNS =
+  'id, conversation_id, sender_user_id, body, mention_targets, created_at, sender_role, removed_at, removed_by_role';
 const row = (n: number): ChatMessage => ({
   id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
   conversation_id: CONV,
@@ -42,6 +47,9 @@ const row = (n: number): ChatMessage => ({
   body: `m${n}`,
   mention_targets: [],
   created_at: `2026-10-07T12:00:00.${String(n).padStart(6, '0')}+00:00`,
+  sender_role: 'student',
+  removed_at: null,
+  removed_by_role: null,
 });
 const rows = (count: number, from = 0) => Array.from({ length: count }, (_, i) => row(from + i));
 
@@ -238,5 +246,55 @@ describe('isConversationReadable', () => {
   it('throws on a real error, so a network failure is never mistaken for lost access', async () => {
     const { client } = mockClient([{ data: null, error: { message: 'offline' } }]);
     await expect(createMessagesApi(client).isConversationReadable(CONV)).rejects.toEqual({ message: 'offline' });
+  });
+});
+
+describe('fetchRemovedSince', () => {
+  it('selects only the removal columns at or after the cursor', async () => {
+    const patch = { id: row(1).id, removed_at: '2026-10-07T13:00:00+00:00', removed_by_role: 'teacher' };
+    const { client, calls } = mockClient([{ data: [patch], error: null }]);
+
+    const result = await createMessagesApi(client).fetchRemovedSince(CONV, '2026-10-07T12:00:00.000Z');
+
+    expect(result).toEqual([patch]);
+    expect(argsFor(calls, 'from')).toEqual([['messages']]);
+    expect(argsFor(calls, 'select')).toEqual([['id, removed_at, removed_by_role']]);
+    expect(argsFor(calls, 'eq')).toEqual([['conversation_id', CONV]]);
+    expect(argsFor(calls, 'gte')).toEqual([['removed_at', '2026-10-07T12:00:00.000Z']]);
+  });
+
+  it('pages in 100s until a short page', async () => {
+    const page = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ id: row(i).id, removed_at: 'x', removed_by_role: 'admin' }));
+    const { client, calls } = mockClient([
+      { data: page(100), error: null },
+      { data: page(2), error: null },
+    ]);
+    const result = await createMessagesApi(client).fetchRemovedSince(CONV, 's');
+    expect(result).toHaveLength(102);
+    expect(argsFor(calls, 'range')).toEqual([
+      [0, 99],
+      [100, 199],
+    ]);
+  });
+
+  it('throws the PostgREST error', async () => {
+    const { client } = mockClient([{ data: null, error: { code: '57014' } }]);
+    await expect(createMessagesApi(client).fetchRemovedSince(CONV, 's')).rejects.toEqual({ code: '57014' });
+  });
+});
+
+describe('removeMessage', () => {
+  it('calls the remove_message rpc and returns the row', async () => {
+    const removed = { ...row(1), body: null, removed_at: 'x', removed_by_role: 'teacher' };
+    const { client, calls } = mockClient([{ data: removed, error: null }]);
+    const result = await createMessagesApi(client).removeMessage(row(1).id);
+    expect(result).toEqual(removed);
+    expect(argsFor(calls, 'rpc')).toEqual([['remove_message', { p_message_id: row(1).id }]]);
+  });
+
+  it('throws the rpc error', async () => {
+    const { client } = mockClient([{ data: null, error: { code: '42501' } }]);
+    await expect(createMessagesApi(client).removeMessage(row(1).id)).rejects.toEqual({ code: '42501' });
   });
 });

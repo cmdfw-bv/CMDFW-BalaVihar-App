@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { chatTopic, joinConversationChannel, type ChannelHandlers } from '../conversationChannel';
+import { MESSAGE_REMOVED_EVENT, chatTopic, joinConversationChannel, type ChannelHandlers } from '../conversationChannel';
 
 const CONV = '11111111-aaaa-4111-8111-111111111111';
 
 function fakeClient() {
   const order: string[] = [];
   let statusCallback: ((status: string) => void) | null = null;
-  let broadcastCallback: ((message: { payload?: unknown }) => void) | null = null;
+  const callbacks = new Map<string, (message: { payload?: unknown }) => void>();
   const channel = {
-    on: vi.fn((_type: string, _filter: unknown, callback: (message: { payload?: unknown }) => void) => {
-      broadcastCallback = callback;
+    on: vi.fn((_type: string, filter: { event: string }, callback: (message: { payload?: unknown }) => void) => {
+      callbacks.set(filter.event, callback);
       return channel;
     }),
     subscribe: vi.fn((callback: (status: string) => void) => {
@@ -37,13 +37,15 @@ function fakeClient() {
     channel,
     order,
     status: (status: string) => statusCallback?.(status),
-    broadcast: (payload: unknown) => broadcastCallback?.({ payload }),
+    broadcast: (payload: unknown) => callbacks.get('message_saved')?.({ payload }),
+    broadcastEvent: (event: string, payload: unknown) => callbacks.get(event)?.({ payload }),
   };
 }
 
 function handlers(): { [K in keyof ChannelHandlers]: Mock<ChannelHandlers[K]> } {
   return {
     onPing: vi.fn<ChannelHandlers['onPing']>(),
+    onRemoved: vi.fn<ChannelHandlers['onRemoved']>(),
     onJoined: vi.fn<ChannelHandlers['onJoined']>(),
     onJoinFailed: vi.fn<ChannelHandlers['onJoinFailed']>(),
     onDown: vi.fn<ChannelHandlers['onDown']>(),
@@ -159,5 +161,28 @@ describe('joinConversationChannel', () => {
     const joined = await joinConversationChannel(fake.client, CONV, handlers());
 
     await expect(joined.leave()).resolves.toBeUndefined();
+  });
+});
+
+describe('message_removed signal', () => {
+  it('listens on the message_removed event and passes the id', async () => {
+    const f = fakeClient();
+    const h = handlers();
+    await joinConversationChannel(f.client, CONV, h);
+    expect(MESSAGE_REMOVED_EVENT).toBe('message_removed');
+    f.broadcastEvent('message_removed', { id: 'abc' });
+    expect(h.onRemoved).toHaveBeenCalledWith('abc');
+    expect(h.onPing).not.toHaveBeenCalled();
+  });
+
+  it('passes null when the payload has no id, and is silent after leave', async () => {
+    const f = fakeClient();
+    const h = handlers();
+    const ch = await joinConversationChannel(f.client, CONV, h);
+    f.broadcastEvent('message_removed', null);
+    expect(h.onRemoved).toHaveBeenCalledWith(null);
+    await ch.leave();
+    f.broadcastEvent('message_removed', { id: 'x' });
+    expect(h.onRemoved).toHaveBeenCalledTimes(1);
   });
 });

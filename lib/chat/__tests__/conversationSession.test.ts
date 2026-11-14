@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CATCH_UP_POLL_MS, createConversationSession, type ConversationState } from '../conversationSession';
+import {
+  CATCH_UP_POLL_MS,
+  REMOVE_NETWORK_COPY,
+  REMOVE_REFUSED_COPY,
+  createConversationSession,
+  type ConversationState,
+} from '../conversationSession';
 import type { ChannelHandlers, ConversationChannel } from '../conversationChannel';
 import type { NewMessage } from '../messagesApi';
-import type { ChatMessage } from '../messageList';
+import type { ChatMessage, RemovalPatch } from '../messageList';
 
 const CONV = '11111111-1111-4111-8111-111111111111';
 const ME = '22222222-2222-4222-8222-222222222222';
@@ -15,6 +21,9 @@ const msg = (n: number): ChatMessage => ({
   body: `m${n}`,
   mention_targets: [],
   created_at: new Date(Date.UTC(2026, 9, 7, 12, 0, n)).toISOString(),
+  sender_role: 'student',
+  removed_at: null,
+  removed_by_role: null,
 });
 
 function deferred<T>() {
@@ -37,6 +46,8 @@ function harness() {
     fetchOlder: vi.fn(async (_conversationId: string, _before: ChatMessage): Promise<ChatMessage[]> => []),
     insertMessage: vi.fn(async (_input: NewMessage): Promise<ChatMessage> => msg(0)),
     isConversationReadable: vi.fn(async (_conversationId: string): Promise<boolean> => true),
+    fetchRemovedSince: vi.fn(async (_conversationId: string, _sinceIso: string): Promise<RemovalPatch[]> => []),
+    removeMessage: vi.fn(async (_messageId: string): Promise<ChatMessage> => msg(0)),
   };
   const joinChannel = vi.fn(async (_conversationId: string, h: ChannelHandlers): Promise<ConversationChannel> => {
     handlers = h;
@@ -72,6 +83,7 @@ describe('opening a conversation', () => {
       isLive: false,
       hasOlder: false,
       errorCode: null,
+      removing: [],
     });
 
     await h.session.open();
@@ -309,6 +321,7 @@ describe('access lost while the conversation is open', () => {
       isLive: false,
       hasOlder: false,
       errorCode: null,
+      removing: [],
     });
     expect(h.leave).toHaveBeenCalledTimes(1);
 
@@ -693,5 +706,117 @@ describe('catch-up against a table that honours the cursor', () => {
     await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
 
     expect(ids(h.session.getState())).toEqual([msg(1).id, msg(5).id, msg(6).id, msg(30).id]);
+  });
+});
+
+describe('removals', () => {
+  const removedRow = (n: number): ChatMessage => ({
+    ...msg(n),
+    body: null,
+    removed_at: new Date(Date.UTC(2026, 9, 7, 13, 0, 0)).toISOString(),
+    removed_by_role: 'teacher',
+  });
+
+  it('exports the exact toast copy', () => {
+    expect(REMOVE_REFUSED_COPY).toBe("This message can't be removed.");
+    expect(REMOVE_NETWORK_COPY).toBe("Couldn't remove \u2014 try again.");
+  });
+
+  it('catch-up asks for removals from the oldest held message on every tick', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(5), msg(3)]);
+    await h.session.open();
+    await settle();
+    expect(h.api.fetchRemovedSince).toHaveBeenCalledWith(CONV, msg(3).created_at);
+
+    h.api.fetchSince.mockResolvedValueOnce([msg(9)]);
+    await vi.advanceTimersByTimeAsync(CATCH_UP_POLL_MS);
+    expect(h.api.fetchRemovedSince).toHaveBeenLastCalledWith(CONV, msg(3).created_at);
+  });
+
+  it('folds fetched removals into the list', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(2), msg(1)]);
+    h.api.fetchRemovedSince.mockResolvedValueOnce([
+      { id: msg(1).id, removed_at: removedRow(1).removed_at!, removed_by_role: 'teacher' },
+    ]);
+    await h.session.open();
+    await settle();
+    const [first, second] = h.session.getState().messages;
+    expect(first).toMatchObject({ body: null, removed_by_role: 'teacher' });
+    expect(second.body).toBe('m2');
+  });
+
+  it('reports a failed removal fetch by code on the load path', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    h.api.fetchRemovedSince.mockRejectedValueOnce({ code: '57014', message: 'secret text' });
+    await h.session.open();
+    await settle();
+    expect(h.onError).toHaveBeenCalledWith({ source: 'load', code: '57014' });
+  });
+
+  it('a removal signal runs catch-up without asking about access for the id', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.api.fetchSince.mockClear();
+    h.api.isConversationReadable.mockClear();
+
+    h.channel().onRemoved('00000000-0000-4000-8000-0000000000ff');
+    await settle();
+
+    expect(h.api.fetchSince).toHaveBeenCalledTimes(1);
+    expect(h.api.fetchRemovedSince).toHaveBeenCalled();
+    expect(h.api.isConversationReadable).not.toHaveBeenCalled();
+  });
+
+  it('remove: tracks the id while pending and patches the row from the result', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    const d = deferred<ChatMessage>();
+    h.api.removeMessage.mockReturnValueOnce(d.promise);
+
+    const pending = h.session.remove(msg(1).id);
+    expect(h.session.getState().removing).toEqual([msg(1).id]);
+    d.resolve(removedRow(1));
+    await pending;
+
+    expect(h.api.removeMessage).toHaveBeenCalledWith(msg(1).id);
+    const state = h.session.getState();
+    expect(state.removing).toEqual([]);
+    expect(state.messages[0]).toMatchObject({ body: null, removed_by_role: 'teacher' });
+  });
+
+  it('remove refused (42501): throws kind refused, row unchanged, removing cleared', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.api.removeMessage.mockRejectedValueOnce({ code: '42501', message: 'nope' });
+
+    await expect(h.session.remove(msg(1).id)).rejects.toMatchObject({ kind: 'refused' });
+
+    expect(h.session.getState().removing).toEqual([]);
+    expect(h.session.getState().messages[0].body).toBe('m1');
+  });
+
+  it.each([
+    ['a fetch TypeError', new TypeError('Failed to fetch')],
+    ['an error with no code', { message: 'x' }],
+  ])('remove on %s: throws kind network, row keeps its body', async (_n, err) => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.api.removeMessage.mockRejectedValueOnce(err);
+
+    await expect(h.session.remove(msg(1).id)).rejects.toMatchObject({ kind: 'network' });
+
+    expect(h.session.getState().removing).toEqual([]);
+    expect(h.session.getState().messages[0].body).toBe('m1');
   });
 });
