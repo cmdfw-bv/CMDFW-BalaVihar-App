@@ -172,6 +172,7 @@ It is idempotent: running it twice, or on a correct conversation, changes nothin
 | `family_members` insert / delete / update | every class where a student of `new.family_id` / `old.family_id` has an enrollment of **any** status (ratified item 5) |
 | `students` update of `user_id`, `grade_level`, or `family_id` *(family_id new, D-1)* | every class where that student has an enrollment of any status |
 | `user_roles` insert / delete, class-teacher branch | `scope_id` |
+| `user_roles` update of `user_id`/`role`/`scope_type`/`scope_id` *(new, #135)* | old row as a delete, then new row as an insert (`is_active`-only updates fire nothing) |
 
 - `sync_class_participants()` keeps its trigger name (`enrollments_sync_participants`), but its body is replaced by the recount call and the trigger gains `delete`. The withdrawal branch's hand-written delete is gone, because the recount covers it (ADR Decision B1).
 - In `sync_staff_participants()`, the class-teacher insert and delete branches call the recount. The `session_staff` and `leadership` branches are **unchanged**.
@@ -259,3 +260,12 @@ None. No screen, component, or copy changes. Effect visible to users, through #2
 - **P-3.** The preview is a `stable` function, `class_chat_membership_preview()`, so it cannot write. The script is a wrapper over it.
 
 Measured at `/build`: linking all 27 seed guardians costs about 44 ms more with the recount on (52 ms worst), against a < 1 s bar. A single-class recount takes 5.4 ms (plan, Task 7 results).
+
+## Test (2026-11-14)
+
+The `/test` adversarial RLS audit found two gaps, and both are fixed in the same migration before merge (ADR addendum 2026-11-14):
+
+- **[#134](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/134):** a concurrent withdrawal and guardian link left a withdrawn-only family in the chat. `recount_class_participants` now takes a per-class `pg_advisory_xact_lock` before it reads, and the multi-class triggers recount in `class_id` order. Both orderings were reproduced live with two sessions: Red before, chat empty after. The re-audit then found a class-move race: an enrollment A→B committing during a guardian link left the guardian out of B. The `family_members`/`students` triggers now repeat until a fresh read of their class list finds nothing new. Reproduced Red (B entitled 2, stored 1), then Green (both stored).
+- **[#135](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/135):** moving a teacher or coordinator by `UPDATE` left the old membership in place. The new `user_roles_sync_participants_on_move` trigger fixes it.
+
+Tests: `supabase/tests/202_chat_participant_sync_serialization.sql` (10 assertions). It checks that the per-class lock is held on the direct and trigger paths, with an untouched-class control, and covers the teacher, teacher-parent and coordinator moves.
