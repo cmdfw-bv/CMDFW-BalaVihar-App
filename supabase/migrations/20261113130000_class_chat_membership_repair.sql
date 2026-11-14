@@ -1,0 +1,14 @@
+-- One-time repair of class-chat membership (issue #119, spec AC#8, ADR-2026-11-13).
+--
+-- Runs the recount (20261113120000) once over every class conversation, so rows written before the
+-- recount existed match the rule: adds parents and Gr 9+ students that were linked after their
+-- enrollment, removes rows the rule would not admit (e.g. Gr 7-8 student logins), relabels in place.
+--
+-- * Changes no schema.
+-- * Idempotent: on an environment that is already correct, or run twice, it changes nothing
+--   (pinned by supabase/tests/200_chat_participant_sync.sql part 3, which runs this exact statement).
+-- * STAGING: never `supabase db push` (staging carries untracked drift). Apply 20261113120000 on its
+--   own with `psql -f`, read the counts-only preview (supabase/scripts/119_membership_preview.sql),
+--   then apply this file with `psql -f` and re-run the preview — it must return 0 rows.
+--   /deploy-staging owns that run (spec "Staging repair: preview, then apply").
+select public.recount_class_participants(scope_id) from conversations where kind = 'class';

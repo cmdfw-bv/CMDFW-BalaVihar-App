@@ -1,24 +1,33 @@
 begin;
-select plan(6);
+select plan(8);
 
--- #19 pilot exception: every student in the F3 "7, 8, 9" combined class gets an app login (not
--- just grade 9), so the Student experience is demoable/pilotable for that class. And the accounts
--- a volunteer actually demos (the 7-8-9 students, teacher1@, multirole@) must land on POPULATED
--- classes with real content — not the empty 10-12 class. Runs against seeded data (CI:
--- `supabase db reset` then `supabase test db`). Account layer = seed.sql; account-free structure
--- it builds on = domain.sql. Mutation-proof for assertion 1: break the login loop in
--- seed.sql (the `where c.grade_band = '7, 8, 9'` block) and this goes red (exact count, not vacuous).
+-- Student logins in the seed follow the general Gr 9+ rule (ADR-0015). The #19 pilot exception
+-- (a login for every 7-8-9 student) is withdrawn by #119 / ADR-2026-11-13: a Gr 7-8 login would
+-- land on an empty class chat. The accounts a volunteer actually demos (the Gr 9 students,
+-- teacher1@, multirole@) must land on POPULATED classes with real content — not the empty 10-12
+-- class. Runs against seeded data (CI: `supabase db reset` then `supabase test db`). Account
+-- layer = seed.sql; account-free structure it builds on = domain.sql. Mutation-proof for
+-- assertions 1-2: drop the `is_hs_grade` filter from the seed.sql login loop and both go red
+-- (9 logins, 6 of them below Gr 9).
 
--- Exactly the 9 students of the F3 7-8-9 class have a login (pilot exception). Exact count, so it
--- cannot pass vacuously (an empty/renamed class would make it 0, not 9).
+-- Exactly the 3 Gr 9 students of the F3 7-8-9 class have a login. Exact count, so it cannot pass
+-- vacuously (an empty/renamed class would make it 0, not 3).
 select is(
   (select count(*) from students st
      join enrollments e on e.student_id = st.id
      join classes c on c.id = e.class_id
      join sessions s on s.id = c.session_id
     where s.name = 'F3' and c.grade_band = '7, 8, 9' and st.user_id is not null)::int,
-  9,
-  'F3 7-8-9 class: exactly 9 students have a login (pilot exception)'
+  3,
+  'F3 7-8-9 class: exactly 3 students have a login, all Gr 9+'
+);
+
+-- No seeded student below Gr 9 has a login, in any class (the rule is is_hs_grade, nothing else).
+select is(
+  (select count(*) from students st
+    where st.user_id is not null and not is_hs_grade(st.grade_level))::int,
+  0,
+  'no seeded student below Gr 9 has a login'
 );
 
 -- Each such login carries a matching org-scoped 'student' role (so they don't land on /no-role).
@@ -60,12 +69,13 @@ select ok(
   'teacher1@ has enrolled students (not the empty 10-12 class)'
 );
 
--- Pin the student1@ <-> parent17a@ mapping end to end (#98). UAT.md:38 makes this pairing
--- load-bearing for UAT-11/12/13, but the counts above stay green even if the family round-robin
--- (domain.sql `% 20`), the grade order, or the 'Student N-M' name pattern silently repoint
--- student1@ at a different family. This asserts both halves: student1@'s student is 'Student 7-1'
--- AND parent17a@ is a guardian of that student's family. Mutation-proof: flip `% 20` -> `% 19` in
--- domain.sql and this goes red while every count above stays green.
+-- Pin the student1@ <-> parent4a@ mapping end to end (#98, re-derived for #119 from a reset
+-- stack). UAT.md:38 makes this pairing load-bearing for UAT-11/12/13, but the counts above stay
+-- green even if the family round-robin (domain.sql `% 20`), the grade order, or the
+-- 'Student N-M' name pattern silently repoint student1@ at a different family. This asserts both
+-- halves: student1@'s student is 'Student 9-1' AND parent4a@ is a guardian of that student's
+-- family. Mutation-proof: flip `% 20` -> `% 19` in domain.sql and this goes red while every count
+-- above stays green.
 select ok(
   exists (
     select 1
@@ -74,10 +84,18 @@ select ok(
       join family_members fm on fm.family_id = st.family_id
       join auth.users pu on pu.id = fm.user_id
      where su.email = 'student1@bv-seed.test.local'
-       and st.first_name = 'Student 7-1'
-       and pu.email = 'parent17a@bv-seed.test.local'
+       and st.first_name = 'Student 9-1'
+       and pu.email = 'parent4a@bv-seed.test.local'
   ),
-  'student1@ is "Student 7-1" and parent17a@ is a guardian of that student''s family (UAT-11/12/13)'
+  'student1@ is "Student 9-1" and parent4a@ is a guardian of that student''s family (UAT-11/12/13)'
+);
+
+-- Every seeded class conversation already matches the entitlement rule (#119): the recount
+-- triggers keep it so whatever order the seed links logins and enrollments in.
+select is(
+  (select count(*) from class_chat_membership_preview())::int,
+  0,
+  'seeded class conversations match the entitlement rule'
 );
 
 select * from finish();
