@@ -7,7 +7,7 @@
 -- All fixtures are ENROL-FIRST (enrollment before the guardian link / student login).
 -- Fixture user ids live in temp table u(name, id) so $$-quoted assertions can reach them.
 begin;
-select plan(75);
+select plan(79);
 
 create temp table u (name text primary key, id uuid not null);
 insert into u
@@ -392,6 +392,53 @@ insert into family_members (family_id, user_id, relationship)
 values ('e2000000-0000-0000-0000-000000000216', :'v_g16'::uuid, 'guardian');
 reset role;
 select is(pg_temp.role_in('g16', 'e2000000-0000-0000-0000-0000000001b1'), 'parent', 'a guardian linked by service_role becomes a parent participant');
+
+-- =============================================================================================
+-- PART 3 — the one-time repair (migration 20261113130000), run as the exact statement it ships
+-- =============================================================================================
+-- Corrupt stored membership the way pre-#119 data is wrong. A Gr7 login is set with the student
+-- trigger disabled (as on main, which had no grade rule), and given a participant row; a parent
+-- row is missing; a teacher is stored as parent.
+alter table students disable trigger students_sync_participants;
+update students set user_id = (select id from u where name = 'ru1') where id = 'e2000000-0000-0000-0000-000000000306';
+alter table students enable trigger students_sync_participants;
+insert into conversation_participants (conversation_id, user_id, participant_role)
+select c.id, (select id from u where name = 'ru1'), 'student'
+from conversations c where c.kind = 'class' and c.scope_id = 'e2000000-0000-0000-0000-0000000001a1';
+delete from conversation_participants
+where user_id = (select id from u where name = 'g4')
+  and conversation_id = (select id from conversations where kind = 'class' and scope_id = 'e2000000-0000-0000-0000-0000000001a1');
+update conversation_participants set participant_role = 'parent'
+where user_id = (select id from u where name = 'tq')
+  and conversation_id = (select id from conversations where kind = 'class' and scope_id = 'e2000000-0000-0000-0000-0000000001b1');
+
+select set_eq(
+  $$select class_id, action, participant_role, n from public.class_chat_membership_preview()
+    where class_id in ('e2000000-0000-0000-0000-0000000001a1', 'e2000000-0000-0000-0000-0000000001b1')$$,
+  $$values ('e2000000-0000-0000-0000-0000000001a1'::uuid, 'add'::text, 'parent'::text, 1::bigint),
+           ('e2000000-0000-0000-0000-0000000001a1', 'remove', 'student', 1),
+           ('e2000000-0000-0000-0000-0000000001b1', 'relabel', 'teacher', 1)$$,
+  'preview names the three corruptions as counts (missing parent, Gr7 student row, teacher stored as parent)');
+
+-- The repair statement, verbatim from 20261113130000_class_chat_membership_repair.sql.
+select public.recount_class_participants(scope_id) from conversations where kind = 'class';
+
+select is_empty($$select 1 from public.class_chat_membership_preview()$$,
+  'after the repair the preview shows zero changes for every class conversation');
+select set_eq(
+  $$select c.scope_id, cp.user_id, cp.participant_role from conversation_participants cp
+    join conversations c on c.id = cp.conversation_id where c.kind = 'class'$$,
+  $$select c.scope_id, e.user_id, e.participant_role from conversations c
+    cross join lateral public.class_chat_entitled(c.scope_id) e where c.kind = 'class'$$,
+  'after the repair every class conversation equals class_chat_entitled');
+
+create temp table repair_snap as
+select id, conversation_id, user_id, participant_role, notify_level, notification_default from conversation_participants;
+select public.recount_class_participants(scope_id) from conversations where kind = 'class';
+select set_eq(
+  $$select id, conversation_id, user_id, participant_role, notify_level, notification_default from conversation_participants$$,
+  $$select * from repair_snap$$,
+  'running the repair a second time changes nothing, row ids included');
 
 select * from finish();
 rollback;
