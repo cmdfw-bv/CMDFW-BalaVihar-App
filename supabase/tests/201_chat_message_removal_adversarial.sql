@@ -7,7 +7,7 @@
 -- tests.clear_authentication() as an "unauthorized" stand-in (it resets to a superuser).
 -- clear_authentication() is used only to return to the superuser between fixture steps.
 begin;
-select plan(44);
+select plan(46);
 
 -- ---------------------------------------------------------------------------------------------
 -- Fixture. Session S1 holds classes A and B; session S2 holds class C.
@@ -248,9 +248,20 @@ select tests.clear_authentication();
 -- ---------------------------------------------------------------------------------------------
 -- Unauthenticated
 -- ---------------------------------------------------------------------------------------------
+-- The function body would also raise 42501 for a null auth.uid(), so the privilege itself is pinned
+-- (anon and PUBLIC hold no EXECUTE) and the runtime error message must be the privilege error.
+select ok(not has_function_privilege('anon', 'public.remove_message(uuid)', 'execute'),
+  'anon_cannot_execute: anon holds no EXECUTE privilege on remove_message');
+select ok(not exists (
+    select 1 from pg_proc p,
+           aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     where p.oid = 'public.remove_message(uuid)'::regprocedure
+       and a.grantee = 0 and a.privilege_type = 'EXECUTE'),
+  'anon_cannot_execute: PUBLIC holds no EXECUTE privilege on remove_message');
 set local role anon;
 select throws_ok(format('select public.remove_message(%L::uuid)', 'f2010000-0000-0000-0000-000000000101'),
-  '42501', null, 'anon_cannot_execute: an unauthenticated caller cannot execute remove_message');
+  '42501', 'permission denied for function remove_message',
+  'anon_cannot_execute: an unauthenticated caller is refused by the missing privilege, not the body');
 reset role;
 
 -- ---------------------------------------------------------------------------------------------
