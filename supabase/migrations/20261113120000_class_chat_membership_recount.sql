@@ -83,6 +83,16 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 -- Reconcile one class conversation to the rule. Idempotent. Returns quietly if the class has no
 -- conversation row. Touches only that one kind = 'class' conversation.
+--
+-- Serialized per class (#134): the first statement takes a transaction-scoped advisory lock keyed
+-- to the class. Without it, two transactions that each change one class's membership (e.g. a
+-- withdrawal racing a guardian link) both recount from their own snapshot, and the later commit
+-- re-adds people the earlier one removed. With it, the second recount waits until the first
+-- commits; this function is volatile, so under READ COMMITTED each statement after the lock takes
+-- a fresh snapshot that includes that commit. The enrollments/family_members/students triggers
+-- recount several classes in class_id order, so two such transactions do not take the same pair
+-- of locks in opposite order. (The admin-only user_roles move recounts old then new; a deadlock
+-- there is detected by Postgres and aborts one transaction (40P01) — it cannot corrupt membership.)
 -- ---------------------------------------------------------------------------------------------
 create or replace function public.recount_class_participants(p_class_id uuid)
 returns void
@@ -94,6 +104,8 @@ as $$
 declare
   v_conversation_id uuid;
 begin
+  perform pg_advisory_xact_lock(hashtextextended('class_chat_recount:' || p_class_id::text, 0));
+
   select c.id into v_conversation_id
   from conversations c
   where c.kind = 'class' and c.scope_type = 'class' and c.scope_id = p_class_id;
@@ -193,10 +205,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if tg_op in ('INSERT', 'UPDATE') then
+  if tg_op = 'UPDATE' and old.class_id is distinct from new.class_id then
+    -- Both classes, in class_id order (lock ordering — see recount_class_participants).
+    perform public.recount_class_participants(least(old.class_id, new.class_id));
+    perform public.recount_class_participants(greatest(old.class_id, new.class_id));
+  elsif tg_op in ('INSERT', 'UPDATE') then
     perform public.recount_class_participants(new.class_id);
-  end if;
-  if tg_op = 'DELETE' or (tg_op = 'UPDATE' and old.class_id is distinct from new.class_id) then
+  else
     perform public.recount_class_participants(old.class_id);
   end if;
   return coalesce(new, old);
@@ -211,6 +226,12 @@ for each row execute function public.sync_class_participants();
 -- family_members: insert / update / delete. Recounts every class where a student of the old or new
 -- family holds an enrollment of ANY status (ratified item 5: a withdrawn-only class still needs
 -- its stale rows removed).
+--
+-- Repeats to a fixpoint (#134 re-audit). The class list is read BEFORE any recount lock is taken,
+-- so an enrollment that moves class and commits while this trigger waits on a lock is missed by
+-- the first pass. Each further pass is a new statement, so it reads with a fresh snapshot that
+-- includes whatever committed during the wait, and recounts any class it has not done yet. The set
+-- of classes is finite, so the loop ends.
 create or replace function public.sync_family_member_participants() returns trigger
 language plpgsql
 security definer
@@ -218,17 +239,27 @@ set search_path = public
 as $$
 declare
   v_class_id uuid;
+  v_done uuid[] := '{}';
+  v_found boolean;
 begin
-  for v_class_id in
-    select distinct e.class_id
-    from enrollments e
-    join students s on s.id = e.student_id
-    where s.family_id in (
-      case when tg_op in ('UPDATE', 'DELETE') then old.family_id end,
-      case when tg_op in ('INSERT', 'UPDATE') then new.family_id end
-    )
   loop
-    perform public.recount_class_participants(v_class_id);
+    v_found := false;
+    for v_class_id in
+      select distinct e.class_id
+      from enrollments e
+      join students s on s.id = e.student_id
+      where s.family_id in (
+        case when tg_op in ('UPDATE', 'DELETE') then old.family_id end,
+        case when tg_op in ('INSERT', 'UPDATE') then new.family_id end
+      )
+        and e.class_id <> all (v_done)
+      order by e.class_id
+    loop
+      perform public.recount_class_participants(v_class_id);
+      v_done := v_done || v_class_id;
+      v_found := true;
+    end loop;
+    exit when not v_found;
   end loop;
   return coalesce(new, old);
 end;
@@ -242,7 +273,8 @@ for each row execute function public.sync_family_member_participants();
 -- students: the login (user_id), the grade, or the family changes. Fires on the referential
 -- action too (auth.users delete -> user_id set null). Recounts every class where that student
 -- holds an enrollment of any status. A family change also moves that family's guardians: the
--- recount of the student's own classes covers both the old and the new family.
+-- recount of the student's own classes covers both the old and the new family. Repeats to a
+-- fixpoint for the same reason as sync_family_member_participants (#134 re-audit).
 create or replace function public.sync_student_participants() returns trigger
 language plpgsql
 security definer
@@ -250,11 +282,21 @@ set search_path = public
 as $$
 declare
   v_class_id uuid;
+  v_done uuid[] := '{}';
+  v_found boolean;
 begin
-  for v_class_id in
-    select distinct e.class_id from enrollments e where e.student_id = new.id
   loop
-    perform public.recount_class_participants(v_class_id);
+    v_found := false;
+    for v_class_id in
+      select distinct e.class_id from enrollments e
+      where e.student_id = new.id and e.class_id <> all (v_done)
+      order by e.class_id
+    loop
+      perform public.recount_class_participants(v_class_id);
+      v_done := v_done || v_class_id;
+      v_found := true;
+    end loop;
+    exit when not v_found;
   end loop;
   return new;
 end;
@@ -269,9 +311,11 @@ when (old.user_id is distinct from new.user_id
    or old.family_id is distinct from new.family_id)
 execute function public.sync_student_participants();
 
--- user_roles: only the class-teacher branches change, to the recount (a teacher who is also an
--- active parent there stays, relabelled parent). session_staff and leadership branches are
--- unchanged from 20260709043451. The trigger itself (insert or delete) is unchanged.
+-- user_roles: the class-teacher branches change to the recount (a teacher who is also an active
+-- parent there stays, relabelled parent). session_staff and leadership branches keep the
+-- 20260709043451 behaviour. An UPDATE that moves a role (#135: role, scope or user changed) is the
+-- old row's DELETE branch followed by the new row's INSERT branch; it fires from its own trigger
+-- below, which ignores is_active-only updates (the auth hook's active-role switch).
 create or replace function public.sync_staff_participants() returns trigger
 language plpgsql
 security definer
@@ -280,10 +324,9 @@ as $$
 declare
   v_conversation_id uuid;
 begin
-  if tg_op = 'DELETE' then
+  if tg_op in ('DELETE', 'UPDATE') then
     if old.scope_type = 'class' and old.role = 'teacher' then
       perform public.recount_class_participants(old.scope_id);
-      return old;
     elsif old.scope_type = 'session' and old.role = 'coordinator' then
       select id into v_conversation_id from conversations where kind='session_staff' and scope_type='session' and scope_id = old.scope_id;
     elsif old.scope_type = 'org' and old.role in ('bv_coordinator','admin') then
@@ -293,7 +336,10 @@ begin
     if v_conversation_id is not null then
       delete from conversation_participants where conversation_id = v_conversation_id and user_id = old.user_id;
     end if;
-    return old;
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    v_conversation_id := null;
   end if;
 
   if new.scope_type = 'class' and new.role = 'teacher' then
@@ -316,3 +362,17 @@ begin
   return new;
 end;
 $$;
+
+-- #135: the insert/delete trigger (20260709043451) never saw an UPDATE, so moving a role to another
+-- scope left the old membership. A separate trigger, because a WHEN clause cannot reference OLD
+-- on INSERT. is_active is deliberately not in the column list: the auth hook flips it on every
+-- active-role switch, which must change no participant row.
+drop trigger if exists user_roles_sync_participants_on_move on public.user_roles;
+create trigger user_roles_sync_participants_on_move
+after update of user_id, role, scope_type, scope_id on public.user_roles
+for each row
+when (old.user_id is distinct from new.user_id
+   or old.role is distinct from new.role
+   or old.scope_type is distinct from new.scope_type
+   or old.scope_id is distinct from new.scope_id)
+execute function public.sync_staff_participants();
