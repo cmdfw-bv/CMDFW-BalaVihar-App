@@ -8,7 +8,7 @@
 -- Every "hidden from another session" assertion is paired with a "visible in-session" control
 -- on the same row, so a hide cannot pass because the row was never there.
 begin;
-select plan(55);
+select plan(58);
 
 -- ---------------------------------------------------------------------------------------------
 -- Fixture. Session S holds class A; session T holds class C.
@@ -463,6 +463,40 @@ select tests.clear_authentication();
 select tests.authenticate_as(:'v_coord_s'::uuid, 'coordinator', 'session', 'f2020000-0000-0000-0000-000000000011');
 select is(public.message_in_session('f2020000-0000-0000-0000-000000000102', 'f2020000-0000-0000-0000-000000000011'), true,
   'message_in_session: CONTROL a session-S coordinator gets true for a session-S message');
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------------------------
+-- cross_session_student_message_hidden (#139): a student enrolled in class A (session S) AND class C
+-- (session T) posts in class C. The removal and review rows carry target_student_id, which is
+-- enrolled in S too, so the student-enrollment clause must not be what decides message rows.
+-- ---------------------------------------------------------------------------------------------
+insert into enrollments (student_id, class_id, session_id, status) values
+  ('f2020000-0000-0000-0000-000000000041', 'f2020000-0000-0000-0000-0000000000c1', 'f2020000-0000-0000-0000-000000000012', 'active');
+insert into messages (id, conversation_id, sender_user_id, body, mention_targets) values
+  ('f2020000-0000-0000-0003-000000000001', :'v_conv_c'::uuid, :'v_student_a'::uuid, 'student A in class C', array[]::text[]);
+
+select tests.authenticate_as(:'v_teacher_c'::uuid, 'teacher', 'class', 'f2020000-0000-0000-0000-0000000000c1');
+select public.remove_message('f2020000-0000-0000-0003-000000000001'::uuid);
+select tests.clear_authentication();
+select tests.authenticate_as(:'v_admin'::uuid, 'admin', 'org', null);
+select count(*) as v_review_rows from public.get_removed_messages_for_oversight(null, null, 50) \gset
+select tests.clear_authentication();
+
+select is(
+  (select string_agg(action || ':' || coalesce(target_student_id::text, '<null>'), ',' order by action)
+     from audit_log where target_id = 'f2020000-0000-0000-0003-000000000001'),
+  'read:f2020000-0000-0000-0000-000000000041,remove:f2020000-0000-0000-0000-000000000041',
+  'cross_session_student_message_hidden: fixture has a remove and a read row, both tagged with the dual-session student'
+);
+
+select tests.authenticate_as(:'v_coord_s'::uuid, 'coordinator', 'session', 'f2020000-0000-0000-0000-000000000011');
+select is((select count(*) from audit_log where target_id = 'f2020000-0000-0000-0003-000000000001'), 0::bigint,
+  'cross_session_student_message_hidden: the session-S coordinator sees no audit rows for a session-T message by a student also enrolled in S');
+select tests.clear_authentication();
+
+select tests.authenticate_as(:'v_coord_t'::uuid, 'coordinator', 'session', 'f2020000-0000-0000-0000-000000000012');
+select is((select count(*) from audit_log where target_id = 'f2020000-0000-0000-0003-000000000001'), 2::bigint,
+  'cross_session_student_message_hidden: CONTROL the session-T coordinator sees both rows');
 select tests.clear_authentication();
 
 select * from finish();

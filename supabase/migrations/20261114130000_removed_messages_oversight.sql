@@ -237,7 +237,13 @@ grant execute on function public.message_in_session(uuid, uuid) to authenticated
 -- 4. audit_log_coordinator_read gains a messages clause, so a Coordinator sees removal and review
 -- entries for messages in their session's class chats (parent and teacher messages carry no
 -- target_student_id, so no older clause covers them). The three existing clauses are copied
--- verbatim from 20260729092000. Bare auth.jwt(), never (select auth.jwt()) (#105).
+-- verbatim from 20260729092000 with ONE intentional change: the student-enrollment clause now
+-- excludes target_table = 'messages' (#139). That clause shows any row whose target_student_id
+-- is enrolled anywhere in the coordinator's session. #113 is the first writer of 'messages' rows
+-- with target_student_id set, so a student enrolled in classes in two sessions would let the
+-- other session's coordinator see audit rows for messages outside their session. Message rows are
+-- therefore decided only by the message_in_session clause, which checks the message's own class.
+-- Bare auth.jwt(), never (select auth.jwt()) (#105).
 -- ---------------------------------------------------------------------------------------------
 drop policy if exists audit_log_coordinator_read on audit_log;
 create policy audit_log_coordinator_read on audit_log for select
@@ -246,6 +252,7 @@ using (
   and (
     (
       audit_log.target_student_id is not null
+      and audit_log.target_table <> 'messages'  -- #139: message rows go through message_in_session only
       and exists (
         select 1 from enrollments e
         where e.student_id = audit_log.target_student_id
