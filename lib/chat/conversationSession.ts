@@ -63,7 +63,7 @@ export interface SessionDeps {
 
 // The code or the name only. An error's message can quote the failing statement or a URL, and
 // this value may leave the device (client-privacy rule: nothing PII goes to error reporting).
-function errorCodeOf(error: unknown): string {
+export function errorCodeOf(error: unknown): string {
   if (typeof error === 'object' && error !== null) {
     const { code, name } = error as { code?: unknown; name?: unknown };
     if (typeof code === 'string' && code !== '') return code;
