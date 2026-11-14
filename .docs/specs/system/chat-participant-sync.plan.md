@@ -1,7 +1,7 @@
 # System — chat-participant-sync — plan
 
 > `/plan` 2026-11-13. Turns the [Design section](chat-participant-sync.md#design-2026-11-13) into ordered, test-first tasks.
-> **Stage:** `/refine` ✓ `/architect` ✓ (ADR-2026-11-13) `/design` ✓ `/plan` ✓ (this — signed off by Maulik, 2026-11-14; execution: native) → `/migration` → `/build` → `/test` → `/deploy-staging`.
+> **Stage:** `/refine` ✓ `/architect` ✓ (ADR-2026-11-13) `/design` ✓ `/plan` ✓ (this — signed off by Maulik, 2026-11-14; execution: native) → `/migration` ✓ → `/build` ✓ → `/test` → `/deploy-staging`.
 > **Spec:** [chat-participant-sync.md](chat-participant-sync.md) · **Governing ADR:** [ADR-2026-11-13-class-chat-membership-recount](../../adr/2026-11-13-class-chat-membership-recount.md) · **Issue:** #119
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. The pipeline stages (`/migration`, `/build`, `/test`) are typed by the human. Do the work, show the evidence, then ask them to type the stage command.
@@ -217,10 +217,10 @@ Method: each run is in its own rolled-back subtransaction. The links are deleted
 
 **Files:** Modify `.docs/adr/2026-11-13-class-chat-membership-recount.md`, `.docs/specs/system/chat-participant-sync.md`, `.docs/specs/system/_index.md`.
 
-- [ ] **Step 1:** ADR: add a dated **Addendum 2026-11-13 (`/design` D-1)** recording the three narrowing events (enrollment delete, enrollment class change, student family change), using the precedent wording of the Ratified note. No status change. Run `node scripts/gen-adr-index.mjs` only if the index output changes.
-- [ ] **Step 2:** Spec: add a "Plan (2026-11-13)" pointer with P-1 to P-3. In Testing, amend "060 is unchanged" to "060/190/191 change only the student `grade_level` spelling (P-1)", and in Staging repair step 3 name the preview function.
-- [ ] **Step 3:** `_index.md` row: record each stage as it completes (`/plan` ✓ was recorded at sign-off).
-- [ ] **Step 4:** Commit: `docs(#119): plan — tasks, P-1..P-3, ADR D-1 addendum`.
+- [x] **Step 1:** ADR: add a dated **Addendum 2026-11-13 (`/design` D-1)** recording the three narrowing events (enrollment delete, enrollment class change, student family change), using the precedent wording of the Ratified note. No status change. Run `node scripts/gen-adr-index.mjs` only if the index output changes.
+- [x] **Step 2:** Spec: add a "Plan (2026-11-13)" pointer with P-1 to P-3. In Testing, amend "060 is unchanged" to "060/190/191 change only the student `grade_level` spelling (P-1)", and in Staging repair step 3 name the preview function.
+- [x] **Step 3:** `_index.md` row: record each stage as it completes (`/plan` ✓ was recorded at sign-off).
+- [x] **Step 4:** Commit: `docs(#119): plan — tasks, P-1..P-3, ADR D-1 addendum`.
 
 ---
 

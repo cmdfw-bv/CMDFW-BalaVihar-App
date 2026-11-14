@@ -201,7 +201,7 @@ Acceptance: the added time is under 1 s for the seed-sized import, which stays w
 **Staging repair: preview, then apply.** `/deploy-staging` owns the run; this is what it must do.
 1. **Do not `supabase db push`** (staging carries untracked drift, see the #105 history). Compare staging's `supabase_migrations.schema_migrations` with the repo first.
 2. Apply migration 1 **on its own**, via `psql -f`, and record it in `schema_migrations`. This changes no rows.
-3. Run the **read-only preview** `supabase/scripts/119_membership_preview.sql`. It compares `class_chat_entitled` with the stored rows for every class conversation and prints, per class, **counts only**: rows to add, remove, or relabel, broken down by label. It prints no names or emails (minors' data minimization). A human reads it. The expected staging result is: adds for parents and Gr 9 students, removes for any Gr 7–8 student rows, and no teacher removals.
+3. Run the **read-only preview** `supabase/scripts/119_membership_preview.sql`, a one-line wrapper over the `stable` function `class_chat_membership_preview()` (plan P-3; Postgres refuses writes inside it). It compares `class_chat_entitled` with the stored rows for every class conversation and prints, per class, **counts only**: rows to add, remove, or relabel, broken down by label. It prints no names or emails (minors' data minimization). A human reads it. The expected staging result is: adds for parents and Gr 9 students, removes for any Gr 7–8 student rows, and no teacher removals.
 4. Apply migration 2 the same way. Re-run the preview; it must show zero changes.
 
 **Seed correction (`/refine` Decision 1).** `seed.sql`'s student-login loop adds `and is_hs_grade(st.grade_level)`, which drops logins from 9 to **3** (`student1@`–`student3@`, the Gr 9 students). Knock-on changes the plan must carry:
@@ -218,9 +218,9 @@ None. No screen, component, or copy changes. Effect visible to users, through #2
 
 - `200_chat_participant_sync.sql`, behaviour: every AC#1–#9 case plus D-1's three events, `is_hs_grade` truth table (both vocabularies, the PreK/KG/Shishu Vihaar/blank/null/case variants), idempotence (recount twice = no change), no-conversation class returns without error, `notify_level` survives a relabel, and execute-revoke assertions.
 - `201_chat_participant_sync_adversarial.sql`, the §11.3 role × scope × grade × ground-count matrix from AC#10 and the ADR's additions. Each case is shown **Red** against current `main` before the migration. Access is checked as the user (`set role authenticated` + claims) reading `messages`, not just by counting rows. Per the standing rule, "no access" is asserted with `set role anon`/`authenticated`, never `clear_authentication()` (superuser).
-- `060_chat_rls.sql` is unchanged and must stay green (link-first order regression).
+- `060_chat_rls.sql`, `190` and `191` change only the student `grade_level` spelling (`'HS9'`→`'Gr9'`, `'HS10'`→`'Gr10'`; plan P-1), and must stay green. `060` remains the link-first order regression.
 - `190`/`191` (#6 realtime) must stay green, because #119 now replaces code #6 depends on (ratified item 1).
-- The preview script gets a pgTAP check that it writes nothing (row counts before and after are equal).
+- The preview gets a pgTAP check that it writes nothing: the function is `stable` (`provolatile = 's'`), and row counts before and after the call are equal (plan P-3).
 
 ### Edge cases (beyond the refined list, which all still hold)
 
@@ -249,3 +249,13 @@ None. No screen, component, or copy changes. Effect visible to users, through #2
 | 9 | `class_chat_entitled` is exactly ADR-0015's ladder; revokes |
 | 10 | `201` |
 | 11 | DB-only; no vendor, no client |
+
+## Plan (2026-11-13)
+
+**[chat-participant-sync.plan.md](chat-participant-sync.plan.md)**: 8 test-first tasks, signed off by Maulik 2026-11-14. Three decisions came out of checking this design against the code. None reverses an ADR decision:
+
+- **P-1.** `060`/`190`/`191` fixtures used the grade spelling `'HS9'`/`'HS10'`, which no real path produces. They are respelled `'Gr9'`/`'Gr10'`, and the rule stays as ratified.
+- **P-2.** The staging seed's student persona now claims only a Gr 9+ student (`HS_GRADE_LEVELS`, which mirrors `is_hs_grade` for demo-data selection only). The claimable pool drops 9 → 3, so a 4th tester needs `--reset`.
+- **P-3.** The preview is a `stable` function, `class_chat_membership_preview()`, so it cannot write. The script is a wrapper over it.
+
+Measured at `/build`: linking all 27 seed guardians costs about 44 ms more with the recount on (52 ms worst), against a < 1 s bar. A single-class recount takes 5.4 ms (plan, Task 7 results).

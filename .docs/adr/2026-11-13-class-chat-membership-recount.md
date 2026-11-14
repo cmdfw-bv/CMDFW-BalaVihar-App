@@ -14,6 +14,14 @@
 
 No decision is reversed, so this is a dated completion of the record rather than a supersede (precedent: ADR-0022's corrected Consequences bullet, ADR-0019's addendum). `/design` may rely on all five.
 
+**Addendum 2026-11-13 (`/design` D-1, Maulik).** Decision 2's event list gains three more events that re-count a class's chat membership:
+
+1. **An enrollment row deleted outright** re-counts that class.
+2. **An enrollment's `class_id` changed** re-counts both the old class and the new one, in the same statement.
+3. **A student's `family_id` changed** re-counts every class where that student has an enrollment at any status. The old family's guardians leave unless another ground keeps them, and the new family's guardians join.
+
+Each event can only remove access, or move it to the correct chat. None can widen it, because the recount still admits only the grounds of the Decision. Nothing in the app does any of these today, so like Decision 2's removal paths they are defensive. No decision is reversed and the status is unchanged, so this is a dated addendum, not a supersede (same precedent as the Ratified note above). Built and tested in `supabase/migrations/20261113120000_class_chat_membership_recount.sql` / `supabase/tests/200_chat_participant_sync.sql`.
+
 ### Context
 
 `conversation_participants` for class conversations is written by `sync_class_participants()` (`20260709043451`), which fires only on `enrollments` insert/update and reads `students.user_id` and `family_members` at that instant. Five facts checked during this review shape the decision:
