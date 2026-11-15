@@ -807,3 +807,61 @@ describe('listAllUsers — pagination cannot silently undercount (#129 item 3)',
     expect(client.requested).toEqual([1, 2]);
   });
 });
+
+// #119 (ADR-2026-11-13, /plan P-2). A tester's staging student persona must claim a Gr 9+ student:
+// a Gr 7-8 login is not a class-chat participant, so that persona would land on an empty chat.
+// HS_GRADE_LEVELS mirrors the DB's is_hs_grade() for demo-data SELECTION only — it never decides
+// access (RLS + is_hs_grade do). Pinned exactly so the two cannot drift apart silently.
+describe('seed-staging student persona claims only Gr 9+ students (#119)', () => {
+  it('HS_GRADE_LEVELS is exactly the spellings is_hs_grade() accepts', async () => {
+    const { HS_GRADE_LEVELS } = await import('../_seed-staging.mjs');
+    expect(HS_GRADE_LEVELS).toEqual(['9', '10', '11', '12', 'Gr9', 'Gr10', 'Gr11', 'Gr12']);
+    expect(Object.isFrozen(HS_GRADE_LEVELS)).toBe(true);
+  });
+
+  // A minimal fake supabase-js client: every query-builder call is recorded per table, and the
+  // builder resolves (via .single() or await) to the canned row for that table. No existing auth
+  // users, so resolveScopeIds takes the first-run "claim an unlinked student" path.
+  function fakeClient() {
+    const calls: Record<string, Array<[string, unknown[]]>> = {};
+    const rows: Record<string, unknown> = {
+      sessions: { id: 'sess-1' },
+      classes: { id: 'class-1' },
+      students: [{ id: 'stu-9', family_id: 'fam-9' }],
+    };
+    const client = {
+      auth: { admin: { listUsers: async () => ({ data: { users: [] }, error: null }) } },
+      from(table: string) {
+        const log: Array<[string, unknown[]]> = (calls[table] ??= []);
+        const result = { data: rows[table], error: null };
+        const builder: Record<string, unknown> = {
+          single: async () => result,
+          then: (ok: (r: unknown) => unknown, ko: (e: unknown) => unknown) =>
+            Promise.resolve(result).then(ok, ko),
+        };
+        for (const m of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
+          builder[m] = (...args: unknown[]) => {
+            log.push([m, args]);
+            return builder;
+          };
+        }
+        return builder;
+      },
+    };
+    return { client, calls };
+  }
+
+  it('filters the unlinked-student candidates to HS_GRADE_LEVELS', async () => {
+    const { resolveScopeIds } = await import('../seed-staging.mjs');
+    const { HS_GRADE_LEVELS } = await import('../_seed-staging.mjs');
+    const { client, calls } = fakeClient();
+
+    const resolved = await (resolveScopeIds as (c: unknown, e: string) => Promise<unknown>)(
+      client,
+      'tester+student@example.test',
+    );
+
+    expect(resolved).toEqual({ sessionId: 'sess-1', classId: 'class-1', studentId: 'stu-9', familyId: 'fam-9' });
+    expect(calls.students).toContainEqual(['in', ['grade_level', HS_GRADE_LEVELS]]);
+  });
+});

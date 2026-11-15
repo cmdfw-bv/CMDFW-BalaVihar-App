@@ -39,6 +39,7 @@ import {
   buildPsqlConnParams,
   isProvisionedPersonaEmail,
   DOMAIN_SQL_PATH,
+  HS_GRADE_LEVELS,
 } from './_seed-staging.mjs';
 
 // Run psql against the staging DB. We pass the connection as DISCRETE values — host/port/user/dbname
@@ -188,8 +189,10 @@ export async function ensureUser(client, email) {
  *
  *  Idempotent per base: if this base's student login already owns a student (a re-run), reuse THAT
  *  student + family so the parent/multirole links stay on the same family. Only on a first run do
- *  we claim a fresh UNLINKED student (students.user_id is 1:1, so each tester must take a different
- *  one — the pilot class has 9, ample). Ordered by (first_name, id) for a stable, reproducible pick. */
+ *  we claim a fresh UNLINKED Gr 9+ student (students.user_id is 1:1, so each tester must take a
+ *  different one). Only Gr 9+ (#119): a Gr 7-8 login is not a class-chat participant, so that persona
+ *  would land on an empty chat. The pilot class has 3 Gr 9 students, so a 4th tester needs --reset.
+ *  Ordered by (first_name, id) for a stable, reproducible pick. */
 export async function resolveScopeIds(client, studentEmail) {
   const { data: session, error: se } = await client
     .from('sessions').select('id').eq('name', 'F3').single();
@@ -210,20 +213,22 @@ export async function resolveScopeIds(client, studentEmail) {
     }
   }
 
-  // First run: claim an unlinked student enrolled in the pilot class.
+  // First run: claim an unlinked Gr 9+ student enrolled in the pilot class.
   const { data: students, error: ee } = await client
     .from('students')
     .select('id, family_id, enrollments!inner(class_id)')
     .eq('enrollments.class_id', klass.id)
     .is('user_id', null)
+    .in('grade_level', HS_GRADE_LEVELS)
     .order('first_name')
     .order('id')
     .limit(1);
   if (ee) throw new Error(`seed-staging: querying an unlinked pilot-class student failed (${ee.message})`);
   if (!students?.length) {
     throw new Error(
-      `seed-staging: no unlinked student left in the "${PILOT_CLASS_GRADE_BAND}" class — every one is already ` +
-        `claimed by a tester's student persona. Run with --reset to start clean, or add more students to the seed.`,
+      `seed-staging: no unlinked Gr 9+ student left in the "${PILOT_CLASS_GRADE_BAND}" class — every one is ` +
+        `already claimed by a tester's student persona (only Gr 9+ students get logins, #119). Run with --reset ` +
+        `to start clean, or add more Gr 9+ students to the seed.`,
     );
   }
   const student = students[0];

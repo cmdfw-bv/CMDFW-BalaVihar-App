@@ -17,6 +17,12 @@ export const STAGING_PROJECT_REF = 'ejjvqtleuuamgtlmtxkc';
 // CI, not only at the cloud walk. (config.toml loads it locally after 00_test_fixtures.sql.)
 export const DOMAIN_SQL_PATH = 'supabase/seed/domain.sql';
 
+// The grade spellings the DB's is_hs_grade() accepts (#119, ADR-2026-11-13), mirrored here ONLY to
+// choose demo data: a tester's student persona claims a Gr 9+ student, because a Gr 7-8 login is not
+// a class-chat participant. This list never decides access — RLS and is_hs_grade() do. Pinned
+// exactly in the unit tests so the mirror cannot drift silently.
+export const HS_GRADE_LEVELS = Object.freeze(['9', '10', '11', '12', 'Gr9', 'Gr10', 'Gr11', 'Gr12']);
+
 // Persona → role/scope contract. scopeType mirrors the authoritative DB map
 // (netlify/functions/lib/role-tiering.ts ROLE_SCOPE_TYPE) and the local seed inserts
 // (supabase/seed/seed.sql): student/parent/bv_coordinator/admin are org-scoped (scope_id null,
