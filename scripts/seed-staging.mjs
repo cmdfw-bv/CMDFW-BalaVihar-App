@@ -67,16 +67,74 @@ export function runPsql(config, psqlArgs) {
 // List every auth user, paging through the Auth Admin API (a single call caps at perPage, so a
 // project with more accounts than one page would silently miss users — a correctness bug for both
 // the idempotent email lookup and the --reset sweep).
+// Every caller uses this list to decide what already exists, and --reset uses it to decide what to
+// delete — so an UNDERCOUNT is the dangerous direction: it reports success over accounts it never
+// saw. The previous `if (data.users.length < perPage) break` trusted a short page to mean "last
+// page", which is only true if the server honours the requested perPage. If GoTrue ever clamps it
+// below the seeded account count, page 1 comes back short, the loop exits, and the run silently
+// misses accounts. Three rails instead of that one assumption (#129 item 3):
+//   1. follow the server's own `nextPage` cursor when it gives one, rather than inferring;
+//   2. reconcile the collected count against the server's `total` before returning, so an
+//      undercount FAILS LOUDLY instead of looking like success;
+//   3. a hard page ceiling, so a server that ignores `page` can't spin forever accumulating users.
+const LIST_USERS_PER_PAGE = 1000;
+const LIST_USERS_MAX_PAGES = 100;
+
 export async function listAllUsers(client) {
-  const perPage = 1000;
   const users = [];
-  for (let page = 1; ; page++) {
-    const { data, error } = await client.auth.admin.listUsers({ page, perPage });
+  let page = 1;
+  // Remembered across pages: the run ends on an empty page, and that last response carries no
+  // metadata, so the total has to be captured when it is actually offered.
+  let reportedTotal = null;
+
+  for (let requests = 0; requests < LIST_USERS_MAX_PAGES; requests++) {
+    const { data, error } = await client.auth.admin.listUsers({
+      page,
+      perPage: LIST_USERS_PER_PAGE,
+    });
     if (error) throw new Error(`seed-staging: listing users failed (${error.message})`);
     users.push(...data.users);
-    if (data.users.length < perPage) break;
+    if (typeof data.total === 'number' && data.total > 0) {
+      reportedTotal = Math.max(reportedTotal ?? 0, data.total);
+    }
+
+    // Termination is on an EMPTY page, never on a SHORT one.
+    //
+    // This cannot lean on the server's metadata, because @supabase/auth-js only populates it when a
+    // `Link` header is present: `pagination.total = parseInt(total)` sits INSIDE
+    // `if (links.length > 0)`, so a single-page response leaves `total` at 0 and any reconciliation
+    // against it is silently inert — which is exactly this project's normal case (~60 accounts at
+    // perPage 1000). It also parses the page number with `.substring(0, 1)`, so `nextPage` is
+    // unreliable past page 9. Trusting either would reproduce the original bug in a new costume.
+    //
+    // So: follow `nextPage` when offered AND sane, otherwise keep asking while pages come back
+    // non-empty, and stop only when one comes back empty. That holds whether or not the server
+    // honours perPage and whether or not it sends headers, at the cost of one extra request per run.
+    const nextPage =
+      typeof data.nextPage === 'number' && data.nextPage > page
+        ? data.nextPage
+        : data.users.length > 0
+          ? page + 1
+          : null;
+
+    if (nextPage === null) {
+      // Belt-and-braces on top of the empty-page termination, for runs where the server does report
+      // a total. It can only ever catch MORE, never fewer.
+      if (reportedTotal !== null && users.length < reportedTotal) {
+        throw new Error(
+          `seed-staging: listed ${users.length} users but the server reports ${reportedTotal} — ` +
+            'refusing to continue on a partial list (a --reset would skip the accounts it never saw)',
+        );
+      }
+      return users;
+    }
+    page = nextPage;
   }
-  return users;
+
+  throw new Error(
+    `seed-staging: listing users exceeded ${LIST_USERS_MAX_PAGES} pages (${users.length} collected) — ` +
+      'refusing to continue in case the server is ignoring the page parameter',
+  );
 }
 
 // The F3 class every student-login persona attaches to (the pilot class with student logins +
