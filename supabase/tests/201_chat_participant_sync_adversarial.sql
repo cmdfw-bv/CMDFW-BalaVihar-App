@@ -9,12 +9,17 @@
 -- in the conversation. 1 = can read the chat, 0 = cannot. Never asserted after
 -- tests.clear_authentication(), which leaves the session a superuser that bypasses RLS.
 --
--- No vacuous DENYs: every removal DENY (withdrawal, unlink, clear, regrade 9->8) follows a GRANT
--- for the same user in this file, so the 0 proves a removal, not a user who was never added.
--- The never-granted DENYs (Gr 7, Gr 8, class-B parent, withdrawn family) are each paired with a
--- GRANT for a user in the same conversation, so the probe is shown to return 1 when it should.
+-- No vacuous DENYs: every removal DENY (withdrawal, unlink, clear, regrade 9->8, transfer, delete)
+-- follows a GRANT for the same user in this file, so the 0 proves a removal, not a user who was
+-- never added. The never-granted DENYs (Gr 7, Gr 8, class-B parent, withdrawn family) are each
+-- paired with a GRANT for a user in the same conversation, so the probe is shown to return 1.
+--
+-- The removal cases from issue #124 (transfer, delete, guardian unlink, student unlink) are also
+-- probed on all three chat surfaces at once with t201_access: read `messages`, receive on the
+-- `realtime.messages` channel, and post into `messages`. A stale participant row would leak on
+-- every one of them, so each removal must close all three.
 begin;
-select plan(22);
+select plan(36);
 
 -- Reads `messages` in one conversation as p_user under RLS, then returns to the superuser.
 -- Dynamic SQL so the count is planned after the role switch.
@@ -31,6 +36,41 @@ begin
   perform set_config('request.jwt.claims', '', true);
   execute 'reset role';
   return v_n;
+end;
+$$;
+
+-- Probes all three chat surfaces in one conversation as p_user under RLS (issue #124):
+--   reads    = messages visible (messages_member_select)
+--   receives = signals visible on the conversation's channel (chat_participants_receive_broadcast)
+--   posts    = 'ok' if a post is accepted, else the SQLSTATE it was refused with (42501 for RLS)
+-- The post attempt runs in a subtransaction that is always rolled back, so a successful probe
+-- leaves no message and no signal behind and the counts stay stable across probes.
+create function public.t201_access(p_user uuid, p_conv uuid) returns text
+language plpgsql volatile
+as $$
+declare
+  v_reads integer;
+  v_receives integer;
+  v_posts text;
+begin
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_user::text, 'role', 'authenticated', 'active_role', 'parent')::text, true);
+  perform set_config('role', 'authenticated', true);
+  execute 'select count(*)::int from public.messages where conversation_id = $1' into v_reads using p_conv;
+  perform set_config('realtime.topic', 'chat:' || p_conv::text, true);
+  execute 'select count(*)::int from realtime.messages' into v_receives;
+  begin
+    execute 'insert into public.messages (conversation_id, sender_user_id, body, mention_targets)
+             values ($1, auth.uid(), $2, array[]::text[])' using p_conv, '201 probe';
+    raise exception using errcode = 'P0201';  -- undo the accepted post
+  exception
+    when sqlstate 'P0201' then v_posts := 'ok';
+    when others then v_posts := sqlstate;
+  end;
+  perform set_config('realtime.topic', '', true);
+  perform set_config('request.jwt.claims', '', true);
+  execute 'reset role';
+  return format('reads=%s receives=%s posts=%s', v_reads, v_receives, v_posts);
 end;
 $$;
 
@@ -140,6 +180,10 @@ select is(public.t201_reads(:'v_stu9'::uuid, :'v_a'::uuid), 1, 'GRANT Gr9 studen
 select is(public.t201_reads(:'v_stu_regrade'::uuid, :'v_a'::uuid), 1, 'GRANT grade-''9'' student (seed spelling) linked after enrollment reads A');
 select is(public.t201_reads(:'v_stu_clear'::uuid, :'v_a'::uuid), 1, 'GRANT Gr9 student (later cleared) linked after enrollment reads A');
 select is(public.t201_reads(:'v_parent_b'::uuid, :'v_b'::uuid), 1, 'GRANT parent of class B reads B (control for the class-B DENY)');
+select is(public.t201_access(:'v_parent_unlink'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 guardian (later unlinked) reads, receives and posts in A');
+select is(public.t201_access(:'v_stu_clear'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 Gr9 student (later cleared) reads, receives and posts in A');
 
 select is(public.t201_reads(:'v_stu8'::uuid, :'v_a'::uuid), 0, 'DENY Gr8 student in the combined class');
 select is(public.t201_reads(:'v_stu7'::uuid, :'v_a'::uuid), 0, 'DENY Gr7 student in the combined class');
@@ -186,9 +230,64 @@ select is(public.t201_reads(:'v_stu_regrade'::uuid, :'v_a'::uuid), 1, 'GRANT reg
 delete from family_members
   where family_id = 'e2010000-0000-0000-0000-000000000027' and user_id = :'v_parent_unlink'::uuid;
 select is(public.t201_reads(:'v_parent_unlink'::uuid, :'v_a'::uuid), 0, 'DENY unlinked guardian');
+select is(public.t201_access(:'v_parent_unlink'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 unlinked guardian cannot read, receive or post in A');
 
 update students set user_id = null where id = 'e2010000-0000-0000-0000-000000000045';
 select is(public.t201_reads(:'v_stu_clear'::uuid, :'v_a'::uuid), 0, 'DENY cleared student login');
+select is(public.t201_access(:'v_stu_clear'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 cleared student login cannot read, receive or post in A');
+
+-- ---------------------------------------------------------------------------------------------
+-- GROUP 4: issue #124 — an enrollment moved to another class, and an enrollment deleted.
+-- Same enrol-first order: enrol, then link the guardian and the student login.
+-- ---------------------------------------------------------------------------------------------
+select tests.create_supabase_user('t201-move-parent@test.local') as v_move_parent \gset
+select tests.create_supabase_user('t201-move-stu@test.local') as v_move_stu \gset
+select tests.create_supabase_user('t201-del-parent@test.local') as v_del_parent \gset
+select tests.create_supabase_user('t201-del-stu@test.local') as v_del_stu \gset
+
+insert into families (id, label) values
+  ('e2010000-0000-0000-0000-00000000002a', '201 F10 moves class'),
+  ('e2010000-0000-0000-0000-00000000002b', '201 F11 enrollment deleted');
+insert into students (id, family_id, first_name, last_name, grade_level) values
+  ('e2010000-0000-0000-0000-000000000046', 'e2010000-0000-0000-0000-00000000002a', 'Move', 'Child', 'Gr9'),
+  ('e2010000-0000-0000-0000-000000000047', 'e2010000-0000-0000-0000-00000000002b', 'Del', 'Child', 'Gr9');
+insert into enrollments (id, student_id, class_id, session_id, status) values
+  ('e2010000-0000-0000-0000-000000000066', 'e2010000-0000-0000-0000-000000000046', 'e2010000-0000-0000-0000-0000000000a1', 'e2010000-0000-0000-0000-000000000011', 'active'),
+  ('e2010000-0000-0000-0000-000000000067', 'e2010000-0000-0000-0000-000000000047', 'e2010000-0000-0000-0000-0000000000a1', 'e2010000-0000-0000-0000-000000000011', 'active');
+insert into family_members (family_id, user_id, relationship) values
+  ('e2010000-0000-0000-0000-00000000002a', :'v_move_parent'::uuid, 'guardian'),
+  ('e2010000-0000-0000-0000-00000000002b', :'v_del_parent'::uuid, 'guardian');
+update students set user_id = :'v_move_stu'::uuid where id = 'e2010000-0000-0000-0000-000000000046';
+update students set user_id = :'v_del_stu'::uuid  where id = 'e2010000-0000-0000-0000-000000000047';
+
+select is(public.t201_access(:'v_move_parent'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 guardian of a child in A (before the move) reads, receives and posts in A');
+select is(public.t201_access(:'v_move_stu'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 Gr9 student in A (before the move) reads, receives and posts in A');
+select is(public.t201_access(:'v_del_parent'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 guardian of a child in A (before the delete) reads, receives and posts in A');
+select is(public.t201_access(:'v_del_stu'::uuid, :'v_a'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 Gr9 student in A (before the delete) reads, receives and posts in A');
+
+-- Transfer: the enrollment's class changes A -> B in place (the #124 repro shape).
+update enrollments set class_id = 'e2010000-0000-0000-0000-0000000000b1' where id = 'e2010000-0000-0000-0000-000000000066';
+select is(public.t201_access(:'v_move_parent'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 transfer: the guardian cannot read, receive or post in the old class');
+select is(public.t201_access(:'v_move_stu'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 transfer: the student cannot read, receive or post in the old class');
+select is(public.t201_access(:'v_move_parent'::uuid, :'v_b'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 transfer: the guardian joins the new class');
+select is(public.t201_access(:'v_move_stu'::uuid, :'v_b'::uuid), 'reads=1 receives=1 posts=ok',
+  'GRANT #124 transfer: the student joins the new class');
+
+-- Delete: the enrollment row is removed outright.
+delete from enrollments where id = 'e2010000-0000-0000-0000-000000000067';
+select is(public.t201_access(:'v_del_parent'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 delete: the guardian cannot read, receive or post in A');
+select is(public.t201_access(:'v_del_stu'::uuid, :'v_a'::uuid), 'reads=0 receives=0 posts=42501',
+  'DENY #124 delete: the student cannot read, receive or post in A');
 
 select * from finish();
 rollback;
