@@ -17,9 +17,15 @@ export const CATCH_UP_POLL_MS = 30_000;
 export const REMOVE_REFUSED_COPY = "This message can't be removed.";
 export const REMOVE_NETWORK_COPY = "Couldn't remove \u2014 try again.";
 
-/** `refused`: the database said no (42501). `network`: anything else; the message may still be removable. */
+/**
+ * `refused`: the database said no (42501). `network`: anything else; the message may still be removable.
+ * `code` is the Postgres / PostgREST code or error name (see errorCodeOf), never the error's text.
+ */
 export class RemoveMessageError extends Error {
-  constructor(readonly kind: 'refused' | 'network') {
+  constructor(
+    readonly kind: 'refused' | 'network',
+    readonly code: string,
+  ) {
     super(kind === 'refused' ? REMOVE_REFUSED_COPY : REMOVE_NETWORK_COPY);
     this.name = 'RemoveMessageError';
   }
@@ -47,9 +53,12 @@ export const INITIAL_CONVERSATION_STATE: ConversationState = {
   removing: [],
 };
 
-/** A failure the session recovered from by itself. `code` is a Postgres / PostgREST code or an error name. */
+/**
+ * A failure the session recovered from by itself, or (`remove`) a removal that failed for any
+ * reason other than the database refusing it. `code` is a Postgres / PostgREST code or an error name.
+ */
 export interface SessionErrorReport {
-  source: 'load' | 'access' | 'join';
+  source: 'load' | 'access' | 'join' | 'remove';
   code: string;
 }
 
@@ -107,6 +116,9 @@ export function createConversationSession(
   let newestFetched: ChatMessage | null = null;
   let loadingOlder = false;
   const pendingPings = new Set<string>();
+  // One call per message id at a time. A second remove() of an id already in flight (a double
+  // tap) gets the first call's promise: it shares that outcome and `removing` holds the id once.
+  const inFlightRemovals = new Map<string, Promise<void>>();
 
   function set(patch: Partial<ConversationState>): void {
     state = { ...state, ...patch };
@@ -210,6 +222,28 @@ export function createConversationSession(
     }
   }
 
+  async function removeOnce(messageId: string): Promise<void> {
+    set({ removing: [...state.removing, messageId] });
+    try {
+      const removed = await deps.api.removeMessage(messageId);
+      // Patched from the returned row at once; the signal that follows finds nothing to change.
+      const patch = { id: messageId, removed_at: removed.removed_at ?? '', removed_by_role: removed.removed_by_role };
+      const messages =
+        state.status !== 'unavailable' && patch.removed_at !== '' && patch.removed_by_role !== null
+          ? applyRemovals(state.messages, [{ ...patch, removed_by_role: patch.removed_by_role }])
+          : state.messages;
+      set({ messages, removing: state.removing.filter((id) => id !== messageId) });
+    } catch (error) {
+      set({ removing: state.removing.filter((id) => id !== messageId) });
+      const code = errorCodeOf(error);
+      if (code === '42501') throw new RemoveMessageError('refused', code);
+      // A refusal is expected behaviour and is not reported. Anything else (PGRST202 after a
+      // deploy, 57014, 22P02, offline) is: by code only, never the error's text.
+      deps.onError?.({ source: 'remove', code });
+      throw new RemoveMessageError('network', code);
+    }
+  }
+
   function handlersFor(openedAs: number): ChannelHandlers {
     const current = () => active && openedAs === generation;
     return {
@@ -300,22 +334,12 @@ export function createConversationSession(
       return saved;
     },
 
-    async remove(messageId) {
-      set({ removing: [...state.removing, messageId] });
-      try {
-        const removed = await deps.api.removeMessage(messageId);
-        // Patched from the returned row at once; the signal that follows finds nothing to change.
-        const patch = { id: messageId, removed_at: removed.removed_at ?? '', removed_by_role: removed.removed_by_role };
-        const messages =
-          state.status !== 'unavailable' && patch.removed_at !== '' && patch.removed_by_role !== null
-            ? applyRemovals(state.messages, [{ ...patch, removed_by_role: patch.removed_by_role }])
-            : state.messages;
-        set({ messages, removing: state.removing.filter((id) => id !== messageId) });
-      } catch (error) {
-        set({ removing: state.removing.filter((id) => id !== messageId) });
-        const code = errorCodeOf(error);
-        throw new RemoveMessageError(code === '42501' ? 'refused' : 'network');
-      }
+    remove(messageId) {
+      const inFlight = inFlightRemovals.get(messageId);
+      if (inFlight) return inFlight;
+      const call = removeOnce(messageId).finally(() => inFlightRemovals.delete(messageId));
+      inFlightRemovals.set(messageId, call);
+      return call;
     },
   };
 }

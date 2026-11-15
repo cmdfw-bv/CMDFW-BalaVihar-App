@@ -19,11 +19,23 @@ export interface ReviewLoaderDeps {
 }
 
 // Every load writes one audit_log 'read' row per message returned, so this loads only when asked:
-// once on open, on retry, and on Load more. No refetch on focus.
+// once on open, once per switch of active role or scope (loadFor), on retry, and on Load more.
+// No refetch on focus.
 export function createReviewLoader(deps: ReviewLoaderDeps) {
   // Bumped by every first load and by dispose; a response from an older generation is dropped,
   // so a slow page can never land on top of a newer list.
   let generation = 0;
+  // The active role + scope the list on screen belongs to; null until the first loadFor and after dispose.
+  let loadedFor: string | null = null;
+
+  // Loads only when the key differs from the one the list belongs to, so re-running the caller's
+  // effect with the same scope writes no audit rows, and a switch loads exactly once. The first
+  // load's generation bump drops anything still in flight for the old scope.
+  function loadFor(scopeKey: string): Promise<void> {
+    if (scopeKey === loadedFor) return Promise.resolve();
+    loadedFor = scopeKey;
+    return loadFirst();
+  }
 
   async function loadFirst(): Promise<void> {
     const mine = ++generation;
@@ -57,7 +69,9 @@ export function createReviewLoader(deps: ReviewLoaderDeps) {
 
   function dispose(): void {
     generation++;
+    // A remount (StrictMode runs effects twice) must load again: the disposed load was dropped.
+    loadedFor = null;
   }
 
-  return { loadFirst, loadMore, dispose };
+  return { loadFor, loadFirst, loadMore, dispose };
 }

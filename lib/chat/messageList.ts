@@ -41,13 +41,32 @@ export function placeholderFor(m: ChatMessage): string | null {
   }
 }
 
-// Only hides the action. The database decides (spec Behavior 1).
-export function canOfferRemove(m: ChatMessage, activeRole: Role | null, userId: string | null): boolean {
+/** What the screen knows about the viewer and the conversation when it decides to show Remove. */
+export interface RemoveOfferContext {
+  /** From useSession(). */
+  activeRole: Role | null;
+  /** The active role's scope (useSession().scopeId); for a teacher, their class id. */
+  scopeId: string | null;
+  userId: string | null;
+  /**
+   * `conversations.scope_id` of a `kind = 'class'` conversation, supplied by the screen that holds
+   * the conversation. `null` for any other kind, or while it is not known.
+   */
+  conversationClassId: string | null;
+}
+
+// Only hides the action. The database decides (spec Behavior 1). Messages are visible by
+// membership, so a teacher of one class can be reading another class's chat as a parent: Remove
+// is offered only when the active scope is this conversation's class. Unknown scope fails closed.
+export function canOfferRemove(m: ChatMessage, ctx: RemoveOfferContext): boolean {
   return (
-    activeRole === 'teacher' &&
+    ctx.activeRole === 'teacher' &&
+    ctx.scopeId !== null &&
+    ctx.conversationClassId !== null &&
+    ctx.scopeId === ctx.conversationClassId &&
     (m.sender_role === 'student' || m.sender_role === 'parent') &&
-    userId !== null &&
-    m.sender_user_id !== userId &&
+    ctx.userId !== null &&
+    m.sender_user_id !== ctx.userId &&
     !isRemoved(m)
   );
 }

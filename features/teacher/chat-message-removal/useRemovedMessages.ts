@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSession } from '../../../lib/auth/SessionProvider';
 import { supabase } from '../../../lib/supabase';
 import { fetchRemovedMessages } from './api';
 import { createReviewLoader } from './reviewLoader';
@@ -9,6 +10,10 @@ import { initialReview, reduceReview, type ReviewView } from './viewState';
 // where they go to error reporting once the client has it (same seam as lib/chat's
 // useConversationMessages).
 export function useRemovedMessages() {
+  // The list belongs to the active role + scope. A session switch while mounted reloads it once
+  // (reviewLoader.loadFor), so the old session's rows never sit under the new badge.
+  const { activeRole, scopeId } = useSession();
+  const scopeKey = `${activeRole ?? ''}:${scopeId ?? ''}`;
   const [view, setView] = useState<ReviewView>(initialReview);
   // One loader per mount. It keeps its own copy of the view so Load more can page from the
   // latest row between renders; React state mirrors it for rendering.
@@ -29,9 +34,10 @@ export function useRemovedMessages() {
   });
 
   useEffect(() => {
-    loader.loadFirst();
-    return () => loader.dispose();
-  }, [loader]);
+    void loader.loadFor(scopeKey);
+  }, [loader, scopeKey]);
+
+  useEffect(() => () => loader.dispose(), [loader]);
 
   return { view, retryFirst: loader.loadFirst, loadMore: loader.loadMore };
 }

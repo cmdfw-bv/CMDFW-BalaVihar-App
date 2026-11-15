@@ -151,23 +151,28 @@ describe('removal placeholder', () => {
 
 describe('canOfferRemove', () => {
   const ME = 'me';
+  const CLASS = 'class-g4';
   const base = { ...msg(A, AT), sender_user_id: 'someone', sender_role: 'student' as const };
-  it('is true for an active teacher on a student or parent message from someone else', () => {
-    expect(canOfferRemove(base, 'teacher', ME)).toBe(true);
-    expect(canOfferRemove({ ...base, sender_role: 'parent' }, 'teacher', ME)).toBe(true);
+  const ctx = { activeRole: 'teacher' as const, scopeId: CLASS, userId: ME, conversationClassId: CLASS };
+  it('is true for an active teacher of this class on a student or parent message from someone else', () => {
+    expect(canOfferRemove(base, ctx)).toBe(true);
+    expect(canOfferRemove({ ...base, sender_role: 'parent' }, ctx)).toBe(true);
   });
   it.each([
-    ['non-teacher role', { ...base }, 'coordinator'],
-    ['null role', { ...base }, null],
-    ['teacher sender', { ...base, sender_role: 'teacher' as const }, 'teacher'],
-    ['null sender_role', { ...base, sender_role: null }, 'teacher'],
-    ['own message', { ...base, sender_user_id: ME }, 'teacher'],
-    ['already removed', removedCopy(base, 'teacher'), 'teacher'],
-  ] as const)('is false for %s', (_name, m, role) => {
-    expect(canOfferRemove(m, role, ME)).toBe(false);
-  });
-  it('is false with no user id', () => {
-    expect(canOfferRemove(base, 'teacher', null)).toBe(false);
+    ['non-teacher role', { ...base }, { ...ctx, activeRole: 'coordinator' as const }],
+    ['null role', { ...base }, { ...ctx, activeRole: null }],
+    ['teacher sender', { ...base, sender_role: 'teacher' as const }, ctx],
+    ['null sender_role', { ...base, sender_role: null }, ctx],
+    ['own message', { ...base, sender_user_id: ME }, ctx],
+    ['already removed', removedCopy(base, 'teacher'), ctx],
+    ['no user id', { ...base }, { ...ctx, userId: null }],
+    // A Grade 4 teacher who is also a Grade 9 parent sees the Grade 9 chat by membership.
+    ['active scope is a different class', { ...base }, { ...ctx, scopeId: 'class-g9' }],
+    ['null active scope', { ...base }, { ...ctx, scopeId: null }],
+    ['null conversation class (not a class conversation, or not known yet)', { ...base }, { ...ctx, conversationClassId: null }],
+    ['both scope and class null', { ...base }, { ...ctx, scopeId: null, conversationClassId: null }],
+  ] as const)('is false for %s', (_name, m, c) => {
+    expect(canOfferRemove(m, c)).toBe(false);
   });
 });
 

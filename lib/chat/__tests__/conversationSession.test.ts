@@ -3,6 +3,7 @@ import {
   CATCH_UP_POLL_MS,
   REMOVE_NETWORK_COPY,
   REMOVE_REFUSED_COPY,
+  RemoveMessageError,
   createConversationSession,
   type ConversationState,
 } from '../conversationSession';
@@ -818,5 +819,105 @@ describe('removals', () => {
 
     expect(h.session.getState().removing).toEqual([]);
     expect(h.session.getState().messages[0].body).toBe('m1');
+  });
+  it.each([
+    ['PGRST202 (function missing after a deploy)', 'PGRST202'],
+    ['57014 (statement timeout)', '57014'],
+    ['22P02 (bad uuid)', '22P02'],
+  ])('remove on %s: keeps kind network and the code, reports the code only', async (_n, code) => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.onError.mockClear();
+    h.api.removeMessage.mockRejectedValueOnce({ code, message: 'secret', details: 'secret', hint: 'secret' });
+
+    const error = await h.session.remove(msg(1).id).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(RemoveMessageError);
+    expect(error).toMatchObject({ kind: 'network', code });
+    expect(h.onError).toHaveBeenCalledTimes(1);
+    expect(h.onError).toHaveBeenCalledWith({ source: 'remove', code });
+    expect(JSON.stringify(h.onError.mock.calls)).not.toContain('secret');
+  });
+
+  it('remove on an error with no code or name: reports code unknown', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.onError.mockClear();
+    h.api.removeMessage.mockRejectedValueOnce({ message: 'secret' });
+
+    await expect(h.session.remove(msg(1).id)).rejects.toMatchObject({ kind: 'network', code: 'unknown' });
+    expect(h.onError).toHaveBeenCalledWith({ source: 'remove', code: 'unknown' });
+  });
+
+  it('remove refused (42501): keeps the code on the error and is not reported (expected behaviour)', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    h.onError.mockClear();
+    h.api.removeMessage.mockRejectedValueOnce({ code: '42501', message: 'secret' });
+
+    await expect(h.session.remove(msg(1).id)).rejects.toMatchObject({ kind: 'refused', code: '42501' });
+    expect(h.onError).not.toHaveBeenCalled();
+  });
+
+  it('remove twice on the same id while pending: one call, one removing entry, both callers share its outcome', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    const d = deferred<ChatMessage>();
+    h.api.removeMessage.mockReturnValueOnce(d.promise);
+
+    const first = h.session.remove(msg(1).id);
+    const second = h.session.remove(msg(1).id);
+    expect(h.api.removeMessage).toHaveBeenCalledTimes(1);
+    expect(h.session.getState().removing).toEqual([msg(1).id]);
+
+    d.resolve(removedRow(1));
+    await Promise.all([first, second]);
+    expect(h.session.getState().removing).toEqual([]);
+    expect(h.session.getState().messages[0]).toMatchObject({ body: null });
+  });
+
+  it('remove twice on the same id while pending: a failure rejects both callers', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1)]);
+    await h.session.open();
+    await settle();
+    const d = deferred<ChatMessage>();
+    h.api.removeMessage.mockReturnValueOnce(d.promise);
+
+    const first = h.session.remove(msg(1).id).catch((e: unknown) => e);
+    const second = h.session.remove(msg(1).id).catch((e: unknown) => e);
+    d.reject({ code: '42501' });
+
+    expect(await first).toMatchObject({ kind: 'refused' });
+    expect(await second).toMatchObject({ kind: 'refused' });
+    expect(h.api.removeMessage).toHaveBeenCalledTimes(1);
+    expect(h.session.getState().removing).toEqual([]);
+  });
+
+  it('remove on two different ids: each settles its own pending entry', async () => {
+    const h = harness();
+    h.api.fetchLatest.mockResolvedValueOnce([msg(1), msg(2)]);
+    await h.session.open();
+    await settle();
+    const d1 = deferred<ChatMessage>();
+    const d2 = deferred<ChatMessage>();
+    h.api.removeMessage.mockReturnValueOnce(d1.promise).mockReturnValueOnce(d2.promise);
+
+    const p1 = h.session.remove(msg(1).id);
+    const p2 = h.session.remove(msg(2).id);
+    d1.resolve(removedRow(1));
+    await p1;
+    expect(h.session.getState().removing).toEqual([msg(2).id]);
+    d2.resolve(removedRow(2));
+    await p2;
+    expect(h.session.getState().removing).toEqual([]);
   });
 });

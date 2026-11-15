@@ -111,4 +111,72 @@ describe('createReviewLoader', () => {
     await p;
     expect(h.view()).toEqual({ kind: 'loading' });
   });
+
+  describe('loadFor (the active role + scope the list belongs to)', () => {
+    it('loads once for a scope, and not again for the same scope', async () => {
+      const fetch = vi.fn().mockResolvedValue(rows(2));
+      const h = harness(fetch);
+      await h.loader.loadFor('coordinator:session-a');
+      await h.loader.loadFor('coordinator:session-a');
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('a scope switch reloads exactly once and drops the old list', async () => {
+      const fetch = vi.fn().mockResolvedValueOnce(rows(2)).mockResolvedValueOnce(rows(1, 50));
+      const h = harness(fetch);
+      await h.loader.loadFor('coordinator:session-a');
+      const p = h.loader.loadFor('coordinator:session-b');
+      expect(h.view()).toEqual({ kind: 'loading' });
+      await p;
+      await h.loader.loadFor('coordinator:session-b');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(h.view()).toMatchObject({ kind: 'content', rows: rows(1, 50) });
+    });
+
+    it('the old scope\'s slow first load cannot land on the new scope\'s list', async () => {
+      let releaseOld!: (r: RemovedMessageRow[]) => void;
+      const fetch = vi.fn()
+        .mockReturnValueOnce(new Promise((r) => { releaseOld = r; }))
+        .mockResolvedValueOnce(rows(1, 50));
+      const h = harness(fetch);
+      const old = h.loader.loadFor('coordinator:session-a');
+      await h.loader.loadFor('coordinator:session-b');
+      releaseOld(rows(20));
+      await old;
+      expect(h.view()).toMatchObject({ kind: 'content', rows: rows(1, 50) });
+    });
+
+    it('the old scope\'s in-flight Load more cannot land on the new scope\'s list', async () => {
+      let releaseMore!: (r: RemovedMessageRow[]) => void;
+      const fetch = vi.fn()
+        .mockResolvedValueOnce(rows(20))
+        .mockReturnValueOnce(new Promise((r) => { releaseMore = r; }))
+        .mockResolvedValueOnce(rows(1, 50));
+      const h = harness(fetch);
+      await h.loader.loadFor('coordinator:session-a');
+      const more = h.loader.loadMore();
+      await h.loader.loadFor('coordinator:session-b');
+      releaseMore(rows(3, 20));
+      await more;
+      expect(h.view()).toMatchObject({ kind: 'content', rows: rows(1, 50) });
+    });
+
+    it('after dispose the same scope loads again (a remount, e.g. StrictMode)', async () => {
+      const fetch = vi.fn().mockResolvedValue(rows(2));
+      const h = harness(fetch);
+      await h.loader.loadFor('coordinator:session-a');
+      h.loader.dispose();
+      await h.loader.loadFor('coordinator:session-a');
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('a retry still reloads the current scope', async () => {
+      const fetch = vi.fn().mockRejectedValueOnce(coded('57014')).mockResolvedValueOnce(rows(2));
+      const h = harness(fetch);
+      await h.loader.loadFor('coordinator:session-a');
+      await h.loader.loadFirst();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(h.view()).toMatchObject({ kind: 'content', rows: rows(2) });
+    });
+  });
 });
