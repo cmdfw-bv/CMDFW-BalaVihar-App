@@ -55,9 +55,13 @@ create trigger messages_stamp_sender_role
   for each row execute function public.messages_stamp_sender_role();
 
 -- ---------------------------------------------------------------------------------------------
--- 3. Backfill. Current participants first; then the sender's active class-scoped user_roles grant
--- for the conversation's class. Anything else stays null, and a null sender_role is removable
--- only by bv_coordinator/admin (fail-closed, /design call). Only pre-pilot staging rows exist.
+-- 3. Backfill. Current participants first; then any class-scoped user_roles grant the sender holds
+-- for the conversation's class. Not filtered on is_active: per #119 (20261113120000) is_active marks
+-- the role the user has *selected*, not whether the grant exists, so a sender whose selected role
+-- is elsewhere still resolves. (remove_message and the review function keep their is_active checks
+-- on purpose: those ask what the caller is acting as now.) Anything else stays null, and a null
+-- sender_role is removable only by bv_coordinator/admin (fail-closed, /design call). Only pre-pilot
+-- staging rows exist.
 -- ---------------------------------------------------------------------------------------------
 update public.messages m
    set sender_role = cp.participant_role
@@ -76,7 +80,6 @@ update public.messages m
         on c.id = m2.conversation_id and c.kind = 'class' and c.scope_type = 'class'
       join public.user_roles ur
         on ur.user_id = m2.sender_user_id
-       and ur.is_active
        and ur.role::text in ('teacher','student','parent')
        and ur.scope_type = 'class'
        and ur.scope_id = c.scope_id
