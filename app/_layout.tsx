@@ -36,6 +36,9 @@ function RootNavigator() {
             session-gated exactly like it — undeclared, a signed-out deep link to
             /class-update/new would render the live compose form instead of routing to sign-in. */}
         <Stack.Screen name="class-update" />
+        {/* Pushed from the Dashboard card, with its own header + back; session-gated for the
+            same reason as class-update. */}
+        <Stack.Screen name="removed-messages" />
       </Stack.Protected>
     </Stack>
   );

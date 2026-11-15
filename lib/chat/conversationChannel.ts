@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const MESSAGE_SAVED_EVENT = 'message_saved';
+export const MESSAGE_REMOVED_EVENT = 'message_removed';
 
 // The channel policy accepts `chat:<lowercase uuid>` and nothing else. An id that arrives in
 // mixed case (a link, a hand-typed route) would otherwise become a join that is refused forever.
@@ -11,6 +12,8 @@ export function chatTopic(conversationId: string): string {
 export interface ChannelHandlers {
   /** A message was saved. The id is advisory; the handler's job is "run catch-up now". */
   onPing(messageId: string | null): void;
+  /** A message was removed. Same contract as onPing: the id is advisory, the job is "run catch-up now". */
+  onRemoved(messageId: string | null): void;
   /** Joined or rejoined. */
   onJoined(): void;
   /** The join was refused or timed out. supabase-js keeps retrying until leave(). */
@@ -46,6 +49,9 @@ export async function joinConversationChannel(
   channel
     .on('broadcast', { event: MESSAGE_SAVED_EVENT }, (message: { payload?: unknown }) => {
       if (!left) handlers.onPing(pingedMessageId(message.payload));
+    })
+    .on('broadcast', { event: MESSAGE_REMOVED_EVENT }, (message: { payload?: unknown }) => {
+      if (!left) handlers.onRemoved(pingedMessageId(message.payload));
     })
     .subscribe((status: string) => {
       if (left) return;

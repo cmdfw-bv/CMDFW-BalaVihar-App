@@ -3,13 +3,81 @@
 // rejoin, foreground, timer, the sender's own saved row -- lands in one ordered, duplicate-free
 // list.
 
+import type { Role } from '../auth/navMap';
+
 export interface ChatMessage {
   id: string;
   conversation_id: string;
   sender_user_id: string;
-  body: string;
+  /** `null` exactly when the message was removed (chat-message-removal). */
+  body: string | null;
   mention_targets: string[];
   created_at: string;
+  sender_role: Role | null;
+  removed_at: string | null;
+  removed_by_role: Role | null;
+}
+
+export interface RemovalPatch {
+  id: string;
+  removed_at: string;
+  removed_by_role: Role;
+}
+
+export function isRemoved(m: ChatMessage): boolean {
+  return m.removed_at !== null;
+}
+
+export function placeholderFor(m: ChatMessage): string | null {
+  if (!isRemoved(m)) return null;
+  switch (m.removed_by_role) {
+    case 'teacher':
+      return 'Message removed by a teacher';
+    case 'coordinator':
+      return 'Message removed by a coordinator';
+    default:
+      // bv_coordinator and admin both read "an admin"; so does a role we cannot read.
+      return 'Message removed by an admin';
+  }
+}
+
+/** What the screen knows about the viewer and the conversation when it decides to show Remove. */
+export interface RemoveOfferContext {
+  /** From useSession(). */
+  activeRole: Role | null;
+  /** The active role's scope (useSession().scopeId); for a teacher, their class id. */
+  scopeId: string | null;
+  userId: string | null;
+  /**
+   * `conversations.scope_id` of a `kind = 'class'` conversation, supplied by the screen that holds
+   * the conversation. `null` for any other kind, or while it is not known.
+   */
+  conversationClassId: string | null;
+}
+
+// Only hides the action. The database decides (spec Behavior 1). Messages are visible by
+// membership, so a teacher of one class can be reading another class's chat as a parent: Remove
+// is offered only when the active scope is this conversation's class. Unknown scope fails closed.
+export function canOfferRemove(m: ChatMessage, ctx: RemoveOfferContext): boolean {
+  return (
+    ctx.activeRole === 'teacher' &&
+    ctx.scopeId !== null &&
+    ctx.conversationClassId !== null &&
+    ctx.scopeId === ctx.conversationClassId &&
+    (m.sender_role === 'student' || m.sender_role === 'parent') &&
+    ctx.userId !== null &&
+    m.sender_user_id !== ctx.userId &&
+    !isRemoved(m)
+  );
+}
+
+export function applyRemovals(held: readonly ChatMessage[], patches: readonly RemovalPatch[]): ChatMessage[] {
+  const byId = new Map(patches.map((p) => [p.id, p]));
+  return held.map((m) => {
+    const patch = byId.get(m.id);
+    if (!patch) return m;
+    return { ...m, body: null, mention_targets: [], removed_at: patch.removed_at, removed_by_role: patch.removed_by_role };
+  });
 }
 
 // `created_at` is the saving transaction's start time, so two near-simultaneous saves can commit
@@ -47,7 +115,11 @@ export function compareMessages(a: ChatMessage, b: ChatMessage): number {
 export function mergeMessages(held: readonly ChatMessage[], incoming: readonly ChatMessage[]): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   for (const message of held) byId.set(message.id, message);
-  for (const message of incoming) byId.set(message.id, message);
+  for (const message of incoming) {
+    const kept = byId.get(message.id);
+    // A removal is never undone: a stale copy that still has its body cannot replace a removed one.
+    byId.set(message.id, kept && isRemoved(kept) && !isRemoved(message) ? kept : message);
+  }
   return [...byId.values()].sort(compareMessages);
 }
 

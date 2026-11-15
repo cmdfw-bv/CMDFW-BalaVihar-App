@@ -1,11 +1,35 @@
 import type { ChannelHandlers, ConversationChannel } from './conversationChannel';
 import type { MessagesApi } from './messagesApi';
-import { INITIAL_PAGE_SIZE, catchUpCursor, compareMessages, mergeMessages, type ChatMessage } from './messageList';
+import {
+  INITIAL_PAGE_SIZE,
+  applyRemovals,
+  catchUpCursor,
+  compareMessages,
+  mergeMessages,
+  type ChatMessage,
+} from './messageList';
 
 // A signal can be lost and a connection can be refused (200-connection limit, network). The same
 // catch-up runs on this timer, so the chat degrades from instant to at most this late and no
 // separate fallback mode exists (design decision 3).
 export const CATCH_UP_POLL_MS = 30_000;
+
+export const REMOVE_REFUSED_COPY = "This message can't be removed.";
+export const REMOVE_NETWORK_COPY = "Couldn't remove \u2014 try again.";
+
+/**
+ * `refused`: the database said no (42501). `network`: anything else; the message may still be removable.
+ * `code` is the Postgres / PostgREST code or error name (see errorCodeOf), never the error's text.
+ */
+export class RemoveMessageError extends Error {
+  constructor(
+    readonly kind: 'refused' | 'network',
+    readonly code: string,
+  ) {
+    super(kind === 'refused' ? REMOVE_REFUSED_COPY : REMOVE_NETWORK_COPY);
+    this.name = 'RemoveMessageError';
+  }
+}
 
 export type ConversationStatus = 'loading' | 'ready' | 'error' | 'unavailable';
 
@@ -16,6 +40,8 @@ export interface ConversationState {
   hasOlder: boolean;
   /** Code of the most recent failed load, until a load succeeds. Never the error's text. */
   errorCode: string | null;
+  /** Ids of messages whose removal call is in flight. */
+  removing: string[];
 }
 
 export const INITIAL_CONVERSATION_STATE: ConversationState = {
@@ -24,11 +50,15 @@ export const INITIAL_CONVERSATION_STATE: ConversationState = {
   isLive: false,
   hasOlder: false,
   errorCode: null,
+  removing: [],
 };
 
-/** A failure the session recovered from by itself. `code` is a Postgres / PostgREST code or an error name. */
+/**
+ * A failure the session recovered from by itself, or (`remove`) a removal that failed for any
+ * reason other than the database refusing it. `code` is a Postgres / PostgREST code or an error name.
+ */
 export interface SessionErrorReport {
-  source: 'load' | 'access' | 'join';
+  source: 'load' | 'access' | 'join' | 'remove';
   code: string;
 }
 
@@ -42,7 +72,7 @@ export interface SessionDeps {
 
 // The code or the name only. An error's message can quote the failing statement or a URL, and
 // this value may leave the device (client-privacy rule: nothing PII goes to error reporting).
-function errorCodeOf(error: unknown): string {
+export function errorCodeOf(error: unknown): string {
   if (typeof error === 'object' && error !== null) {
     const { code, name } = error as { code?: unknown; name?: unknown };
     if (typeof code === 'string' && code !== '') return code;
@@ -57,6 +87,7 @@ export interface ConversationSession {
   close(): Promise<void>;
   loadOlder(): Promise<void>;
   send(body: string, mentionTargets?: string[]): Promise<ChatMessage>;
+  remove(messageId: string): Promise<void>;
 }
 
 // Everything a conversation does while it is on screen, with no React in it so it can be tested
@@ -85,6 +116,9 @@ export function createConversationSession(
   let newestFetched: ChatMessage | null = null;
   let loadingOlder = false;
   const pendingPings = new Set<string>();
+  // One call per message id at a time. A second remove() of an id already in flight (a double
+  // tap) gets the first call's promise: it shares that outcome and `removing` holds the id once.
+  const inFlightRemovals = new Map<string, Promise<void>>();
 
   function set(patch: Partial<ConversationState>): void {
     state = { ...state, ...patch };
@@ -106,7 +140,7 @@ export function createConversationSession(
     const leaving = channel;
     channel = null;
     // A withdrawn user's device stops showing a minors' conversation as soon as it notices.
-    set({ messages: [], status: 'unavailable', isLive: false, hasOlder: false, errorCode: null });
+    set({ messages: [], status: 'unavailable', isLive: false, hasOlder: false, errorCode: null, removing: [] });
     if (leaving) await leaving.leave();
   }
 
@@ -138,11 +172,20 @@ export function createConversationSession(
         const cursor = loaded && newestFetched ? catchUpCursor([newestFetched]) : null;
 
         let rows: ChatMessage[];
+        let merged: ChatMessage[];
         try {
           rows =
             cursor === null
               ? await deps.api.fetchLatest(conversationId)
               : await deps.api.fetchSince(conversationId, cursor);
+          merged = mergeMessages(state.messages, rows);
+          // A removal of a loaded message happens at or after that message was saved, so the
+          // oldest held message's time is a cursor that never misses one and needs no client clock.
+          const oldest = merged[0];
+          if (oldest) {
+            const patches = await deps.api.fetchRemovedSince(conversationId, oldest.created_at);
+            merged = applyRemovals(merged, patches);
+          }
         } catch (error) {
           for (const id of pinged) pendingPings.add(id);
           const code = errorCodeOf(error);
@@ -155,7 +198,8 @@ export function createConversationSession(
         for (const row of rows) {
           if (!newestFetched || compareMessages(row, newestFetched) > 0) newestFetched = row;
         }
-        const messages = mergeMessages(state.messages, rows);
+        // Re-merge: a send may have landed while the fetches were in flight.
+        const messages = mergeMessages(state.messages, merged);
         // Nothing at all is also what someone with no access gets. Ask before reporting it, so
         // they are never shown an empty chat that looks real (plan decision D).
         const empty = messages.length === 0;
@@ -178,12 +222,40 @@ export function createConversationSession(
     }
   }
 
+  async function removeOnce(messageId: string): Promise<void> {
+    set({ removing: [...state.removing, messageId] });
+    try {
+      const removed = await deps.api.removeMessage(messageId);
+      // Patched from the returned row at once; the signal that follows finds nothing to change.
+      const patch = { id: messageId, removed_at: removed.removed_at ?? '', removed_by_role: removed.removed_by_role };
+      const messages =
+        state.status !== 'unavailable' && patch.removed_at !== '' && patch.removed_by_role !== null
+          ? applyRemovals(state.messages, [{ ...patch, removed_by_role: patch.removed_by_role }])
+          : state.messages;
+      set({ messages, removing: state.removing.filter((id) => id !== messageId) });
+    } catch (error) {
+      set({ removing: state.removing.filter((id) => id !== messageId) });
+      const code = errorCodeOf(error);
+      if (code === '42501') throw new RemoveMessageError('refused', code);
+      // A refusal is expected behaviour and is not reported. Anything else (PGRST202 after a
+      // deploy, 57014, 22P02, offline) is: by code only, never the error's text.
+      deps.onError?.({ source: 'remove', code });
+      throw new RemoveMessageError('network', code);
+    }
+  }
+
   function handlersFor(openedAs: number): ChannelHandlers {
     const current = () => active && openedAs === generation;
     return {
       onPing(messageId) {
         if (!current()) return;
         if (messageId) pendingPings.add(messageId);
+        void catchUp();
+      },
+      onRemoved() {
+        if (!current()) return;
+        // Not added to pendingPings: the id may be outside the loaded window, and checkAccess
+        // is for pings that should have been found.
         void catchUp();
       },
       onJoined() {
@@ -260,6 +332,14 @@ export function createConversationSession(
       // can invoke push (ADR-0028). This module does not call push.
       if (state.status !== 'unavailable') set({ messages: mergeMessages(state.messages, [saved]) });
       return saved;
+    },
+
+    remove(messageId) {
+      const inFlight = inFlightRemovals.get(messageId);
+      if (inFlight) return inFlight;
+      const call = removeOnce(messageId).finally(() => inFlightRemovals.delete(messageId));
+      inFlightRemovals.set(messageId, call);
+      return call;
     },
   };
 }
