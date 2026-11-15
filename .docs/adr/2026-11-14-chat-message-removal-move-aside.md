@@ -64,3 +64,10 @@ The human approved the `/design` of `chat-message-removal` on 2026-11-14. That c
 - `audit_log_coordinator_read` is **extended** to cover `target_table='messages'` for class chats in the Coordinator's session.
 - The review screen is a Dashboard card plus `app/removed-messages.tsx`. The database holds no adult names, so its rows show **role labels** ([#138](https://github.com/cmdfw-bv/CMDFW-BalaVihar-App/issues/138)).
 - The Remove action and the removed bubble are specified here and **built in #24**. The go-live gate (ADR-2026-10-07 Decision 7) is unchanged.
+
+### Build note (2026-11-14, `/build`; no decision changed)
+
+These clarifications came up during the build. None of them changes a decision above.
+- **`is_active` means "the role the user has selected", not "the grant exists"** (as recorded in #119's migration `20261113120000`). `remove_message` and `get_removed_messages_for_oversight` require the caller's matching `user_roles` grant to be `is_active`. In effect, the JWT claim must match the role the user has currently selected. A user who has switched away from a role is refused until they switch back, even if their token is stale. This is deliberate. Don't "fix" it to check only that the grant exists.
+- The `sender_role` backfill does **not** filter on `is_active`. It asks which role the sender holds in that class, not which role they have selected.
+- Coordinators are not class-chat participants (#137), so an inline policy subquery on `messages` always returns false for them. Coordinator visibility of message audit rows therefore goes through the claim-gated SECURITY DEFINER helper `message_in_session` (precedent: `class_in_session`). Message audit rows are excluded from the student-enrollment clause of `audit_log_coordinator_read` (#139).
