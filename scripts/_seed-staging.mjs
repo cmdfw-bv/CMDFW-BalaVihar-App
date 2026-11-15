@@ -17,6 +17,12 @@ export const STAGING_PROJECT_REF = 'ejjvqtleuuamgtlmtxkc';
 // CI, not only at the cloud walk. (config.toml loads it locally after 00_test_fixtures.sql.)
 export const DOMAIN_SQL_PATH = 'supabase/seed/domain.sql';
 
+// The grade spellings the DB's is_hs_grade() accepts (#119, ADR-2026-11-13), mirrored here ONLY to
+// choose demo data: a tester's student persona claims a Gr 9+ student, because a Gr 7-8 login is not
+// a class-chat participant. This list never decides access — RLS and is_hs_grade() do. Pinned
+// exactly in the unit tests so the mirror cannot drift silently.
+export const HS_GRADE_LEVELS = Object.freeze(['9', '10', '11', '12', 'Gr9', 'Gr10', 'Gr11', 'Gr12']);
+
 // Persona → role/scope contract. scopeType mirrors the authoritative DB map
 // (netlify/functions/lib/role-tiering.ts ROLE_SCOPE_TYPE) and the local seed inserts
 // (supabase/seed/seed.sql): student/parent/bv_coordinator/admin are org-scoped (scope_id null,
@@ -215,7 +221,12 @@ export function projectRefFromDbUrl(dbUrl) {
   // policy instead of on this code. #129 item 7.
   const isPooler = /^aws-\d+-[a-z]{2}-[a-z]+-\d+\.pooler\.supabase\.com$/.test(host);
   if (!directMatch && !isPooler) {
-    throw new Error(`projectRefFromDbUrl: "${host}" is not a recognized Supabase database host`);
+    throw new Error(
+      `projectRefFromDbUrl: "${host}" is not a recognized Supabase database host — expected ` +
+        'db.<ref>.supabase.co or aws-<n>-<region>.pooler.supabase.com. If this IS a legitimate ' +
+        'Supabase host for this project (a pooler region shape we have not seen, say), the allowlist ' +
+        'in _seed-staging.mjs needs widening — this is a shape check, not evidence you did anything wrong.',
+    );
   }
   // user and dbname are handed to psql as discrete argv (-U / -d). Restrict each to a safe character
   // class so a '=' (which makes `psql -d` a conninfo string that overrides -h and disables TLS), an
