@@ -8,6 +8,20 @@
 >
 > **Not authoritative.** The persona `_index.md` backlogs remain the source of truth for status
 > (§12.12). Where this document and an `_index.md` row disagree, the row wins.
+>
+> **Revised 2026-11-15** from @arunasharad-coder's review, re-baselined on `main` at `e929d09`:
+> - #119 is done (#133 merged).
+> - #124 is down to tests (#144).
+> - A thin all-roles smoke walk now runs early, ahead of the full #111 walk.
+> - #60 is re-checked on staging before it closes.
+> - The two import defects and the sessions/classes gap are filed (#140, #141, #142).
+> - "Staging" is the only deployed environment.
+>
+> Items 1 and 4 under [For review](#for-review) are settled. The rest remain open.
+
+## Environments
+
+**Staging is the only deployed environment.** It is `cmdfw-bv-staging` on Supabase, plus Netlify auto-deploying from `main`. It holds invented families only (ADR-2026-07-30). Production (project B, #9) has not been created. Anywhere this plan says "walk" or "deployed", it means staging. The pilot is the first thing that needs production.
 
 ## The goal this is sequenced around
 
@@ -52,24 +66,34 @@ can hand the CRM team.
    member system stays the system of record, nothing couples to a CRM export that may change.
    `public/enrollment-template.csv` (14 columns, served at `/enrollment-template.csv`) is the
    starting point.
-3. **`/refine 119`** — families are not added to their class chat when a login is linked *after*
-   enrollment, which is how both real paths work (CSV import and seed). Independent of everything
-   above, so order between 1 and 3 is free. Trigger work, provable locally. Without it a chat screen
-   opens empty for very nearly everyone, which makes it the cheapest high-value fix on this list.
+3. ~~**`/refine 119`**~~ — **done.** #133 merged 2026-11-15 as `e929d09`: class-chat membership is
+   now recounted on every enrollment, guardian-link and student-login change, so families linked
+   *after* enrollment join their class chat. The same recount also closes the removal direction —
+   see #124 in phase 3. **What's left is its `/deploy-staging` walk**: run the membership preview,
+   then apply the repair. Never `db push`.
+3a. **A thin all-roles smoke walk on staging**, straight after #133's staging walk. *(New, from
+   review.)* Sign in once as each persona and confirm the home screen loads in scope. Re-walk
+   **UAT-15** (live role switch re-scopes the feed) to settle #60. Spot-check that a chat membership
+   is present for a linked family. This is not the full #111 walk (step 13). Its purpose is to
+   surface an unknown on the deployed DB/RLS while it is still cheap, rather than at the end. Needs
+   the test inboxes and fresh keys, paced under the built-in email limit. It does not wait on SES.
 
 ## Phase 2 — make the import demonstrable
 
-4. **File the two import defects as their own issues.** Both currently exist only as prose inside
-   #120's body and will be lost there:
-   - Phase 2 of `netlify/functions/csv-import.ts` is **not all-or-nothing** despite AC#9 requiring
-     it — a failure midway leaves earlier rows saved while the response reports nothing committed.
-   - A base64-encoded upload is **decoded as Latin-1, not UTF-8**. The first name carrying an accent
-     or a Devanagari character breaks. Not cosmetic for this roster.
+4. ~~**File the two import defects as their own issues.**~~ — **done** (filed by @arunasharad-coder; #120 links all three):
+   - **#140**: Phase 2 of `netlify/functions/csv-import.ts` is **not all-or-nothing**, despite
+     AC#9 requiring it. A failure midway leaves earlier rows saved while the response reports
+     nothing committed. Normal priority.
+   - **#141**: a base64-encoded upload is **decoded as Latin-1, not UTF-8**, so a name with an
+     accent or a Devanagari character breaks. Filed as **LOW**, because no non-ASCII name has
+     appeared in the registration data in years. The fix recipe is in the issue.
+   - **#142**: no way to create sessions/classes in a cloud environment. This is step 6 below,
+     blocked by #87.
 5. **#93 — grade vocabulary + combined-class placement.** Implements D1–D3 across
    `netlify/functions/lib/csv-parse.ts`, `csv-import.ts` and `lib/db-ops.ts` (the last is the hard
    part: class resolution stops being one-grade-one-class). Fold step 4's two defects in — same
    files, same pass. Also de-duplicates `HS_GRADE_BANDS`, currently defined twice.
-6. **A way to create sessions and classes** (D5). A hard prerequisite, not a nicety: the enrollment
+6. **A way to create sessions and classes** (D5, **#142**). A hard prerequisite, not a nicety: the enrollment
    import *requires* that sessions and classes already exist, and today they only ever come from
    `supabase/seed/domain.sql`, which is forbidden from ever reaching a cloud project (#87).
    So right now there is **no way at all** to create this year's F3 session and its five classes in a
@@ -81,12 +105,14 @@ can hand the CRM team.
 
 8. **`/architect` on D4** before the screen is built, since it determines what the screen does.
 9. **#113 — teacher message removal.** ADR-0017 named this the interim safeguard for minors' chats
-   and it was always meant to land *before* families are let into chat. Nothing implements it today:
-   `authenticated` holds `select, insert` on `messages` only, with no UPDATE/DELETE grant and no
-   removal policy, so nobody can remove anything.
-10. **#124 — membership is not revoked** on enrollment transfer, delete, guardian removal or student
-    unlink. Pairs naturally with #119 (same triggers, opposite direction). Must not still be open
-    when chat goes live.
+   and it was always meant to land *before* families are let into chat. **In review as PR #143.**
+   Before it, `authenticated` held `select, insert` on `messages` only, with no removal path at all.
+10. ~~**#124 — membership is not revoked**~~ — **fixed by #133, tests in #144.** The recount handles
+    all four cases #124 lists: transfer (both classes recounted), enrollment delete, guardian
+    removal and student unlink. #144 adds the adversarial coverage #124 asked for. Each case now
+    proves 0 messages read, 0 realtime signals received, and post refused with `42501`. Each test
+    was shown Red by sabotaging the matching path. #124 closes when #144 merges, so it is no longer
+    a phase-3 item.
 11. **#24 — the screen itself.**
 
 ## Phase 4 — polish, then the walk
@@ -99,9 +125,15 @@ can hand the CRM team.
     (fail-closed staff-RPC guards on the deployed DB). Needs the four staging env vars and fresh
     Netlify access; paced because of the built-in email rate limit — roughly an evening.
 
-    **Why last rather than now:** #93 and #24 change the app underneath it. Walking at the end means
-    walking the app we actually demo, once, instead of twice. It also settles **#60** either way, and
-    AC#8's observed rate limit is worth recording while we are in there.
+    **Why the full walk is still last:** #93 and #24 change the app underneath it, so the
+    documented walk should cover the app we actually demo. Walking last on its own, though, only
+    saves effort; it does not reduce risk. That is why the thin smoke walk (step 3a) now runs
+    early. AC#8's observed rate limit is worth recording while we are in there.
+
+    **#60** is not left for this walk. The fix is on `main`: `HomeFeedScreen` and
+    `ClassUpdateDetailScreen` reload when `activeRole`/`scopeId` change. UAT-15 passed live on
+    2026-07-29 and 2026-10-03, but no automated test covers it. Step 3a re-walks UAT-15 on staging,
+    and #60 closes with that evidence.
 
     Run `npm run seed:staging -- --reset` first (`.docs/runbooks/reset-staging.md`) — and **coordinate
     it**, since a reset wipes every tester's accounts but rebuilds only the runner's.
@@ -129,8 +161,8 @@ can hand the CRM team.
 
 ## Housekeeping, any time
 
-- **PR #131** open, `REVIEW_REQUIRED` — docs plus one error string.
-- **PR #116** at `CHANGES_REQUESTED` since 2026-10-08, waiting on one paragraph.
+- ~~**PR #131**~~ merged (`4ce43e7`).
+- **PR #116** — the requested paragraph landed 2026-11-10. It is waiting on re-review.
 - **#122** (one-line `coalesce` fix — NULL return is a guardianship oracle) and **#28** (default
   TRUNCATE privilege) are small security items that can slot in anywhere.
 
@@ -138,16 +170,15 @@ can hand the CRM team.
 
 Held open deliberately. The places where a second opinion most changes this:
 
-1. **Is #111 genuinely better last?** The argument for walking it *now* is that it is the cheapest
-   remaining item and the one most likely to surface an unknown. The argument for last is not
-   walking it twice. A reasonable person could take either side, and whoever will actually do the
-   walk should have the deciding vote.
+1. ~~**Is #111 genuinely better last?**~~ **Settled 2026-11-15: split it.** A thin all-roles smoke
+   walk runs early (step 3a) to de-risk the deployed DB/RLS. The full documented walk stays last
+   (step 13). This is @arunasharad-coder's proposal, agreed by Maulik ji.
 2. **D2 — grade plus `class_name`, or something else?** `csv-enrollment-import.md` already
    anticipated a `class_name` override column "deferred until needed". It is now needed; the question
    is whether that is the right shape, given the CRM team has to produce it.
 3. **Is phase 2 step 6 one item or two?** Creating sessions/classes and the Admin upload screen might
    be one coherent Admin unit of work rather than two, which would change where they sit.
-4. **Does #124 belong in phase 3, or with #119 in phase 1?** They are the same triggers in opposite
-   directions, so doing them together may be cheaper than doing them apart.
+4. ~~**Does #124 belong in phase 3, or with #119 in phase 1?**~~ **Settled 2026-11-15: neither.**
+   #133's recount fixed both directions at once, and #144 adds the tests (see step 10).
 5. **Anything here that should not be in the demo at all.** The list is shaped by "full
    capabilities"; a shorter demo may make the IT conversation happen sooner.
